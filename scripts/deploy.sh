@@ -176,10 +176,10 @@ update_system() {
 
 # Function to install Node.js
 install_nodejs() {
-    print_status "Installing Node.js 20.x..."
+    print_status "Installing Node.js 22.x..."
 
     # Add NodeSource repository
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt install -y nodejs
 
     # Verify installation
