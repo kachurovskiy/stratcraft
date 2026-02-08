@@ -326,14 +326,14 @@ export class CandlesRepo {
         await this.db.run(
           `
             INSERT INTO candles (ticker, date, open, high, low, close, unadjusted_close, volume_shares)
-            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, 0))
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::bigint, 0))
             ON CONFLICT (ticker, date) DO UPDATE
             SET open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
                 close = EXCLUDED.close,
                 unadjusted_close = EXCLUDED.unadjusted_close,
-                volume_shares = COALESCE(?, candles.volume_shares)
+                volume_shares = COALESCE(?::bigint, candles.volume_shares)
           `,
           [
             normalizedSymbol,
@@ -369,14 +369,14 @@ export class CandlesRepo {
         await this.db.run(
           `
             INSERT INTO candles (ticker, date, open, high, low, close, unadjusted_close, volume_shares)
-            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, 0))
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::bigint, 0))
             ON CONFLICT (ticker, date) DO UPDATE
             SET open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
                 close = EXCLUDED.close,
                 unadjusted_close = EXCLUDED.unadjusted_close,
-                volume_shares = COALESCE(?, candles.volume_shares)
+                volume_shares = COALESCE(?::bigint, candles.volume_shares)
           `,
           [
             normalizedSymbol,

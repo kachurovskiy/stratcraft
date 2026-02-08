@@ -34,8 +34,8 @@ describe('CandlesRepo', () => {
     await repo.upsertCandlesForTicker('BBCB', [candle]);
 
     expect(runCalls).toHaveLength(1);
-    expect(runCalls[0].sql).toContain('COALESCE(?, 0)');
-    expect(runCalls[0].sql).toContain('volume_shares = COALESCE(?, candles.volume_shares)');
+    expect(runCalls[0].sql).toContain('COALESCE(?::bigint, 0)');
+    expect(runCalls[0].sql).toContain('volume_shares = COALESCE(?::bigint, candles.volume_shares)');
     expect(runCalls[0].params).toHaveLength(9);
     expect(runCalls[0].params[7]).toBeNull();
     expect(runCalls[0].params[8]).toBeNull();
@@ -72,11 +72,10 @@ describe('CandlesRepo', () => {
 
     const insertCall = runCalls.find((call) => call.sql.includes('INSERT INTO candles'));
     expect(insertCall).toBeDefined();
-    expect(insertCall!.sql).toContain('COALESCE(?, 0)');
-    expect(insertCall!.sql).toContain('volume_shares = COALESCE(?, candles.volume_shares)');
+    expect(insertCall!.sql).toContain('COALESCE(?::bigint, 0)');
+    expect(insertCall!.sql).toContain('volume_shares = COALESCE(?::bigint, candles.volume_shares)');
     expect(insertCall!.params).toHaveLength(9);
     expect(insertCall!.params[7]).toBeNull();
     expect(insertCall!.params[8]).toBeNull();
   });
 });
-
