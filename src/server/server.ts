@@ -24,7 +24,7 @@ import { createJobHandlers } from './jobs/createJobHandlers';
 import { EngineCliService } from './jobs/EngineCliService';
 import { viewHelpers } from './views/helpers';
 import { SETTING_KEYS } from './constants';
-import { resolveSiteName } from './utils/appUrl';
+import { normalizeDomain, resolveSiteName } from './utils/appUrl';
 import { DEFAULT_FOOTER_DISCLAIMER_HTML, resolveFooterDisclaimerHtml } from './utils/footerDisclaimer';
 import { randomEmoji } from './utils/randomEmoji';
 
@@ -128,9 +128,28 @@ export class Server {
     this.loggingService.info('system', `Generated email security emoji for outbound subjects: ${generated}`);
   }
 
+  private async ensureDomainSetting(): Promise<void> {
+    const envDomain = normalizeDomain(process.env.DOMAIN);
+    if (!envDomain) {
+      return;
+    }
+
+    const existingValue = await this.db.settings.getSettingValue(SETTING_KEYS.DOMAIN);
+    const existingDomain = normalizeDomain(existingValue);
+    if (existingDomain) {
+      return;
+    }
+
+    await this.db.settings.upsertSettings({
+      [SETTING_KEYS.DOMAIN]: envDomain
+    });
+    this.loggingService.info('system', 'Saved DOMAIN from environment into settings.');
+  }
+
   async initialize(): Promise<void> {
     // Initialize database
     await this.db.initialize();
+    await this.ensureDomainSetting();
     await this.ensureBacktestApiSecret();
     await this.ensureEmailSecurityEmoji();
     await this.jobScheduler.refreshAutoOptimizationSettings();
