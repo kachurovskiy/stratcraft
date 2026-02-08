@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use log::{info, warn};
-use rand::{seq::SliceRandom, SeedableRng};
+use rand::{seq::SliceRandom, Rng, SeedableRng};
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -40,6 +40,11 @@ const LABEL_GAINS: [u32; 6] = [0, 1, 3, 7, 15, 31];
 const RANK_LABEL_LEVELS: u8 = LABEL_GAINS.len() as u8;
 const RANK_LABEL_BINS: [f64; 5] = [2.0, 3.0, 4.0, 5.0, 7.0];
 const RANK_LABEL_CAP_MULTIPLE: f64 = 10.0;
+const TRAIN_AUGMENT_DUPLICATES_PER_ROW: usize = 1;
+const TRAIN_AUGMENT_NOISE_RELATIVE: f64 = 0.01;
+const TRAIN_AUGMENT_NOISE_ABS: f64 = 1e-4;
+const TRAIN_AUGMENT_WEIGHT_SCALE: f64 = 0.5;
+const TRAIN_AUGMENT_SEED: u64 = 4242;
 
 #[derive(Clone)]
 struct TrainingRow {
@@ -219,6 +224,15 @@ pub async fn run(
         return Err(anyhow!(
             "No training rows could be generated from available market data"
         ));
+    }
+    let augmented = augment_training_rows_with_noise(&mut train_rows);
+    if augmented > 0 {
+        info!(
+            "Augmented training rows with {} noisy duplicate{} ({} per row)",
+            augmented,
+            if augmented == 1 { "" } else { "s" },
+            TRAIN_AUGMENT_DUPLICATES_PER_ROW
+        );
     }
     info!("Finished building {} training rows", train_rows.len());
 
@@ -760,6 +774,53 @@ fn apply_extreme_sampling_and_weights(rows: &mut Vec<TrainingRow>) {
         }
     }
     *rows = kept;
+}
+
+fn augment_training_rows_with_noise(rows: &mut Vec<TrainingRow>) -> usize {
+    if TRAIN_AUGMENT_DUPLICATES_PER_ROW == 0 || rows.is_empty() {
+        return 0;
+    }
+
+    let original_len = rows.len();
+    rows.reserve(original_len.saturating_mul(TRAIN_AUGMENT_DUPLICATES_PER_ROW));
+    let mut rng = rand::rngs::StdRng::seed_from_u64(TRAIN_AUGMENT_SEED);
+    let mut added = 0usize;
+
+    for idx in 0..original_len {
+        let base = rows[idx].clone();
+        for _ in 0..TRAIN_AUGMENT_DUPLICATES_PER_ROW {
+            let mut row = base.clone();
+            row.features = row
+                .features
+                .iter()
+                .map(|value| jitter_feature(*value, &mut rng))
+                .collect();
+            row.weight *= TRAIN_AUGMENT_WEIGHT_SCALE;
+            rows.push(row);
+            added += 1;
+        }
+    }
+
+    added
+}
+
+fn jitter_feature(value: f64, rng: &mut rand::rngs::StdRng) -> f64 {
+    if !value.is_finite() {
+        return value;
+    }
+
+    let mut noisy = if value.abs() < TRAIN_AUGMENT_NOISE_ABS {
+        value + rng.gen_range(-TRAIN_AUGMENT_NOISE_ABS..=TRAIN_AUGMENT_NOISE_ABS)
+    } else {
+        let jitter = rng.gen_range(-TRAIN_AUGMENT_NOISE_RELATIVE..=TRAIN_AUGMENT_NOISE_RELATIVE);
+        value * (1.0 + jitter)
+    };
+
+    if (0.0..=1.0).contains(&value) {
+        noisy = noisy.clamp(0.0, 1.0);
+    }
+
+    noisy
 }
 
 fn class_histogram(rows: &[TrainingRow]) -> [usize; EXTREME_LABEL_COUNT] {

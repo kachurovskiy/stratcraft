@@ -1935,8 +1935,8 @@ impl LightGBMStrategy {
                 180,
             ),
         };
-        let min_confidence = get_param_f64_clamped(&parameters, "minConfidence", 0.0, 0.0, 1.0);
-        let model_bias = get_param_f64_clamped(&parameters, "modelBias", 0.0, -2.0, 2.0);
+        let min_confidence = get_param_f64_clamped(&parameters, "minConfidence", 0.1, 0.0, 1.0);
+        let model_bias = get_param_f64_clamped(&parameters, "modelBias", 0.01, -2.0, 2.0);
         let model_id = template_id
             .strip_prefix("lightgbm_")
             .map(|value| value.trim().to_string())
