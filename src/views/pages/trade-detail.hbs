@@ -1,0 +1,489 @@
+<div class="container-fluid">
+    <div class="row g-4">
+        <!-- Trade Information -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-exchange-alt me-2"></i>
+                        Trade Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Symbol</td>
+                                    <td class="text-end fw-bold">
+                                        <a href="https://www.tradingview.com/chart/?symbol={{trade.ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                            <i class="fas fa-external-link-alt"></i>
+                                        </a>
+                                        <a href="/tickers/{{trade.ticker}}" class="text-decoration-none">{{trade.ticker}}</a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Quantity</td>
+                                    <td class="text-end fw-bold">{{trade.quantity}} shares</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Entry Price</td>
+                                    <td class="text-end fw-bold">{{formatCurrency trade.price}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Total Value</td>
+                                    <td class="text-end fw-bold">{{formatCurrency (multiply trade.price trade.quantity)}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Start Date</td>
+                                    <td class="text-end fw-bold">{{formatDate trade.date}}</td>
+                                </tr>
+                                {{#if expectedEndDate}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Expected End Date</td>
+                                    <td class="text-end fw-bold">{{formatDate expectedEndDate}}</td>
+                                </tr>
+                                {{/if}}
+                                {{#if expectedPriceTarget}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Expected Price Target</td>
+                                    <td class="text-end fw-bold text-success">{{formatCurrency expectedPriceTarget}}</td>
+                                </tr>
+                                {{/if}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Status</td>
+                                    <td class="text-end">
+                                    <span class="badge bg-{{#if (eq trade.status 'active')}}success{{else if (eq trade.status 'closed')}}info{{else if (eq trade.status 'cancelled')}}danger{{else}}warning{{/if}}">{{trade.status}}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Created</td>
+                                    <td class="text-end fw-bold">{{formatDate trade.createdAt}}</td>
+                                </tr>
+                        {{#if trade.exitPrice}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Exit Price</td>
+                                    <td class="text-end fw-bold">{{formatCurrency trade.exitPrice}}</td>
+                                </tr>
+                        {{/if}}
+                        {{#if trade.exitDate}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Exit Date</td>
+                                    <td class="text-end fw-bold">{{formatDate trade.exitDate}}</td>
+                                </tr>
+                        {{/if}}
+                        {{#if (or trade.fee (eq trade.fee 0))}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Fees Paid</td>
+                                    <td class="text-end fw-bold text-muted">{{formatCurrency trade.fee}}</td>
+                                </tr>
+                        {{/if}}
+                        {{#if trade.stopLoss}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Stop Loss</td>
+                                    <td class="text-end fw-bold text-danger">{{formatPercentAsPercent trade.stopLossPercent}}</td>
+                                </tr>
+                        {{/if}}
+                        {{#if trade.stopLossTriggered}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Stop Loss Status</td>
+                                    <td class="text-end fw-bold text-warning">Triggered</td>
+                                </tr>
+                                {{/if}}
+                                {{#if trade.pnl}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Profit/Loss</td>
+                                    <td class="text-end fw-bold {{#if (gt trade.pnl 0)}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent trade.pnlPercent}}
+                                    </td>
+                                </tr>
+                        {{/if}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Information & Expected Performance -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-cogs me-2"></i>
+                        Strategy Information & Expected Performance
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Strategy</td>
+                                    <td class="text-end fw-bold">
+                                        <a href="/strategies/{{strategy.id}}" class="text-decoration-none">{{strategy.name}}</a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Template</td>
+                                    <td class="text-end fw-bold">{{template.name}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Strategy Status</td>
+                                    <td class="text-end">
+                                        <span class="badge bg-{{#if (eq strategy.status 'active')}}success{{else if (eq strategy.status 'inactive')}}secondary{{else}}warning{{/if}}">{{strategy.status}}</span>
+                                    </td>
+                                </tr>
+                                {{#if strategy.performance}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Total Trades</td>
+                                    <td class="text-end fw-bold">{{strategy.performance.totalTrades}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Win Rate</td>
+                                    <td class="text-end fw-bold">{{formatRateAsPercent strategy.performance.winRate}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Expected Profit</td>
+                                    <td class="text-end fw-bold text-success">
+                                        {{#if strategy.performance.avgWinningPnl}}
+                                            {{formatCurrency strategy.performance.avgWinningPnl}}
+                                        {{else}}
+                                            N/A
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Average Trade Duration</td>
+                                    <td class="text-end fw-bold">{{toFixed strategy.performance.avgTradeDuration 0}} days</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Strategy CAGR</td>
+                                    <td class="text-end fw-bold {{#if (gt strategy.performance.cagr 0)}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatRateAsPercent strategy.performance.cagr}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Max Drawdown</td>
+                                    <td class="text-end fw-bold text-danger">{{formatPercentAsPercent strategy.performance.maxDrawdownPercent}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Sharpe Ratio</td>
+                                    <td class="text-end fw-bold">{{formatNumber strategy.performance.sharpeRatio}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Calmar Ratio</td>
+                                    <td class="text-end fw-bold">{{formatNumber strategy.performance.calmarRatio}}</td>
+                                </tr>
+                                {{/if}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trade Operations -->
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="fas fa-clipboard-list me-2"></i>
+                            Trade Operations
+                        </h5>
+                        <p class="text-muted mb-0">Orders and adjustments generated for this trade.</p>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="badge bg-light text-dark text-uppercase">
+                            {{tradeOperationsSummary.total}} operation{{#if (ne tradeOperationsSummary.total 1)}}s{{/if}}
+                        </span>
+                        <a href="/strategies/{{strategy.id}}/operations?search={{encodeURIComponent trade.id}}"
+                            class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            View all operations
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {{#if hasTradeOperations}}
+                    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            {{#each tradeOperationsStatusBreakdown}}
+                            <span class="badge bg-{{operationStatusBadge status}}">
+                                {{operationStatusLabel status}}: {{count}}
+                            </span>
+                            {{/each}}
+                        </div>
+                        {{#if tradeOperationsSummary.latestStatusUpdatedAt}}
+                        <div class="text-muted small">
+                            Last update {{formatDateTimeShort tradeOperationsSummary.latestStatusUpdatedAt}}
+                        </div>
+                        {{/if}}
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 text-nowrap">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="ps-3">Triggered</th>
+                                    <th scope="col">Ticker</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col" class="text-end">Quantity</th>
+                                    <th scope="col" class="text-end">Price</th>
+                                    <th scope="col" class="text-end">Stop Loss</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Notes</th>
+                                    <th scope="col" class="text-end">Last Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each tradeOperations}}
+                                <tr>
+                                    <td class="ps-3">{{formatDateTimeShort triggeredAt}}</td>
+                                    <td class="fw-semibold">{{ticker}}</td>
+                                    <td>{{operationTypeLabel operationType}}</td>
+                                    <td class="text-end">
+                                        {{#if (defined quantity)}}{{quantity}}{{else}}&mdash;{{/if}}
+                                    </td>
+                                    <td class="text-end">
+                                        {{#if (defined price)}}{{formatPrice price}}{{else}}&mdash;{{/if}}
+                                    </td>
+                                    <td class="text-end">
+                                        {{#if (defined stopLoss)}}{{formatPrice stopLoss}}{{else}}&mdash;{{/if}}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{operationStatusBadge status}}">{{operationStatusLabel status}}</span>
+                                        {{#if statusReason}}
+                                        <div class="text-muted small mt-1">{{statusReason}}</div>
+                                        {{/if}}
+                                    </td>
+                                    <td class="text-muted small">
+                                        {{#if reason}}
+                                        <div><span class="fw-semibold">Reason:</span> {{reason}}</div>
+                                        {{/if}}
+                                        {{#if orderId}}
+                                        <div><span class="fw-semibold">Order ID:</span> {{orderId}}</div>
+                                        {{/if}}
+                                        {{#if (defined signalConfidence)}}
+                                        <div><span class="fw-semibold">Confidence:</span> {{formatNumber signalConfidence}}</div>
+                                        {{/if}}
+                                        {{#if (defined daysHeld)}}
+                                        <div><span class="fw-semibold">Days Held:</span> {{daysHeld}}</div>
+                                        {{/if}}
+                                        {{#if lastPayload}}
+                                        <div class="mt-2">
+                                            <details>
+                                                <summary class="fw-semibold text-primary">Payload</summary>
+                                                <pre class="bg-light border rounded p-2 mb-0 small text-break">{{json lastPayload}}</pre>
+                                            </details>
+                                        </div>
+                                        {{/if}}
+                                    </td>
+                                    <td class="text-end">
+                                        {{#if statusUpdatedAt}}
+                                        {{formatDateTimeShort statusUpdatedAt}}
+                                        {{else}}
+                                        &mdash;
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <p class="text-muted mb-0">No account operations were created for this trade.</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Trade Orders -->
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+                    <div>
+                        <h5 class="card-title mb-1">
+                            <i class="fas fa-file-signature me-2"></i>
+                            Broker Orders
+                        </h5>
+                        <p class="text-muted mb-0">Entry, stop, exit, and any additional orders tied to this trade.</p>
+                    </div>
+                    {{#if hasTradeOrders}}
+                    <span class="badge bg-light text-dark text-uppercase">
+                        {{tradeOrders.length}} order{{#if (ne tradeOrders.length 1)}}s{{/if}}
+                    </span>
+                    {{/if}}
+                </div>
+                <div class="card-body">
+                    {{#if hasTradeOrders}}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 text-nowrap">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Order</th>
+                                    <th scope="col">Order ID</th>
+                                    <th scope="col">Operation</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Triggered</th>
+                                    <th scope="col">Last Updated</th>
+                                    <th scope="col">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each tradeOrders}}
+                                <tr>
+                                    <td class="fw-semibold">{{label}}</td>
+                                    <td><code class="small">{{orderId}}</code></td>
+                                    <td>
+                                        {{#if operationType}}
+                                            {{operationTypeLabel operationType}}
+                                        {{else}}
+                                            &mdash;
+                                        {{/if}}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{operationStatusBadge status}}">{{operationStatusLabel status}}</span>
+                                        {{#if statusReason}}
+                                        <div class="text-muted small mt-1">{{statusReason}}</div>
+                                        {{/if}}
+                                    </td>
+                                    <td>
+                                        {{#if triggeredAt}}
+                                        {{formatDateTimeShort triggeredAt}}
+                                        {{else}}
+                                        &mdash;
+                                        {{/if}}
+                                    </td>
+                                    <td>
+                                        {{#if statusUpdatedAt}}
+                                        {{formatDateTimeShort statusUpdatedAt}}
+                                        {{else}}
+                                        &mdash;
+                                        {{/if}}
+                                    </td>
+                                    <td class="text-muted small">
+                                        {{#if quantity}}
+                                        <div><span class="fw-semibold">Qty:</span> {{quantity}}</div>
+                                        {{/if}}
+                                        {{#if price}}
+                                        <div><span class="fw-semibold">Price:</span> {{formatPrice price}}</div>
+                                        {{/if}}
+                                        {{#if stopLoss}}
+                                        <div><span class="fw-semibold">Stop:</span> {{formatPrice stopLoss}}</div>
+                                        {{/if}}
+                                        {{#unless (or quantity price stopLoss)}}
+                                        <span class="text-muted">No additional details</span>
+                                        {{/unless}}
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <p class="text-muted mb-0">No broker orders have been recorded for this trade yet.</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Ticker Chart -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        {{trade.ticker}} Price Chart
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 400px; width: 100%;">
+                        <canvas id="tickerChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div id="tradingViewChart" style="position: relative; height: 420px;">
+                <div class="text-muted text-center small mt-5">Loading TradingView chart...</div>
+            </div>
+        </div>
+
+        <!-- Trade Change History -->
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        Trade Change History
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {{#if (gt tradeChangeGroups.length 0)}}
+                        <div class="d-flex flex-wrap gap-3">
+                            {{#each tradeChangeGroups}}
+                                <div class="border rounded p-3 bg-light" style="flex: 1 1 320px; min-width: 260px; max-width: 360px;">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span class="fw-bold">{{formatDate day}}</span>
+                                        <span class="text-muted small">{{changes.length}} change{{#if (ne changes.length 1)}}s{{/if}} recorded</span>
+                                    </div>
+                                    <div class="d-flex flex-column gap-2">
+                                        {{#each changes}}
+                                            <div class="border rounded p-3 bg-white">
+                                                <div class="fw-bold mb-2">{{label}}</div>
+                                                <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                                                    <div>
+                                                        <div class="text-muted small text-uppercase">From</div>
+                                                        <div class="fw-bold">{{oldValueDisplay}}</div>
+                                                    </div>
+                                                    <div class="text-lg-end">
+                                                        <div class="text-muted small text-uppercase">To</div>
+                                                        <div class="fw-bold text-primary">{{newValueDisplay}}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {{/each}}
+                                    </div>
+                                </div>
+                            {{/each}}
+                        </div>
+                    {{else}}
+                        <p class="text-muted mb-0">No change history recorded for this trade yet.</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Ticker Chart with Candlesticks
+    const chartElement = document.getElementById('tickerChart');
+    const trade = {{{ json trade }}};
+    if (chartElement) {
+        const chartData = {{{ json chartData }}};
+        const simulatedFutureData = {{{ json simulatedFutureData }}};
+        const expectedEndDate = {{{ json expectedEndDate }}};
+        const expectedPriceTarget = {{{ json expectedPriceTarget }}};
+
+        if (chartData && chartData.length > 0) {
+            // Sort data by date
+            chartData.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            // Use the shared chart utilities to create the trade detail chart
+            ChartUtils.createTradeDetailChart('tickerChart', chartData, trade, {
+                simulatedFutureData: simulatedFutureData,
+                expectedPriceTarget: expectedPriceTarget,
+                expectedEndDate: expectedEndDate
+            });
+        }
+    }
+    if (trade && trade.ticker) {
+        initializeTickerTradingViewChart(trade.ticker);
+    }
+});
+</script>

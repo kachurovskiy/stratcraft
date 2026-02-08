@@ -1,0 +1,138 @@
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h2 mb-0">Create Strategy</h1>
+</div>
+
+<form method="POST" action="/strategies/create">
+    {{> csrf-field}}
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Basic Information</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="name" class="form-label">Strategy Name</label>
+                    <input type="text" id="name" name="name" required class="form-control" {{#if strategyNamePrefill}}value="{{strategyNamePrefill}}"{{/if}} placeholder="Enter strategy name">
+                </div>
+                <div class="col-md-6">
+                    <label for="templateId" class="form-label">Strategy Template</label>
+                    <select id="templateId" name="templateId" class="form-select" onchange="const option = this.selectedOptions[0]; if (option && option.dataset.href) { window.location.href = option.dataset.href; }">
+                        {{#each templateOptions}}
+                            <option value="{{id}}" data-href="{{href}}" {{#if selected}}selected{{/if}}>
+                                {{name}}
+                            </option>
+                        {{/each}}
+                    </select>
+                    {{#if template.description}}
+                        <div class="form-text">{{template.description}}</div>
+                    {{/if}}
+                </div>
+                <div class="col-md-6">
+                    <label for="startDate" class="form-label">Backtest Start Date (optional)</label>
+                    <input type="date" id="startDate" name="startDate" class="form-control">
+                    <div class="form-text">
+                        Set this if the strategy should only be backtested from a specific account start date. For account targets we'll honor this date; leave it blank to use the latest day with candle data.
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label for="accountId" class="form-label">Target Account (optional)</label>
+                    {{#if hasAccounts}}
+                        <select id="accountId" name="accountId" class="form-select">
+                            <option value="">Select an account</option>
+                            {{#each accounts}}
+                                <option value="{{id}}" {{#if (eq ../selectedAccountId id)}}selected{{/if}}>
+                                    {{name}} ({{provider}} / {{environment}})
+                                    {{#if hasBalance}}
+                                        - {{formatCurrency balance}}{{#if currency}} {{currency}}{{/if}}
+                                    {{else}}
+                                        - Balance unavailable
+                                    {{/if}}
+                                </option>
+                            {{/each}}
+                        </select>
+                        <div class="form-text">
+                            When set, trades will be routed to this account. Without a start date we'll default to the latest candle day; otherwise your selected date is used.
+                        </div>
+                    {{else}}
+                        <div class="alert alert-warning mb-0">
+                            No accounts connected yet. Add one from the dashboard to route trades automatically.
+                        </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Parameters</h5>
+        </div>
+        <div class="card-body">
+            {{#if prefillNotice}}
+                <p class="text-muted small mb-3">{{prefillNotice}}</p>
+            {{/if}}
+
+            {{#if bestBacktestHasMetrics}}
+                <div class="alert alert-info mb-3">
+                    <div class="fw-semibold mb-1">Best Backtest Snapshot</div>
+                    <ul class="mb-0">
+                        {{#if bestBacktestSummary.hasSharpeRatio}}
+                            <li>Sharpe Ratio: {{formatNumber bestBacktestSummary.sharpeRatio 2}}</li>
+                        {{/if}}
+                        {{#if bestBacktestSummary.hasCalmarRatio}}
+                            <li>Calmar Ratio: {{formatNumber bestBacktestSummary.calmarRatio 2}}</li>
+                        {{/if}}
+                        {{#if bestBacktestSummary.hasTotalReturn}}
+                            <li>Total Return: {{formatNumber bestBacktestSummary.totalReturn 2}}</li>
+                        {{/if}}
+                        {{#if bestBacktestSummary.hasCagr}}
+                            <li>CAGR: {{formatRateAsPercent bestBacktestSummary.cagr}}</li>
+                        {{/if}}
+                        {{#if bestBacktestSummary.hasMaxDrawdown}}
+                            <li>Max Drawdown: {{formatRateAsPercent bestBacktestSummary.maxDrawdownRatio}}</li>
+                        {{/if}}
+                        {{#if bestBacktestSummary.hasWinRate}}
+                            <li>Win Rate: {{formatNumber bestBacktestSummary.winRate 2}}</li>
+                        {{/if}}
+                        {{#if bestBacktestSummary.hasTotalTrades}}
+                            <li>Total Trades: {{bestBacktestSummary.totalTrades}}</li>
+                        {{/if}}
+                    </ul>
+                </div>
+            {{/if}}
+
+            {{#if hasParameters}}
+                <div class="row g-3">
+                    {{#each parameters}}
+                        {{#if (and hideInitialCapital (eq name 'initialCapital'))}}
+                        {{else}}
+                            <div class="col-md-6">
+                                <label for="{{name}}" class="form-label">{{label}}</label>
+                                {{#if (eq type 'number')}}
+                                    <input type="number" id="{{name}}" name="{{name}}" value="{{inputValue}}" {{#if required}}required{{/if}} {{#if hasMin}}min="{{min}}"{{/if}} {{#if hasMax}}max="{{max}}"{{/if}} step="0.00001" class="form-control">
+                                {{else}}
+                                    <input type="text" id="{{name}}" name="{{name}}" value="{{inputValue}}" {{#if required}}required{{/if}} class="form-control">
+                                {{/if}}
+                                {{#if description}}
+                                    <div class="form-text">{{description}}</div>
+                                {{/if}}
+                            </div>
+                        {{/if}}
+                    {{/each}}
+                </div>
+            {{else}}
+                <div class="text-center py-4">
+                    <p class="text-muted mb-0">This template does not require any parameters.</p>
+                </div>
+            {{/if}}
+        </div>
+    </div>
+
+    <div class="d-flex gap-3">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i>
+            Create Strategy
+        </button>
+        <a href="/dashboard" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>

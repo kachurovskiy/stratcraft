@@ -1,0 +1,242 @@
+<div class="container-fluid px-0 px-md-2">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+        <div class="mb-3 mb-md-0">
+            <h2 class="mb-1">
+                <i class="fas fa-broadcast-tower me-2 text-primary"></i>
+                Recent Signals
+            </h2>
+            <p class="text-muted mb-0">
+                Sharpe-weighted consensus across tracked strategies for the last {{lookbackDays}} day{{#if (ne lookbackDays 1)}}s{{/if}}.
+            </p>
+        </div>
+    </div>
+
+    {{#if groupedSignals.length}}
+    <div class="row g-4">
+        {{#each groupedSignals}}
+            {{#if tickers.length}}
+            <div class="col-12 col-xl-6">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-calendar-day me-2"></i>
+                                {{formatDate dateObj}}
+                            </h6>
+                            <span class="badge bg-success" title="Majority buy by Sharpe-weighted votes">{{summary.buyMajority}} buys</span>
+                            <span class="badge bg-danger" title="Majority sell by Sharpe-weighted votes">{{summary.sellMajority}} sells</span>
+                            {{#if summary.mixed}}
+                                <span class="badge bg-secondary" title="No clear Sharpe-weighted consensus">{{summary.mixed}} mixed</span>
+                            {{/if}}
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-12 col-lg-6 mb-4 mb-lg-0">
+                                <h6 class="mb-3">
+                                    <i class="fas fa-arrow-up text-success me-2"></i>Top Buy Consensus (Sharpe >= 0.8)
+                                    <small class="text-muted ms-2">showing up to 100</small>
+                                </h6>
+                                {{#if topBuysLimited.length}}
+                                  {{#each topBuysLimited}}
+                                  <div class="d-flex justify-content-between align-items-center mb-2">
+                                      <div class="text-truncate">
+                                          <a href="https://www.tradingview.com/chart/?symbol={{ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                              <i class="fas fa-external-link-alt"></i>
+                                          </a>
+                                          <a href="/tickers/{{ticker}}" class="fw-bold text-decoration-none">{{ticker}}</a>
+                                          {{#if (gt strategies.length 1)}}
+                                            <span class="badge bg-warning text-dark ms-2" title="Multiple strategies signalled">x{{strategies.length}}</span>
+                                          {{/if}}
+                                          <div class="small text-muted mt-1">
+                                              Buy: {{metrics.buyCount}} (sum {{toFixed metrics.buySharpeSum 2}}) | Sell: {{metrics.sellCount}} (sum {{toFixed metrics.sellSharpeSum 2}})
+                                          </div>
+                                      </div>
+                                      <div class="text-nowrap">
+                                          <span class="badge bg-success" title="Sharpe-weighted consensus score">
+                                            Score {{toFixed metrics.voteScore 2}}
+                                            {{#if (eq metrics.highSharpeConsensus 'buy')}}<i class="fas fa-star ms-1"></i>{{/if}}
+                                          </span>
+                                      </div>
+                                  </div>
+                                  {{/each}}
+                                  {{#if (gt topBuys.length 100)}}
+                                    <details class="mt-2">
+                                      <summary class="text-primary" style="cursor:pointer;">Show all buys ({{topBuys.length}})</summary>
+                                      <div class="mt-2">
+                                        {{#each topBuys}}
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="text-truncate">
+                                                <a href="https://www.tradingview.com/chart/?symbol={{ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                                    <i class="fas fa-external-link-alt"></i>
+                                                </a>
+                                                <a href="/tickers/{{ticker}}" class="fw-bold text-decoration-none">{{ticker}}</a>
+                                                {{#if (gt strategies.length 1)}}
+                                                  <span class="badge bg-warning text-dark ms-2" title="Multiple strategies signalled">x{{strategies.length}}</span>
+                                                {{/if}}
+                                                <div class="small text-muted mt-1">
+                                                    Buy: {{metrics.buyCount}} (sum {{toFixed metrics.buySharpeSum 2}}) | Sell: {{metrics.sellCount}} (sum {{toFixed metrics.sellSharpeSum 2}})
+                                                </div>
+                                            </div>
+                                            <div class="text-nowrap">
+                                                <span class="badge bg-success" title="Sharpe-weighted consensus score">
+                                                  Score {{toFixed metrics.voteScore 2}}
+                                                  {{#if (eq metrics.highSharpeConsensus 'buy')}}<i class="fas fa-star ms-1"></i>{{/if}}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {{/each}}
+                                      </div>
+                                    </details>
+                                  {{/if}}
+                                {{else}}
+                                  <div class="text-muted">No buy consensus with Sharpe >= 0.8.</div>
+                                {{/if}}
+                            </div>
+
+                            <div class="col-12 col-lg-6">
+                                <h6 class="mb-3">
+                                    <i class="fas fa-arrow-down text-danger me-2"></i>Top Sell Consensus (Sharpe >= 0.8)
+                                    <small class="text-muted ms-2">showing up to 100</small>
+                                </h6>
+                                {{#if topSellsLimited.length}}
+                                  {{#each topSellsLimited}}
+                                  <div class="d-flex justify-content-between align-items-center mb-2">
+                                      <div class="text-truncate">
+                                          <a href="https://www.tradingview.com/chart/?symbol={{ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                              <i class="fas fa-external-link-alt"></i>
+                                          </a>
+                                          <a href="/tickers/{{ticker}}" class="fw-bold text-decoration-none">{{ticker}}</a>
+                                          {{#if (gt strategies.length 1)}}
+                                            <span class="badge bg-warning text-dark ms-2" title="Multiple strategies signalled">x{{strategies.length}}</span>
+                                          {{/if}}
+                                          <div class="small text-muted mt-1">
+                                              Buy: {{metrics.buyCount}} (sum {{toFixed metrics.buySharpeSum 2}}) | Sell: {{metrics.sellCount}} (sum {{toFixed metrics.sellSharpeSum 2}})
+                                          </div>
+                                      </div>
+                                      <div class="text-nowrap">
+                                          <span class="badge bg-danger" title="Sharpe-weighted consensus score">
+                                            Score {{toFixed metrics.voteScore 2}}
+                                            {{#if (eq metrics.highSharpeConsensus 'sell')}}<i class="fas fa-star ms-1"></i>{{/if}}
+                                          </span>
+                                      </div>
+                                  </div>
+                                  {{/each}}
+                                  {{#if (gt topSells.length 100)}}
+                                    <details class="mt-2">
+                                      <summary class="text-primary" style="cursor:pointer;">Show all sells ({{topSells.length}})</summary>
+                                      <div class="mt-2">
+                                        {{#each topSells}}
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="text-truncate">
+                                                <a href="https://www.tradingview.com/chart/?symbol={{ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                                    <i class="fas fa-external-link-alt"></i>
+                                                </a>
+                                                <a href="/tickers/{{ticker}}" class="fw-bold text-decoration-none">{{ticker}}</a>
+                                                {{#if (gt strategies.length 1)}}
+                                                  <span class="badge bg-warning text-dark ms-2" title="Multiple strategies signalled">x{{strategies.length}}</span>
+                                                {{/if}}
+                                                <div class="small text-muted mt-1">
+                                                    Buy: {{metrics.buyCount}} (sum {{toFixed metrics.buySharpeSum 2}}) | Sell: {{metrics.sellCount}} (sum {{toFixed metrics.sellSharpeSum 2}})
+                                                </div>
+                                            </div>
+                                            <div class="text-nowrap">
+                                                <span class="badge bg-danger" title="Sharpe-weighted consensus score">
+                                                  Score {{toFixed metrics.voteScore 2}}
+                                                  {{#if (eq metrics.highSharpeConsensus 'sell')}}<i class="fas fa-star ms-1"></i>{{/if}}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {{/each}}
+                                      </div>
+                                    </details>
+                                  {{/if}}
+                                {{else}}
+                                  <div class="text-muted">No sell consensus with Sharpe >= 0.8.</div>
+                                {{/if}}
+                            </div>
+                            {{#if (eq topBuysLimited.length 0)}}
+                              {{#if (eq topSellsLimited.length 0)}}
+                                {{#if (gt summary.mixed 0)}}
+                                  <div class="col-12 mt-4">
+                                      <h6 class="mb-3">
+                                          <i class="fas fa-balance-scale text-secondary me-2"></i>Interesting Mixed Signals (Sharpe >= 0.8)
+                                          <small class="text-muted ms-2">showing up to 100</small>
+                                      </h6>
+                                      {{#if topMixedLimited.length}}
+                                        {{#each topMixedLimited}}
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <div class="text-truncate">
+                                                <a href="https://www.tradingview.com/chart/?symbol={{ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                                    <i class="fas fa-external-link-alt"></i>
+                                                </a>
+                                                <a href="/tickers/{{ticker}}" class="fw-bold text-decoration-none">{{ticker}}</a>
+                                                {{#if (gt strategies.length 1)}}
+                                                  <span class="badge bg-warning text-dark ms-2" title="Multiple strategies signalled">x{{strategies.length}}</span>
+                                                {{/if}}
+                                                <div class="small text-muted mt-1">
+                                                    Buy: {{metrics.buyCount}} (sum {{toFixed metrics.buySharpeSum 2}}) | Sell: {{metrics.sellCount}} (sum {{toFixed metrics.sellSharpeSum 2}})
+                                                </div>
+                                            </div>
+                                            <div class="text-nowrap">
+                                                <span class="badge bg-secondary" title="Combined Sharpe across both sides">
+                                                  Total {{toFixed metrics.totalSharpe 2}}
+                                                  {{#if (eq metrics.highSharpeConsensus 'buy')}}<i class="fas fa-star ms-1" title="High-Sharpe tilt: buy"></i>{{/if}}
+                                                  {{#if (eq metrics.highSharpeConsensus 'sell')}}<i class="fas fa-star ms-1" title="High-Sharpe tilt: sell"></i>{{/if}}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        {{/each}}
+                                        {{#if (gt topMixed.length 100)}}
+                                          <details class="mt-2">
+                                            <summary class="text-primary" style="cursor:pointer;">Show all mixed ({{topMixed.length}})</summary>
+                                            <div class="mt-2">
+                                              {{#each topMixed}}
+                                              <div class="d-flex justify-content-between align-items-center mb-2">
+                                                  <div class="text-truncate">
+                                                      <a href="https://www.tradingview.com/chart/?symbol={{ticker}}" target="_blank" class="text-decoration-none me-2" title="View on TradingView">
+                                                          <i class="fas fa-external-link-alt"></i>
+                                                      </a>
+                                                      <a href="/tickers/{{ticker}}" class="fw-bold text-decoration-none">{{ticker}}</a>
+                                                      {{#if (gt strategies.length 1)}}
+                                                        <span class="badge bg-warning text-dark ms-2" title="Multiple strategies signalled">x{{strategies.length}}</span>
+                                                      {{/if}}
+                                                      <div class="small text-muted mt-1">
+                                                          Buy: {{metrics.buyCount}} (sum {{toFixed metrics.buySharpeSum 2}}) | Sell: {{metrics.sellCount}} (sum {{toFixed metrics.sellSharpeSum 2}})
+                                                      </div>
+                                                  </div>
+                                                  <div class="text-nowrap">
+                                                      <span class="badge bg-secondary" title="Combined Sharpe across both sides">
+                                                        Total {{toFixed metrics.totalSharpe 2}}
+                                                        {{#if (eq metrics.highSharpeConsensus 'buy')}}<i class="fas fa-star ms-1" title="High-Sharpe tilt: buy"></i>{{/if}}
+                                                        {{#if (eq metrics.highSharpeConsensus 'sell')}}<i class="fas fa-star ms-1" title="High-Sharpe tilt: sell"></i>{{/if}}
+                                                      </span>
+                                                  </div>
+                                              </div>
+                                              {{/each}}
+                                            </div>
+                                          </details>
+                                        {{/if}}
+                                      {{else}}
+                                        <div class="text-muted">No mixed signals with Sharpe >= 0.8.</div>
+                                      {{/if}}
+                                  </div>
+                                {{/if}}
+                              {{/if}}
+                            {{/if}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{/if}}
+        {{/each}}
+    </div>
+    {{else}}
+    <div class="card">
+        <div class="card-body py-5 text-center">
+            <h5 class="text-muted mb-2">No signals in the selected window</h5>
+            <p class="text-muted mb-0">Try expanding the lookback above or verify that strategies have emitted signals recently.</p>
+        </div>
+    </div>
+    {{/if}}
+</div>

@@ -1,0 +1,876 @@
+<div class="container-fluid">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-md-center gap-3 mb-3">
+        <div>
+            <h2 class="mb-0">{{strategy.name}}</h2>
+            {{#if template.description}}
+            <p class="text-muted mt-1 mb-0">{{template.description}}</p>
+            {{/if}}
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3 mt-md-0">
+            {{#if template}}
+            <a href="/templates/{{template.id}}" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-link me-1"></i>
+                Template
+            </a>
+            {{/if}}
+            {{#if strategyAccount}}
+            <a href="/strategies/{{strategy.id}}/operations" class="btn btn-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i>
+                Operations
+            </a>
+            {{/if}}
+            {{#if strategyAccount}}
+            <a href="/strategies/{{strategy.id}}/live-trades" class="btn btn-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i>
+                Trades
+            </a>
+            {{/if}}
+            {{#unless (eq strategy.status 'active')}}
+            <form method="POST" action="/strategies/{{strategy.id}}/run">
+                {{> csrf-field}}
+                <button type="submit" class="btn btn-success btn-sm">
+                    <i class="fas fa-play me-1"></i>
+                    Run Strategy
+                </button>
+            </form>
+            {{/unless}}
+            {{#if (eq strategy.status 'active')}}
+            <form method="POST" action="/strategies/{{strategy.id}}/stop">
+                {{> csrf-field}}
+                <button type="submit" class="btn btn-warning btn-sm">
+                    <i class="fas fa-stop me-1"></i>
+                    Stop Strategy
+                </button>
+            </form>
+            {{/if}}
+            <form method="POST" action="/strategies/{{strategy.id}}/clear-backtest"
+                onsubmit="return confirm({{{ json clearBacktestConfirmMessage }}});">
+                {{> csrf-field}}
+                <button type="submit" class="btn btn-warning btn-sm">
+                    <i class="fas fa-eraser me-1"></i>
+                    Clear Backtest Data
+                </button>
+            </form>
+            <form method="POST" action="/strategies/{{strategy.id}}/rename" class="d-inline">
+                {{> csrf-field}}
+                <div class="input-group input-group-sm" style="width: 220px;">
+                    <input type="text" class="form-control" name="name" value="{{strategy.name}}" placeholder="Strategy name" required>
+                    <button type="submit" class="btn btn-secondary">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </div>
+            </form>
+            <form method="POST" action="/strategies/{{strategy.id}}/delete"
+                onsubmit="return confirm('Are you sure you want to delete this strategy? This cannot be undone.');">
+                {{> csrf-field}}
+                <button type="submit" class="btn btn-danger btn-sm">
+                    <i class="fas fa-trash me-1"></i>
+                    Delete Strategy
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Backtest or real-time execution history -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        History
+                    </h5>
+                    {{#if hasBacktests}}
+                    <span class="badge bg-light text-dark">{{backtestCount}} run{{#if (gt backtestCount 1)}}s{{/if}}</span>
+                    {{/if}}
+                </div>
+                <div class="card-body p-0">
+                    {{#if hasBacktests}}
+                    <div class="table-responsive m-0 p-0">
+                        <table class="table table-sm align-middle m-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="ps-3">Period</th>
+                                    <th scope="col">Scope</th>
+                                    <th scope="col">Start</th>
+                                    <th scope="col">End</th>
+                                    <th scope="col">Return</th>
+                                    <th scope="col">Final</th>
+                                    <th scope="col">Sharpe</th>
+                                    <th scope="col">Calmar</th>
+                                    <th scope="col">Trades</th>
+                                    <th scope="col">Completed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each backtests}}
+                                <tr>
+                                    <td class="fw-bold ps-3">
+                                        <a href="{{detailHref}}">{{periodLabel}}</a>
+                                    </td>
+                                    <td class="text-nowrap">
+                                        {{#if tickerScope}}
+                                        <span class="badge {{scopeBadgeVariant}}">{{scopeLabel}}</span>
+                                        {{else}}
+                                        &mdash;
+                                        {{/if}}
+                                    </td>
+                                    <td>{{formatDate startDate}}</td>
+                                    <td>{{formatDate endDate}}</td>
+                                    <td>
+                                        <span class="fw-bold {{#if (gt totalReturn 0)}}text-success{{else if (lt totalReturn 0)}}text-danger{{/if}}">
+                                            {{formatTotalReturnPercent totalReturn initialCapital}}
+                                        </span>
+                                    </td>
+                                    <td class="text-nowrap text-muted">
+                                        {{formatCurrency finalPortfolioValue}}
+                                    </td>
+                                    <td>
+                                        {{#if (and (defined sharpeRatio) (ne sharpeRatio null))}}
+                                        {{toFixed sharpeRatio 2}}
+                                        {{else}}
+                                        N/A
+                                        {{/if}}
+                                    </td>
+                                    <td>
+                                        {{#if (and (defined calmarRatio) (ne calmarRatio null))}}
+                                        {{toFixed calmarRatio 2}}
+                                        {{else}}
+                                        N/A
+                                        {{/if}}
+                                    </td>
+                                    <td>{{totalTrades}}</td>
+                                    <td>{{formatDate createdAt}}</td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="p-3">
+                        <div class="alert alert-info mb-0" role="alert">
+                            <i class="fas fa-info-circle me-2"></i>
+                            We will run a backtest in parallel with real-time execution and display the results here.
+                        </div>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Summary -->
+        <div class="col-xl-4 col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Strategy Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Status</td>
+                                    <td class="text-end">
+                                        <span class="badge bg-{{#if (eq strategy.status 'active')}}success{{else if (eq strategy.status 'inactive')}}secondary{{else}}warning{{/if}}">
+                                            {{strategy.status}}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {{#if template}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Template</td>
+                                    <td class="text-end fw-bold">{{template.name}}</td>
+                                </tr>
+                                {{/if}}
+                                {{#if strategyAccount}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Trade Routing</td>
+                                    <td class="text-end">
+                                        <div class="fw-bold">{{strategyAccount.name}}</div>
+                                        <div class="text-muted small">{{strategyAccount.provider}} / {{strategyAccount.environment}}</div>
+                                        <span class="badge bg-{{strategyAccount.snapshotBadgeVariant}} mt-1">
+                                            {{strategyAccount.snapshotBadgeLabel}}
+                                        </span>
+                                        {{#if strategyAccount.snapshotMessage}}
+                                        <div class="text-muted small mt-1">{{strategyAccount.snapshotMessage}}</div>
+                                        {{else if strategyAccount.snapshotFetchedAt}}
+                                        <div class="text-muted small mt-1">Synced {{formatDateTimeShort strategyAccount.snapshotFetchedAt}}</div>
+                                        {{/if}}
+                                        <div class="mt-2">
+                                            <a href="/accounts/{{strategyAccount.id}}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-link me-1"></i>
+                                                View account
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{/if}}
+                                {{#if strategyAccountWarning}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Trade Routing</td>
+                                    <td class="text-end text-warning">
+                                        <div class="fw-bold">Account unavailable</div>
+                                        <div class="text-muted small">{{strategyAccountWarning}}</div>
+                                    </td>
+                                </tr>
+                                {{/if}}
+                                {{#if (and strategyAccount strategyAccount.hasBalance)}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Account Cash</td>
+                                    <td class="text-end fw-bold">
+                                        {{formatCurrency strategyAccount.balance}}
+                                        {{#if strategyAccount.currency}}
+                                        <span class="text-muted small">{{strategyAccount.currency}}</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                {{/if}}
+                                {{#if strategy.backtestStartDate}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Backtest Start</td>
+                                    <td class="text-end fw-bold">{{formatDate strategy.backtestStartDate}}</td>
+                                </tr>
+                                {{/if}}
+                                {{#if hasInitialCapital}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Initial Capital</td>
+                                    <td class="text-end fw-bold">
+                                        {{formatCurrency initialCapital}}
+                                    </td>
+                                </tr>
+                                {{/if}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Created</td>
+                                    <td class="text-end fw-bold">{{formatDate strategy.createdAt}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Last Updated</td>
+                                    <td class="text-end fw-bold">{{formatDate strategy.updatedAt}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Last Backtest Run</td>
+                                    <td class="text-end">
+                                        {{#if latestBacktestRanAt}}
+                                        {{formatDate latestBacktestRanAt}}
+                                        {{else}}
+                                        <span class="text-muted">No backtests yet</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Signals</td>
+                                    <td class="text-end">
+                                        {{#if strategy.signalSummary.count}}
+                                        <div class="fw-bold">{{formatNumber strategy.signalSummary.count}}</div>
+                                        <div class="text-muted small">
+                                            {{#if strategy.signalSummary.firstDate}}{{formatDate strategy.signalSummary.firstDate}}{{else}}Unknown{{/if}}
+                                            {{#if strategy.signalSummary.lastDate}}&ndash; {{formatDate strategy.signalSummary.lastDate}}{{/if}}
+                                        </div>
+                                        {{else}}
+                                        <span class="text-muted">No signals yet</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Run Duration</td>
+                                    <td class="text-end">{{formatDuration strategy.lastBacktestDurationMinutes}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Backtest Runs</td>
+                                    <td class="text-end fw-bold">{{backtestCount}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Parameters -->
+        <div class="col-xl-8 col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-sliders-h me-2"></i>
+                        Strategy Parameters
+                    </h5>
+                    {{#if parameterSummariesCount}}
+                    <span class="badge bg-light text-dark">{{parameterSummariesCount}} defined</span>
+                    {{/if}}
+                </div>
+                <div class="card-body p-0">
+                    {{#if parameterSummariesCount}}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="w-25 ps-3">Parameter</th>
+                                    <th scope="col" class="w-50">Description</th>
+                                    <th scope="col" class="text-end pe-3">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each (sortBy parameterSummaries 'name')}}
+                                <tr>
+                                    <td class="fw-semibold ps-3">
+                                        {{#if label}}{{label}}{{else}}{{name}}{{/if}}
+                                    </td>
+                                    <td class="text-muted small">
+                                        {{#if description}}{{description}}{{else}}&mdash;{{/if}}
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <span class="{{#if hasOverride}}text-primary fw-semibold{{else}}text-muted{{/if}}">
+                                            {{displayValue}}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="p-3">
+                        <p class="text-muted mb-0">This template does not define configurable parameters.</p>
+                    </div>
+                    {{/if}}
+
+                    {{#if extraParameterCount}}
+                    <div class="border-top px-3 py-3">
+                        <h6 class="fw-bold">Additional Parameters</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="ps-3">Name</th>
+                                        <th scope="col" class="text-end pe-3">Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each (sortBy extraParameters 'name')}}
+                                    <tr>
+                                        <td class="fw-semibold ps-3">{{name}}</td>
+                                        <td class="text-end pe-3">{{displayValue}}</td>
+                                    </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{#if hasSignalLineCounts}}
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                    <div>
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-line me-2"></i>
+                            Signal Lines (3 Years)
+                        </h5>
+                        <small class="text-muted">Daily buy vs sell signal counts (days without activity are hidden).</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 360px;">
+                        <canvas id="signalLineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{/if}}
+
+    {{#if hasSignalConfidenceMaxByDay}}
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                    <div>
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-chart-line me-2"></i>
+                            Signal Confidence Max (Last 365 Days)
+                        </h5>
+                        <small class="text-muted">Daily max confidence for buy and sell signals.</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container" style="height: 300px;">
+                        <canvas id="signalConfidenceMaxChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{/if}}
+
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                <div>
+                    <h5 class="mb-0">
+                        <i class="fas fa-wave-square me-2"></i>
+                        Recent Signals
+                    </h5>
+                    <small class="text-muted">Activity from the past seven trading days.</small>
+                </div>
+            </div>
+        </div>
+        {{#if strategySignalDays.length}}
+        {{#each strategySignalDays}}
+        <div class="col-12 col-md-6 col-xl-4 col-xxl-3">
+            <div class="card h-100">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="fw-semibold">{{formatDate date}}</div>
+                            <div class="text-muted small">{{summaryLine}}</div>
+                        </div>
+                        {{#if uniqueTickerCount}}
+                        <span class="badge bg-light text-dark">
+                            {{uniqueTickerCount}} ticker{{#if (ne uniqueTickerCount 1)}}s{{/if}}
+                        </span>
+                        {{/if}}
+                    </div>
+                    {{#if uniqueTickersList}}
+                    <div class="text-muted small mt-1 text-truncate" title="{{uniqueTickersList}}">
+                        {{uniqueTickersList}}
+                    </div>
+                    {{/if}}
+                </div>
+                <div class="card-body p-0">
+                    {{> signal-groups actions=actionSummaries}}
+                </div>
+            </div>
+        </div>
+        {{/each}}
+        {{else}}
+        <div class="col-12">
+            <div class="card border-0 bg-light">
+                <div class="card-body">
+                    <p class="mb-0 text-muted">No signals were recorded for this strategy.</p>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+    </div>
+
+    <div class="row g-3 mt-1">
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-clipboard-list me-2"></i>
+                        Strategy Logs
+                    </h5>
+                    {{#if hasStrategyLogs}}
+                    <span class="badge bg-light text-dark">{{strategyLogs.length}} recent</span>
+                    {{/if}}
+                </div>
+                {{#if hasStrategyLogs}}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Level</th>
+                                <th scope="col">Source</th>
+                                <th scope="col">Message</th>
+                                {{#if metadataColumns.length}}
+                                {{#each metadataColumns}}
+                                <th scope="col">{{this}}</th>
+                                {{/each}}
+                                {{else}}
+                                <th scope="col">Metadata</th>
+                                {{/if}}
+                                <th scope="col" class="text-end">Recorded</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each strategyLogs}}
+                            <tr>
+                                <td class="text-nowrap">
+                                    <span class="badge {{levelBadgeClass}}">{{levelLabel}}</span>
+                                </td>
+                                <td class="text-uppercase small text-muted">{{source}}</td>
+                                <td class="fw-semibold">{{message}}</td>
+                                {{#if ../metadataColumns.length}}
+                                    {{#each ../metadataColumns}}
+                                    <td class="small text-break">
+                                        {{#with (lookup ../metadataByLabel this)}}
+                                        {{this}}
+                                        {{else}}
+                                        <span class="text-muted">&mdash;</span>
+                                        {{/with}}
+                                    </td>
+                                    {{/each}}
+                                {{else}}
+                                <td>
+                                    {{#if metadataPairs.length}}
+                                    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-2 small">
+                                        {{#each metadataPairs}}
+                                        <div class="col">
+                                            <div class="fw-semibold text-muted">{{label}}</div>
+                                            <div class="text-break">{{value}}</div>
+                                        </div>
+                                        {{/each}}
+                                    </div>
+                                    {{else}}
+                                    <span class="text-muted">&mdash;</span>
+                                    {{/if}}
+                                </td>
+                                {{/if}}
+                                <td class="text-muted text-end text-nowrap">
+                                    {{#if createdAt}}
+                                    {{formatDateTime createdAt}}, {{formatHoursAgo createdAt}}
+                                    {{else}}
+                                    &mdash;
+                                    {{/if}}
+                                </td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+                {{else}}
+                <div class="card-body">
+                    <p class="text-muted mb-0">No runtime logs have been recorded for this strategy yet.</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+    </div>
+</div>
+
+{{#if hasSignalLineCounts}}
+<script>
+    (() => {
+        const signalLineChartData = {{{ json signalLineCounts }}};
+        const qqqSignalPriceSeries = {{{ json qqqSignalPriceSeries }}} || [];
+        const qqqDatasetLabel = 'QQQ Close Price';
+        const qqqSignalPriceLookup = Array.isArray(qqqSignalPriceSeries)
+            ? qqqSignalPriceSeries.reduce((acc, entry) => {
+                if (
+                    entry &&
+                    typeof entry.isoDate === 'string' &&
+                    entry.isoDate.length > 0
+                ) {
+                    const closeValue = Number(entry.close);
+                    if (Number.isFinite(closeValue)) {
+                        acc[entry.isoDate] = closeValue;
+                    }
+                }
+                return acc;
+            }, {})
+            : {};
+        let signalLineChartInstance = null;
+
+        function formatSignalDateLabel(isoDate) {
+            if (!isoDate || typeof isoDate !== 'string') {
+                return '';
+            }
+            const parsed = new Date(isoDate + 'T00:00:00Z');
+            if (Number.isNaN(parsed.getTime())) {
+                return isoDate;
+            }
+            return parsed.toISOString().slice(0, 10);
+        }
+
+        function renderSignalLineChart(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                return;
+            }
+            const chartCanvas = document.getElementById('signalLineChart');
+            if (!chartCanvas) {
+                return;
+            }
+
+            const labels = data.map(entry => entry.isoDate);
+            const buyCounts = data.map(entry => entry.buyCount);
+            const sellCounts = data.map(entry => entry.sellCount);
+            const qqqPrices = labels.map(isoDate => {
+                const price = qqqSignalPriceLookup[isoDate];
+                return typeof price === 'number' ? price : null;
+            });
+            const hasQQQPrices = qqqPrices.some(price => typeof price === 'number');
+
+            if (signalLineChartInstance) {
+                signalLineChartInstance.data.labels = labels;
+                signalLineChartInstance.data.datasets.forEach(dataset => {
+                    if (dataset.label === 'Buy Signals') {
+                        dataset.data = buyCounts;
+                    } else if (dataset.label === 'Sell Signals') {
+                        dataset.data = sellCounts;
+                    } else if (dataset.label === qqqDatasetLabel) {
+                        dataset.data = qqqPrices;
+                        dataset.hidden = !hasQQQPrices;
+                    }
+                });
+                if (signalLineChartInstance.options?.scales?.qqqAxis) {
+                    signalLineChartInstance.options.scales.qqqAxis.display = hasQQQPrices;
+                }
+                signalLineChartInstance.update();
+                return;
+            }
+
+            signalLineChartInstance = new Chart(chartCanvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Buy Signals',
+                            data: buyCounts,
+                            borderColor: '#198754',
+                            backgroundColor: 'rgba(25, 135, 84, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 3
+                        },
+                        {
+                            label: 'Sell Signals',
+                            data: sellCounts,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 3
+                        },
+                        {
+                            label: qqqDatasetLabel,
+                            data: qqqPrices,
+                            yAxisID: 'qqqAxis',
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13, 110, 253, 0.08)',
+                            borderWidth: 2,
+                            tension: 0.2,
+                            pointRadius: 0,
+                            pointHoverRadius: 2,
+                            spanGaps: true,
+                            hidden: !hasQQQPrices
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            },
+                            ticks: {
+                                maxTicksLimit: 8,
+                                callback: function (value, index) {
+                                    const label = typeof this.getLabelForValue === 'function'
+                                        ? this.getLabelForValue(value)
+                                        : labels[index] || value;
+                                    return formatSignalDateLabel(label);
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Signal Lines'
+                            },
+                            ticks: {
+                                precision: 0
+                            }
+                        },
+                        qqqAxis: {
+                            position: 'right',
+                            display: hasQQQPrices,
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'QQQ Close'
+                            },
+                            ticks: {
+                                callback: value => {
+                                    const numericValue = typeof value === 'number' ? value : Number(value);
+                                    return Number.isFinite(numericValue) ? `$${numericValue.toFixed(0)}` : value;
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: tooltipItems => {
+                                    if (!tooltipItems || tooltipItems.length === 0) {
+                                        return '';
+                                    }
+                                    return formatSignalDateLabel(tooltipItems[0].label);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSignalLineChart(signalLineChartData);
+        });
+    })();
+</script>
+{{/if}}
+
+{{#if hasSignalConfidenceMaxByDay}}
+<script>
+    (() => {
+        const signalConfidenceMaxByDay = {{{ json signalConfidenceMaxByDay }}};
+        let signalConfidenceMaxChart = null;
+
+        function formatSignalDateLabel(isoDate) {
+            if (!isoDate || typeof isoDate !== 'string') {
+                return '';
+            }
+            const parsed = new Date(isoDate + 'T00:00:00Z');
+            if (Number.isNaN(parsed.getTime())) {
+                return isoDate;
+            }
+            return parsed.toISOString().slice(0, 10);
+        }
+
+        function renderSignalConfidenceMaxChart(data) {
+            if (!Array.isArray(data) || data.length === 0) {
+                return;
+            }
+            const chartCanvas = document.getElementById('signalConfidenceMaxChart');
+            if (!chartCanvas) {
+                return;
+            }
+
+            const labels = data.map(entry => entry.isoDate);
+            const buyMax = data.map(entry => entry.buyMax);
+            const sellMax = data.map(entry => entry.sellMax);
+
+            if (signalConfidenceMaxChart) {
+                signalConfidenceMaxChart.data.labels = labels;
+                signalConfidenceMaxChart.data.datasets[0].data = buyMax;
+                signalConfidenceMaxChart.data.datasets[1].data = sellMax;
+                signalConfidenceMaxChart.update();
+                return;
+            }
+
+            signalConfidenceMaxChart = new Chart(chartCanvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Buy max',
+                            data: buyMax,
+                            borderColor: '#198754',
+                            backgroundColor: 'rgba(25, 135, 84, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.25,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            spanGaps: true
+                        },
+                        {
+                            label: 'Sell max',
+                            data: sellMax,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.25,
+                            pointRadius: 0,
+                            pointHoverRadius: 3,
+                            spanGaps: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            },
+                            ticks: {
+                                maxTicksLimit: 8,
+                                callback: function (value, index) {
+                                    const label = typeof this.getLabelForValue === 'function'
+                                        ? this.getLabelForValue(value)
+                                        : labels[index] || value;
+                                    return formatSignalDateLabel(label);
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            suggestedMax: 1,
+                            title: {
+                                display: true,
+                                text: 'Confidence'
+                            },
+                            ticks: {
+                                callback: value => {
+                                    const numericValue = typeof value === 'number' ? value : Number(value);
+                                    return Number.isFinite(numericValue) ? numericValue.toFixed(2) : value;
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: tooltipItems => {
+                                    if (!tooltipItems || tooltipItems.length === 0) {
+                                        return '';
+                                    }
+                                    return formatSignalDateLabel(tooltipItems[0].label);
+                                },
+                                label: context => {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    if (value === null || value === undefined || Number.isNaN(value)) {
+                                        return `${label}: N/A`;
+                                    }
+                                    return `${label}: ${Number(value).toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderSignalConfidenceMaxChart(signalConfidenceMaxByDay);
+        });
+    })();
+</script>
+{{/if}}

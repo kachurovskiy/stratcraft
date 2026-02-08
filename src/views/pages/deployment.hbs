@@ -1,0 +1,57 @@
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Deployment</h1>
+        <div>
+          <span class="badge bg-primary me-2">Admin: {{user.email}}</span>
+        </div>
+      </div>
+
+      <!-- Deployment Management Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">
+            <i class="fas fa-server"></i>
+            Deployment Management
+          </h5>
+        </div>
+        <div class="card-body">
+          {{#if deploymentControlsEnabled}}
+            <p class="text-muted mb-3">
+              <strong>Warning:</strong> Triggering a server update will pull the latest code from the repository, rebuild the application, and restart the server. This will cause a brief period of downtime.
+            </p>
+            <div class="d-flex gap-2 flex-wrap">
+              <form method="POST" action="/admin/deployment/trigger-update" class="d-inline">
+                  {{> csrf-field}}
+                <button type="submit" class="btn btn-warning"
+                  onclick="return confirm('Are you sure you want to trigger a server update? The application will be unavailable for a moment.')">
+                  <i class="fas fa-sync-alt"></i> Trigger Server Update
+                </button>
+              </form>
+              <form method="POST" action="/admin/deployment/restart-app" class="d-inline">
+                  {{> csrf-field}}
+                <button type="submit" class="btn btn-secondary"
+                  onclick="return confirm('Restarting the web application will restart the PM2 process and disconnect users. Continue?')">
+                  <i class="fas fa-redo"></i> Restart Application
+                </button>
+              </form>
+              <form method="POST" action="/admin/deployment/restart-server" class="d-inline">
+                  {{> csrf-field}}
+                <button type="submit" class="btn btn-danger"
+                  onclick="return confirm('Restarting the host server will reboot the entire machine and terminate all sessions. Continue?')">
+                  <i class="fas fa-power-off"></i> Restart Host Server
+                </button>
+              </form>
+            </div>
+          {{else}}
+            <div class="alert alert-info mb-0">
+              Deployment controls are only available on Linux hosts running {{siteName}} via <code>deploy.sh</code> under PM2.
+            </div>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

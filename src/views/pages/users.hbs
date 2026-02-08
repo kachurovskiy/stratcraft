@@ -1,0 +1,259 @@
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>User Administration</h1>
+        <div>
+          <span class="badge bg-primary me-2">Admin: {{user.email}}</span>
+        </div>
+      </div>
+
+      <!-- Invite User Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+          <h5 class="mb-0">
+            <i class="fas fa-paper-plane"></i>
+            Invite User
+          </h5>
+        </div>
+        <div class="card-body">
+          <form method="POST" action="/admin/invite-user">
+              {{> csrf-field}}
+            <div class="mb-3">
+              <label for="inviteEmail" class="form-label">Email Address</label>
+              <input type="email" class="form-control" id="inviteEmail" name="email" required
+                placeholder="user@example.com">
+              <div class="form-text">
+                Invitation links are single-use and valid for {{inviteLinkDays}} day{{#unless (eq inviteLinkDays 1)}}s{{/unless}}.
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-envelope me-1"></i>
+              Send Invite
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Client Certificate Lockdown Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-warning">
+          <h5 class="mb-0">
+            <i class="fas fa-lock"></i>
+            Server Access Lockdown (Client Certificate)
+          </h5>
+        </div>
+        <div class="card-body">
+          {{#if clientCertLockdownSupported}}
+            <p class="text-muted mb-3">
+              Optionally require a browser client certificate (<strong>mTLS</strong>) at <strong>nginx</strong> before any request reaches {{siteName}}.
+              This is <strong>not</strong> used for sign-in; it only gates network access.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+              <span class="badge {{#if clientCertLockdownEnabled}}bg-danger{{else}}bg-secondary{{/if}}">
+                Lockdown: {{#if clientCertLockdownEnabled}}Enabled{{else}}Disabled{{/if}}
+              </span>
+              <span class="badge {{#if clientCertBundleAvailable}}bg-success{{else}}bg-secondary{{/if}}">
+                Access cert: {{#if clientCertBundleAvailable}}Ready{{else}}Not generated{{/if}}
+              </span>
+              <span class="badge {{#if clientCertLockdownHelperAvailable}}bg-info{{else}}bg-warning text-dark{{/if}}">
+                nginx helper: {{#if clientCertLockdownHelperAvailable}}Installed{{else}}Missing{{/if}}
+              </span>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+              <form method="POST" action="/admin/access-lockdown/generate-client-cert" class="d-inline">
+                {{> csrf-field}}
+                <button
+                  type="submit"
+                  class="btn btn-outline-primary"
+                  onclick="return confirm('Generate a new client certificate bundle? If lockdown is enabled, nginx will reload (helper required) and all users will be emailed the new certificate. Existing browsers may be locked out until they import it.')"
+                >
+                  <i class="fas fa-id-card me-1"></i>
+                  Generate / Rotate Access Cert
+                </button>
+              </form>
+
+              {{#if clientCertBundleAvailable}}
+                <a class="btn btn-primary" href="/admin/access-lockdown/download-client-cert">
+                  <i class="fas fa-download me-1"></i>
+                  Download .p12
+                </a>
+              {{/if}}
+
+              <form method="POST" action="/admin/access-lockdown/enable" class="d-inline">
+                {{> csrf-field}}
+                <button
+                  type="submit"
+                  class="btn btn-danger"
+                  {{#unless clientCertLockdownControlsEnabled}}disabled{{/unless}}
+                  onclick="return confirm('Enable nginx client-certificate lockdown? This will email all users the access certificate. You will be locked out until you import the access certificate in your browser.')"
+                >
+                  <i class="fas fa-lock me-1"></i>
+                  Enable Lockdown
+                </button>
+              </form>
+
+              <form method="POST" action="/admin/access-lockdown/disable" class="d-inline">
+                {{> csrf-field}}
+                <button
+                  type="submit"
+                  class="btn btn-outline-secondary"
+                  {{#unless clientCertLockdownControlsEnabled}}disabled{{/unless}}
+                  onclick="return confirm('Disable nginx client-certificate lockdown?')"
+                >
+                  <i class="fas fa-unlock me-1"></i>
+                  Disable Lockdown
+                </button>
+              </form>
+            </div>
+
+            {{#unless clientCertLockdownControlsEnabled}}
+              <div class="alert alert-info mt-3 mb-0">
+                The toggle buttons require the nginx helper setup from <code>scripts/deploy.sh</code> (and passwordless sudo for the helper).
+                You can still generate the certificate bundle above and enable mTLS manually via SSH.
+              </div>
+            {{/unless}}
+
+            <details class="mt-3">
+              <summary><strong>Browser import &amp; emergency unlock (Hetzner SSH)</strong></summary>
+              <div class="mt-2">
+                <div class="mb-2">
+                  Import the downloaded <code>stratcraft-access.p12</code> into your browser / OS certificate store.
+                  Use the export password from <code>Admin -&gt; Settings -&gt; User Access</code> (default: <code>stratcraft</code>).
+                  After import, reload the page and enable lockdown.
+                </div>
+
+                <div class="mb-2"><strong>Emergency unlock</strong> (if you enabled lockdown before importing):</div>
+                <pre class="mb-2"><code>ssh root@YOUR_SERVER_IP
+sudo /usr/local/bin/stratcraft-mtls disable
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
+
+                <div class="text-muted">
+                  If <code>/usr/local/bin/stratcraft-mtls</code> is missing, disable by SSH by setting <code>ssl_verify_client off;</code> in
+                  <code>/etc/nginx/stratcraft-mtls.conf</code> (or removing the include), then reload nginx.
+                </div>
+              </div>
+            </details>
+          {{else}}
+            <div class="alert alert-info mb-0">
+              Client certificate lockdown is only supported on Linux deployments behind nginx (e.g. the Hetzner <code>scripts/deploy.sh</code> setup).
+            </div>
+          {{/if}}
+        </div>
+      </div>
+
+      <!-- All Users Section -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">
+            <i class="fas fa-users"></i> All Users ({{allUsers.length}})
+          </h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            {{#each allUsers}}
+            <div class="col-12 col-lg-6">
+              <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                    <div>
+                      <div class="fw-semibold fs-5">
+                        {{email}}
+                        {{#if (eq id ../user.userId)}}
+                        <span class="badge bg-info ms-2">You</span>
+                        {{/if}}
+                      </div>
+                      <div>
+                        Registered <span title="{{formatDateTimeWithTimezone createdAt}}">{{formatTimeAgoShort createdAt}}</span>
+                      </div>
+                    </div>
+                    <span class="badge {{#if (eq role 'admin')}}bg-danger{{else}}bg-secondary{{/if}} text-uppercase">
+                      {{role}}
+                    </span>
+                  </div>
+
+                  <div class="text-muted mb-2">Sessions</div>
+                  {{#if sessions.length}}
+                  <ul>
+                    {{#each sessions}}
+                    <li class="mb-1">
+                      <span>
+                        <span class="text-muted">Created</span>
+                        <span title="{{formatDateTimeWithTimezone createdAt}}">{{formatTimeAgoShort createdAt}}</span>
+                      </span>
+                      <span class="text-muted">&middot;</span>
+                      <span>
+                        <span class="text-muted">Seen</span>
+                        <span title="{{formatDateTimeWithTimezone lastSeenAt}}">{{formatTimeAgoShort lastSeenAt}}</span>
+                      </span>
+                      <span class="text-muted">&middot;</span>
+                      <span>
+                        <span class="text-muted">Expires</span>
+                        <span title="{{formatDateTimeWithTimezone expiresAt}}">{{formatTimeAgoShort expiresAt}}</span>
+                      </span>
+                      <span class="text-muted">&middot;</span>
+                      <span>
+                        <span class="text-muted">Device</span> {{deviceType}}
+                      </span>
+                      <span class="text-muted">&middot;</span>
+                      <span>
+                        <span class="text-muted">IP</span>
+                        {{#if createdIp}}
+                        <button
+                          type="button"
+                          class="btn btn-link p-0 align-baseline"
+                          data-ip="{{createdIp}}"
+                          onclick="this.textContent=this.dataset.ip"
+                        >•••</button>
+                        {{else}}Unknown{{/if}}
+                      </span>
+                      <form method="POST" action="/admin/delete-session" class="d-inline ms-2">
+                        {{> csrf-field}}
+                        <input type="hidden" name="sessionId" value="{{id}}">
+                        <button type="submit" class="btn btn-sm align-baseline" aria-label="Revoke session" title="Revoke session">
+                          <i class="fas fa-trash"></i>
+                        </button>
+                      </form>
+                    </li>
+                    {{/each}}
+                  </ul>
+                  {{else}}
+                  <div>No active sessions.</div>
+                  {{/if}}
+
+                  {{#unless (eq id ../user.userId)}}
+                  <div>
+                    <div class="d-flex flex-wrap gap-2">
+                      {{#unless (eq role 'admin')}}
+                      <form method="POST" action="/admin/make-admin">
+                        {{> csrf-field}}
+                        <input type="hidden" name="userId" value="{{id}}">
+                        <button type="submit" class="btn btn-success btn-sm"
+                          onclick="return confirm('Make {{email}} an admin? They will have full access to admin features.')">
+                          <i class="fas fa-user-shield"></i> Make Admin
+                        </button>
+                      </form>
+                      {{/unless}}
+                      <form method="POST" action="/admin/delete-user">
+                        {{> csrf-field}}
+                        <input type="hidden" name="userId" value="{{id}}">
+                        <button type="submit" class="btn btn-danger btn-sm"
+                          onclick="return confirm('Are you sure you want to delete user {{email}}? This action cannot be undone.')">
+                          <i class="fas fa-trash"></i> Delete
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                  {{/unless}}
+                </div>
+              </div>
+            </div>
+            {{/each}}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

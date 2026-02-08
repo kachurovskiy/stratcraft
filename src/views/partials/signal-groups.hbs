@@ -1,0 +1,31 @@
+{{#if actions.length}}
+  {{#each actions}}
+  <div class="p-3 {{#unless @last}}border-bottom{{/unless}}">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <span class="badge bg-{{badgeClass}} text-uppercase">{{actionLabel}}</span>
+      <span class="text-muted small">{{totalTickers}} ticker{{#if (ne totalTickers 1)}}s{{/if}}</span>
+    </div>
+    {{#if groups.length}}
+    <div class="d-flex flex-column gap-2">
+      {{#each groups}}
+      <div class="bg-light rounded px-3 py-2" style="max-height: 300px; overflow-y: auto;">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="fw-semibold">{{confidenceDescriptor}}</span>
+          <span class="badge bg-light text-dark">{{tickerCount}} ticker{{#if (ne tickerCount 1)}}s{{/if}}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          {{#each tickers}}
+          <span class="badge rounded-pill bg-white border text-muted">{{this}}</span>
+          {{/each}}
+        </div>
+      </div>
+      {{/each}}
+    </div>
+    {{else}}
+    <div class="text-muted small">No tickers for this action</div>
+    {{/if}}
+  </div>
+  {{/each}}
+{{else}}
+  <div class="p-3 text-center text-muted">No signals</div>
+{{/if}}

@@ -1,0 +1,253 @@
+<style>
+  .pm2-log-card {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    background-color: #ffffff;
+  }
+
+  .log-preview-container {
+    border: 1px solid #adb5bd;
+    border-radius: 0.5rem;
+    background-color: #0f172a;
+  }
+
+  .log-preview {
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.85rem;
+    color: #e9ecef;
+    background-color: transparent;
+    padding: 1rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .log-preview::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .log-preview::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.35);
+    border-radius: 3px;
+  }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+          <h1 class="mb-0">Logs</h1>
+          <div class="text-muted small">System activity and PM2 runtime output</div>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="badge bg-primary">Admin: {{user.email}}</span>
+        </div>
+      </div>
+
+      <!-- System Logs Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-list-alt"></i>
+            System Logs
+          </h5>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <form method="GET" action="/admin/logs" class="d-flex align-items-center gap-2">
+              <label for="logSourceFilter" class="text-white-50 small mb-0">Source</label>
+              <select id="logSourceFilter" name="source" class="form-select form-select-sm"
+                onchange="this.form.submit()" {{#unless logSources.length}}disabled{{/unless}}>
+                <option value="" {{#unless selectedSource}}selected{{/unless}}>All sources</option>
+                {{#each logSources}}
+                <option value="{{this}}" {{#if (eq this ../selectedSource)}}selected{{/if}}>{{this}}</option>
+                {{/each}}
+              </select>
+            </form>
+            <form method="POST" action="/admin/logs/delete-all-logs" class="d-inline ms-1">
+                {{> csrf-field}}
+              <button type="submit" class="btn btn-sm btn-outline-light"
+                onclick="return confirm('Delete all system logs? This action cannot be undone.');">
+                <i class="fas fa-trash-alt"></i> Delete All Logs
+              </button>
+            </form>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 log-table">
+              <thead class="table-light sticky-top">
+                <tr>
+                  <th style="width: 110px;">Time</th>
+                  <th style="width: 160px;">Source</th>
+                  <th style="width: 80px;">Level</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{#each systemLogs}}
+                <tr>
+                  <td class="text-muted">{{formatLogTime created_at}}</td>
+                  <td class="text-muted text-uppercase">{{source}}</td>
+                  <td>
+                    <span class="badge
+                      {{#if (eq level 'error')}}bg-danger
+                      {{else if (eq level 'warn')}}bg-warning text-dark
+                      {{else if (eq level 'info')}}bg-info
+                      {{else}}bg-secondary{{/if}}">
+                      {{level}}
+                    </span>
+                  </td>
+                  <td>
+                    {{message}}
+                    {{#if metadata}}
+                    <button type="button" class="btn btn-link p-0 ms-1"
+                      onclick="copyMetadata('{{json metadata}}', this)" title="Copy metadata"
+                      style="border: none; background: none; color: #6c757d; text-decoration: none; font-size: inherit; line-height: inherit;">
+                      <i class="fas fa-copy"></i>
+                    </button>
+                    {{/if}}
+                  </td>
+                </tr>
+                {{/each}}
+                {{#unless systemLogs.length}}
+                <tr>
+                  <td colspan="4" class="text-muted text-center py-2">No logs available</td>
+                </tr>
+                {{/unless}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Node / PM2 Logs Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-terminal"></i>
+            Node / PM2 Logs
+          </h5>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-light text-dark text-uppercase">
+              Last {{pm2Logs.info.lineLimit}} lines
+            </span>
+            <form method="POST" action="/admin/logs/clear-pm2-logs" class="d-inline">
+                {{> csrf-field}}
+              <button type="submit" class="btn btn-sm btn-outline-light text-uppercase"
+                onclick="return confirm('Clear PM2 logs? This will truncate the info and error log files.');">
+                <i class="fas fa-eraser"></i> Clear Logs
+              </button>
+            </form>
+          </div>
+        </div>
+        <div class="card-body">
+          {{#if pm2Logs}}
+          <div class="row g-3">
+            {{#each pm2Logs}}
+            <div class="col-md-6">
+              <div class="pm2-log-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="mb-0">{{label}}</h6>
+                  {{#if lastModified}}
+                  <small class="text-muted">Updated {{formatDateTime lastModified}}</small>
+                  {{/if}}
+                </div>
+                <div class="text-muted small mb-2">
+                  {{#if path}}
+                  Path: <code>{{path}}</code>
+                  {{else}}
+                  Log path not configured
+                  {{/if}}
+                </div>
+                {{#if error}}
+                <div class="alert alert-warning mb-0">{{error}}</div>
+                {{else if lines.length}}
+                <div class="log-preview-container mb-2">
+                  <pre class="log-preview mb-0">{{#each lines}}{{this}}
+{{/each}}</pre>
+                </div>
+                <div class="text-muted small">Showing {{lines.length}} of {{lineLimit}} requested lines</div>
+                {{else}}
+                <div class="text-muted fst-italic">Log file is empty.</div>
+                {{/if}}
+              </div>
+            </div>
+            {{/each}}
+          </div>
+          {{else}}
+          <div class="text-muted fst-italic">Node process logs are not configured for this deployment.</div>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+
+  function copyMetadata(metadataJson, button) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(metadataJson).then(() => {
+        showCopySuccess(button);
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+        fallbackCopyTextToClipboard(metadataJson, button);
+      });
+    } else {
+      fallbackCopyTextToClipboard(metadataJson, button);
+    }
+  }
+
+  function fallbackCopyTextToClipboard(text, button) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        showCopySuccess(button);
+      } else {
+        showCopyError(button);
+      }
+    } catch (err) {
+      console.error('Fallback: Oops, unable to copy', err);
+      showCopyError(button);
+    }
+
+    document.body.removeChild(textArea);
+  }
+
+  function showCopySuccess(button) {
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i>';
+    button.classList.remove('btn-outline-secondary');
+    button.classList.add('btn-success');
+
+    setTimeout(() => {
+      button.innerHTML = originalHTML;
+      button.classList.remove('btn-success');
+      button.classList.add('btn-outline-secondary');
+    }, 1500);
+  }
+
+  function showCopyError(button) {
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-times"></i>';
+    button.classList.remove('btn-outline-secondary');
+    button.classList.add('btn-danger');
+
+    setTimeout(() => {
+      button.innerHTML = originalHTML;
+      button.classList.remove('btn-danger');
+      button.classList.add('btn-outline-secondary');
+    }, 1500);
+  }
+
+</script>

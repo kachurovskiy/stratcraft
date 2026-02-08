@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} - {{siteName}}</title>
+    <meta name="csrf-token" content="{{csrfToken}}">
+
+    <!-- Favicon and Icons -->
+    <link rel="icon" type="image/x-icon" href="/images/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#007bff">
+
+    <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
+    <style>
+        .navbar .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .navbar .navbar-nav {
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
+
+        .navbar .nav-link i {
+            flex-shrink: 0;
+        }
+
+        .navbar .logout-icon-form {
+            margin: 0;
+        }
+
+        .navbar .logout-icon-btn {
+            border: 0;
+            background: transparent;
+            color: #fff;
+            padding: 0.35rem 0.65rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .navbar .logout-icon-btn:focus-visible {
+            outline: 2px solid rgba(255, 255, 255, 0.7);
+            outline-offset: 2px;
+        }
+
+        @media (max-width: 575.98px) {
+            .navbar .nav-link {
+                justify-content: center;
+            }
+
+            .navbar .nav-link .nav-label {
+                display: none;
+            }
+
+            .navbar .nav-link i {
+                margin-right: 0 !important;
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+    <script src="/vendor/chartjs/chart.min.js"></script>
+    <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="/vendor/plotly/plotly-2.27.0.min.js"></script>
+    {{#unless isAuthRoute}}
+    <script type="text/javascript">
+        {{{inlineJS}}}
+    </script>
+    <style>
+        {{{inlineCSS}}}
+    </style>
+    {{/unless}}
+</head>
+<body>
+    {{#unless hideNavbar}}
+    <nav class="navbar navbar-expand navbar-dark bg-primary">
+        <div class="container-fluid">
+            <div class="navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {{#if (eq page 'dashboard')}}active{{/if}}" href="/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>
+                            <span class="nav-label">Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{#if (eq page 'signals')}}active{{/if}}" href="/dashboard/signals">
+                            <i class="fas fa-broadcast-tower me-1"></i>
+                            <span class="nav-label">Signals</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{#if (eq page 'tickers')}}active{{/if}}" href="/tickers">
+                            <i class="fas fa-database me-1"></i>
+                            <span class="nav-label">Tickers</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {{#if (eq page 'templates')}}active{{/if}}" href="/templates">
+                            <i class="fas fa-puzzle-piece me-1"></i>
+                            <span class="nav-label">Templates</span>
+                        </a>
+                    </li>
+                    {{#if user}}
+                        {{#if (eq user.role 'admin')}}
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'jobs')}}active{{/if}}" href="/admin/jobs">
+                                    <i class="fas fa-tasks me-1"></i>
+                                    <span class="nav-label">Jobs</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'lightgbm')}}active{{/if}}" href="/admin/lightgbm">
+                                    <i class="fas fa-sitemap me-1"></i>
+                                    <span class="nav-label">LightGBM</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'admin-users')}}active{{/if}}" href="/admin/users">
+                                    <i class="fas fa-users me-1"></i>
+                                    <span class="nav-label">Users</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'database')}}active{{/if}}" href="/admin/database">
+                                    <i class="fas fa-database me-1"></i>
+                                    <span class="nav-label">Database</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'settings')}}active{{/if}}" href="/admin/settings">
+                                    <i class="fas fa-sliders-h me-1"></i>
+                                    <span class="nav-label">Settings</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'logs')}}active{{/if}}" href="/admin/logs">
+                                    <i class="fas fa-list-alt me-1"></i>
+                                    <span class="nav-label">Logs</span>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link {{#if (eq page 'deployment')}}active{{/if}}" href="/admin/deployment">
+                                    <i class="fas fa-server me-1"></i>
+                                    <span class="nav-label">Deployment</span>
+                                </a>
+                            </li>
+                        {{/if}}
+                    {{/if}}
+                </ul>
+                {{#if user}}
+                    <ul class="navbar-nav align-items-center">
+                        <li class="nav-item dropdown d-none d-sm-block">
+                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user me-1"></i>
+                                <span class="badge bg-{{#if (eq user.role 'admin')}}danger{{else}}secondary{{/if}} ms-1">
+                                    {{user.role}}
+                                </span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <form method="POST" action="/auth/logout" class="d-inline">
+                                        {{> csrf-field}}
+                                        <button type="submit" class="dropdown-item">
+                                            <i class="fas fa-sign-out-alt me-2"></i>
+                                            Sign Out
+                                        </button>
+                                    </form>
+                                </li>
+                                <li>
+                                    <form method="POST" action="/auth/logout-all" class="d-inline">
+                                        {{> csrf-field}}
+                                        <button type="submit" class="dropdown-item">
+                                            <i class="fas fa-sign-out-alt me-2"></i>
+                                            Sign Out All Devices
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </li>
+                        <li class="nav-item d-sm-none">
+                            <form method="POST" action="/auth/logout" class="logout-icon-form">
+                                {{> csrf-field}}
+                                <button type="submit" class="logout-icon-btn" title="Sign Out" aria-label="Sign Out">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </button>
+                            </form>
+                        </li>
+                        <li class="nav-item d-sm-none">
+                            <form method="POST" action="/auth/logout-all" class="logout-icon-form">
+                                {{> csrf-field}}
+                                <button type="submit" class="logout-icon-btn" title="Sign Out All Devices" aria-label="Sign Out All Devices">
+                                    <i class="fas fa-door-open"></i>
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                {{/if}}
+            </div>
+        </div>
+    </nav>
+    {{/unless}}
+
+    <main class="container-fluid py-3">
+        {{#if message}}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle me-2"></i>
+                {{message}}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {{/if}}
+
+        {{#if success}}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle me-2"></i>
+                {{success}}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {{/if}}
+
+        {{#if error}}
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                {{error}}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {{/if}}
+
+        {{{body}}}
+
+        <footer class="mt-4 pt-3 text-muted text-center">
+            <div>
+                {{{footerDisclaimerHtml}}}
+            </div>
+        </footer>
+    </main>
+</body>
+</html>

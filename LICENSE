@@ -1,0 +1,54 @@
+StratCraft Personal Use License v1.0
+
+Copyright (c) 2026 Maxim Kachurovskiy
+
+This license applies to the StratCraft source code, documentation, and associated materials
+("Software") unless a file states otherwise.
+
+1. Grant of License
+   Subject to the terms below, you are granted a worldwide, non-exclusive, non-transferable,
+   revocable license to use, copy, modify, and distribute the Software for Personal Use.
+
+2. Personal Use
+   "Personal Use" means use by an individual for personal, educational, or hobby purposes,
+   not primarily intended for or directed toward commercial advantage or monetary
+   compensation.
+   Personal Use explicitly includes trading using personal funds and managing or trading
+   friends and family accounts, provided there is no commercial or business intent and no
+   fees or compensation are charged.
+
+3. Commercial Use (Not Permitted Under This License)
+   "Commercial Use" includes, but is not limited to:
+   - Use by or on behalf of a business, organization, or governmental entity.
+   - Use in production environments for internal business operations.
+   - Use to provide services, hosting, or access to third parties.
+   - Use in connection with revenue generation, monetization, or paid subscriptions.
+   Commercial Use requires a separate commercial license.
+
+4. Redistribution
+   You may redistribute the Software for Personal Use only, provided that you:
+   - Include this license text in any redistribution.
+   - Retain all copyright, trademark, and attribution notices.
+   - Do not charge fees or impose further restrictions beyond this license.
+
+5. No Trademark License
+   This license does not grant any rights to use any StratCraft trademarks, service marks,
+   or logos.
+
+6. Third-Party Components
+   The Software may include third-party components with separate licenses. You must comply
+   with those licenses when using or redistributing the Software.
+
+7. Termination
+   Your rights under this license terminate automatically if you violate any term of this
+   license. Upon termination, you must cease all use and distribution of the Software.
+
+8. Disclaimer of Warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+   INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+   PURPOSE AND NONINFRINGEMENT.
+
+9. Limitation of Liability
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+   OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

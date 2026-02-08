@@ -1,0 +1,579 @@
+<div class="container-fluid">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-3 mb-4">
+        <div>
+            <h2 class="mb-0 d-flex flex-column">
+                <span>{{ticker.symbol}}</span>
+                <small class="text-muted fw-normal">
+                    {{#if ticker.name}}
+                        {{ticker.name}}
+                    {{else}}
+                        <span class="text-muted">Unknown name</span>
+                    {{/if}}
+                </small>
+            </h2>
+        </div>
+        <div class="d-flex flex-wrap gap-2 align-items-center mt-2 mt-lg-0">
+            <a href="https://www.tradingview.com/chart/?symbol={{ticker.symbol}}" target="_blank" class="btn btn-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i>
+                TradingView
+            </a>
+            {{#if (eq user.role 'admin')}}
+                <form method="POST" action="/tickers/{{ticker.symbol}}/clear-candles" class="d-inline" onsubmit="return confirm('Are you sure you want to delete ALL candles for {{ticker.symbol}}? This will remove its price history but keep the ticker.');">
+                    {{> csrf-field}}
+                    <button type="submit" class="btn btn-warning btn-sm">
+                        <i class="fas fa-broom me-1"></i>
+                        Clear Candles
+                    </button>
+                </form>
+                <button type="button" class="btn btn-danger btn-sm" onclick="deleteTicker('{{ticker.symbol}}')">
+                    <i class="fas fa-trash me-1"></i>
+                    Delete
+                </button>
+            {{/if}}
+        </div>
+    </div>
+    <div class="row g-4">
+        <!-- Ticker Information -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Ticker Information
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Symbol</td>
+                                    <td class="text-end fw-bold">{{ticker.symbol}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Name</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if ticker.name}}
+                                            {{ticker.name}}
+                                        {{else}}
+                                            <span class="text-muted">Unknown</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Scope</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if ticker.training}}
+                                            <span class="badge bg-success">Training</span>
+                                        {{else}}
+                                            <span class="badge bg-danger">Validation</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Tradable</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if ticker.tradable}}
+                                            <span class="badge bg-success">Yes</span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">No</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Shortable</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if ticker.shortable}}
+                                            <span class="badge bg-success">Yes</span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">No</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Easy to Borrow</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if ticker.easyToBorrow}}
+                                            <span class="badge bg-success">Yes</span>
+                                        {{else}}
+                                            <span class="badge bg-secondary">No</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Total Candles</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if (gt candleCount 0)}}
+                                            {{formatNumber candleCount}}
+                                        {{else}}
+                                            <span class="text-muted">0</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Min Low</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if hasPriceRangeStats}}
+                                            ${{formatPrice minLow}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Max High</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if hasPriceRangeStats}}
+                                            ${{formatPrice maxHigh}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Min Unadjusted Close</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if hasUnadjustedCloseStats}}
+                                            ${{formatPrice minUnadjustedClose}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Max Unadjusted Close</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if hasUnadjustedCloseStats}}
+                                            ${{formatPrice maxUnadjustedClose}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Volume (USD)</td>
+                                    <td class="text-end fw-bold">{{#if ticker.volumeUsd}}{{formatCurrency ticker.volumeUsd}}{{else}}<span class="text-muted">N/A</span>{{/if}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Min USD Volume</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if hasUsdVolumeStats}}
+                                            {{formatCurrency minUsdVolume}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Max USD Volume</td>
+                                    <td class="text-end fw-bold">
+                                        {{#if hasUsdVolumeStats}}
+                                            {{formatCurrency maxUsdVolume}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Last Updated</td>
+                                    <td class="text-end fw-bold">{{#if ticker.lastUpdated}}{{formatDate ticker.lastUpdated}}{{else}}<span class="text-muted">Never</span>{{/if}}</td>
+                                </tr>
+                                {{#if firstCandle}}
+                                <tr>
+                                    <td class="fw-bold text-muted">First Candle</td>
+                                    <td class="text-end fw-bold">{{formatDate firstCandle.date}}</td>
+                                </tr>
+                                {{/if}}
+                                {{#if latestCandle}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Most Recent Candle</td>
+                                    <td class="text-end fw-bold">{{formatDate latestCandle.date}}</td>
+                                </tr>
+                                {{/if}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Latest Price Information -->
+        {{#if latestCandle}}
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-dollar-sign me-2"></i>
+                        Latest Price
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <div class="h2 mb-2">${{formatPrice latestCandle.close}}</div>
+                        <div class="h5 {{#if (gt latestCandle.close latestCandle.open)}}text-success{{else}}text-danger{{/if}}">
+                            {{#if (gt latestCandle.close latestCandle.open)}}
+                                <i class="fas fa-arrow-up me-1"></i>
+                            {{else}}
+                                <i class="fas fa-arrow-down me-1"></i>
+                            {{/if}}
+                            ${{formatPrice (subtract latestCandle.close latestCandle.open)}}
+                            ({{formatRateAsPercent (divide (subtract latestCandle.close latestCandle.open) latestCandle.open)}})
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Open</td>
+                                    <td class="text-end fw-bold">${{formatPrice latestCandle.open}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">High</td>
+                                    <td class="text-end fw-bold">${{formatPrice latestCandle.high}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Low</td>
+                                    <td class="text-end fw-bold">${{formatPrice latestCandle.low}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Close</td>
+                                    <td class="text-end fw-bold">${{formatPrice latestCandle.close}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Volume (Shares)</td>
+                                    <td class="text-end fw-bold">{{formatNumber latestCandle.volumeShares}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Volume (USD)</td>
+                                    <td class="text-end fw-bold">{{formatCurrency (multiply latestCandle.volumeShares latestCandle.close)}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Date</td>
+                                    <td class="text-end fw-bold">{{formatDate latestCandle.date}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                    <div>
+                        <h5 class="card-title mb-1 mb-md-0">
+                            <i class="fas fa-table me-2"></i>
+                            Backtest Performance by Strategy
+                        </h5>
+                        <small class="text-muted">Average per-trade return for {{ticker.symbol}} ({{tickerBacktestScopeLabel}} scope).</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {{#if tickerBacktestTable.rows.length}}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0" id="tickerBacktestPerformanceTable">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" class="text-start">Strategy</th>
+                                        {{#each tickerBacktestTable.periods}}
+                                            <th scope="col" class="text-center">{{label}}</th>
+                                        {{/each}}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each tickerBacktestTable.rows}}
+                                        <tr>
+                                            <th scope="row" class="text-start">{{strategyName}}</th>
+                                            {{#each ../tickerBacktestTable.periods}}
+                                                {{#with (lookup ../cells months)}}
+                                                    <td class="text-center" {{#if hasData}}data-heat-value="{{avgReturnPercent}}"{{/if}}>
+                                                        {{#if hasData}}
+                                                            <a class="d-block text-reset text-decoration-none" href="/backtests/{{backtestResultId}}/trades?ticker={{@root.ticker.symbol}}">
+                                                                <div class="fw-bold">{{formatPercentAsPercent avgReturnPercent}}</div>
+                                                                <div class="text-muted small">{{tradeCount}} trade{{#if (gt tradeCount 1)}}s{{/if}}</div>
+                                                            </a>
+                                                        {{else}}
+                                                            <span class="text-muted">—</span>
+                                                        {{/if}}
+                                                    </td>
+                                                {{else}}
+                                                    <td class="text-center text-muted">—</td>
+                                                {{/with}}
+                                            {{/each}}
+                                        </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                    {{else}}
+                        <p class="text-muted mb-0">No backtest trades for this ticker yet.</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Price Chart -->
+        {{#if chartData}}
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Daily Candlestick Chart (All Available Data)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 400px; width: 100%;">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/if}}
+
+        {{#if chartData}}
+        <div class="col-12">
+            <div id="tradingViewChart" style="position: relative; height: 420px;">
+                <div class="text-muted text-center small mt-5">Loading TradingView chart...</div>
+            </div>
+        </div>
+        {{/if}}
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-1">
+                        <i class="fas fa-robot me-2"></i>
+                        Signal Simulation (past {{signalSimulationLookbackDays}} days)
+                    </h5>
+                    <small class="text-muted">1-share buy on BUY signal, exit on SELL, using this ticker&apos;s close price.</small>
+                </div>
+                <div class="card-body">
+                    {{#if tickerSignalSimulations.length}}
+                        <div class="table-responsive mb-4 border rounded">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="text-start">Strategy</th>
+                                        <th class="text-center">Signals</th>
+                                        <th class="text-center">Buy</th>
+                                        <th class="text-center">Sell</th>
+                                        <th class="text-end">Win rate</th>
+                                        <th class="text-end">Net return</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each tickerSignalSimulations}}
+                                        <tr>
+                                            <th scope="row" class="text-start">{{strategyName}}</th>
+                                            <td class="text-center">{{signalCount}}</td>
+                                            <td class="text-center">{{buySignalCount}}</td>
+                                            <td class="text-center">{{sellSignalCount}}</td>
+                                            <td class="text-end">
+                                                {{#if (eq winRatePercent null)}}
+                                                    N/A
+                                                {{else}}
+                                                    {{formatPercentAsPercent winRatePercent}}
+                                                {{/if}}
+                                            </td>
+                                            <td class="text-end {{#if totalProfitPercent}}{{#if (gt totalProfitPercent 0)}}text-success{{else}}{{#if (lt totalProfitPercent 0)}}text-danger{{else}}text-muted{{/if}}{{/if}}{{else}}text-muted{{/if}}">
+                                                {{#if (eq totalProfitPercent null)}}
+                                                    N/A
+                                                {{else}}
+                                                    {{formatPercentAsPercent totalProfitPercent}}
+                                                {{/if}}
+                                            </td>
+                                        </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="row g-3">
+                            {{#each tickerSignalSimulations}}
+                                <div class="col-12 col-xl-6">
+                                    <div class="card h-100">
+                                        <div class="card-header d-flex justify-content-between align-items-start">
+                                            <div>
+                                                <h6 class="mb-1">{{strategyName}}</h6>
+                                                <div class="text-muted small">
+                                                    {{signalCount}} signal{{#if (gt signalCount 1)}}s{{/if}} ({{buySignalCount}} buy / {{sellSignalCount}} sell) in last {{../signalSimulationLookbackDays}} days
+                                                </div>
+                                            </div>
+                                            <div class="text-end">
+                                                <div class="text-muted small">Win rate</div>
+                                                <div class="fw-bold">
+                                                    {{#if (eq winRatePercent null)}}
+                                                        N/A
+                                                    {{else}}
+                                                        {{formatPercentAsPercent winRatePercent}}
+                                                    {{/if}}
+                                                </div>
+                                                <div class="text-muted small">Net return</div>
+                                                <div class="fw-bold {{#if totalProfitPercent}}{{#if (gt totalProfitPercent 0)}}text-success{{else}}{{#if (lt totalProfitPercent 0)}}text-danger{{else}}text-muted{{/if}}{{/if}}{{else}}text-muted{{/if}}">
+                                                    {{#if (eq totalProfitPercent null)}}
+                                                        N/A
+                                                    {{else}}
+                                                        {{formatPercentAsPercent totalProfitPercent}}
+                                                    {{/if}}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="card-body">
+                                            {{#if trades.length}}
+                                                <div class="table-responsive">
+                                                    <table class="table table-sm mb-0">
+                                                        <thead>
+                                                            <tr>
+                                                            <th scope="col" class="text-start">Entry</th>
+                                                            <th scope="col" class="text-end">Buy</th>
+                                                            <th scope="col" class="text-start">Exit</th>
+                                                            <th scope="col" class="text-end">Sell</th>
+                                                            <th scope="col" class="text-end">P&amp;L ($)</th>
+                                                            <th scope="col" class="text-end">P&amp;L (%)</th>
+                                                            <th scope="col" class="text-end">Confidence</th>
+                                                        </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {{#each trades}}
+                                                                <tr>
+                                                                    <td class="text-start">{{formatDate entryDate}}</td>
+                                                                    <td class="text-end">${{formatPrice entryPrice}}</td>
+                                                                    <td class="text-start">{{formatDate exitDate}}</td>
+                                                                    <td class="text-end">${{formatPrice exitPrice}}</td>
+                                                                    <td class="text-end {{#if (gt pnl 0)}}text-success{{else}}{{#if (lt pnl 0)}}text-danger{{else}}text-muted{{/if}}{{/if}}">${{formatPrice pnl}}</td>
+                                                                    <td class="text-end {{#if (gt pnl 0)}}text-success{{else}}{{#if (lt pnl 0)}}text-danger{{else}}text-muted{{/if}}{{/if}}">
+                                                                        {{#if (eq pnlPercent null)}}
+                                                                            N/A
+                                                                        {{else}}
+                                                                            {{formatPercentAsPercent pnlPercent}}
+                                                                        {{/if}}
+                                                                    </td>
+                                                                    <td class="text-end">{{formatRateAsPercent entryConfidence}}</td>
+                                                                </tr>
+                                                            {{/each}}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            {{else}}
+                                                <p class="text-muted mb-0">No completed trades from signals in this window.</p>
+                                            {{/if}}
+                                        </div>
+                                    </div>
+                                </div>
+                            {{/each}}
+                        </div>
+                    {{else}}
+                        <p class="text-muted mb-0">No signals for this ticker in the past year.</p>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const heatCells = Array.from(document.querySelectorAll('#tickerBacktestPerformanceTable [data-heat-value]'));
+    if (!heatCells.length) {
+        return;
+    }
+
+    const values = heatCells
+        .map(cell => Number(cell.getAttribute('data-heat-value')))
+        .filter(value => Number.isFinite(value));
+
+    if (!values.length) {
+        return;
+    }
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    const getHeatColor = (value) => {
+        if (!Number.isFinite(value)) {
+            return 'transparent';
+        }
+        if (max === min) {
+            return value >= 0 ? 'rgba(25, 135, 84, 0.18)' : 'rgba(220, 53, 69, 0.18)';
+        }
+        const ratio = (value - min) / (max - min);
+        const clamped = Math.min(Math.max(ratio, 0), 1);
+        const hue = clamped * 120; // 0 = red, 120 = green
+        const lightness = 92 - clamped * 25;
+        return `hsl(${hue}, 65%, ${lightness}%)`;
+    };
+
+    heatCells.forEach(cell => {
+        const value = Number(cell.getAttribute('data-heat-value'));
+        if (!Number.isFinite(value)) {
+            return;
+        }
+        cell.style.backgroundColor = getHeatColor(value);
+    });
+});
+</script>
+
+<script>
+// Initialize charts
+document.addEventListener('DOMContentLoaded', function() {
+    // Ensure Chart.js and the candlestick plugin are ready
+    function initializeCharts() {
+        // Daily price chart
+        {{#if chartData}}
+        const dailyChartData = {{{json chartData}}};
+        ChartUtils.createCandlestickChart('priceChart', dailyChartData, {
+            candlestickLabel: '{{ticker.symbol}} Daily Candlesticks',
+            includeVolume: true,
+            volumeColor: '#6c757d',
+            priceScaleType: 'logarithmic',
+        });
+        {{/if}}
+    }
+
+    // Check if Chart.js and ChartUtils are available, if not wait a bit
+    if (typeof Chart !== 'undefined' && typeof ChartUtils !== 'undefined') {
+        initializeCharts();
+    } else {
+        // Wait for Chart.js and ChartUtils to be available
+        setTimeout(initializeCharts, 100);
+    }
+});
+</script>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    {{#if chartData}}
+    initializeTickerTradingViewChart('{{ticker.symbol}}');
+    {{/if}}
+});
+</script>
+
+<script>
+async function deleteTicker(symbol) {
+    if (!confirm(`Are you sure you want to delete ticker ${symbol}? This will permanently delete all candle data, trades, and the ticker record.`)) {
+        return;
+    }
+
+    try {
+        const response = await (window.csrfFetch || fetch)(`/tickers/${symbol}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            window.location.href = '/tickers';
+        } else {
+            const result = await response.json();
+            alert(`Error: ${result.error || 'Failed to delete ticker'}`);
+        }
+    } catch (error) {
+        console.error('Error deleting ticker:', error);
+        alert('Error: Failed to delete ticker');
+    }
+}
+</script>

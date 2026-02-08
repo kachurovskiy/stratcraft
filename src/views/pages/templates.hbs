@@ -1,0 +1,656 @@
+<style>
+  .template-performance-cloud {
+    height: 520px;
+    min-height: 320px;
+  }
+
+  .template-performance-cloud-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .template-score-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .template-score-info {
+    color: #6c757d;
+    line-height: 1;
+  }
+
+  .template-score-info:hover,
+  .template-score-info:focus {
+    color: #0d6efd;
+  }
+
+  @media (max-width: 991.98px) {
+    .template-performance-cloud-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .template-performance-cloud {
+      height: 360px;
+    }
+  }
+</style>
+
+<h1 class="h2 mb-1">Strategy Templates</h1>
+<p class="text-muted mb-4">Browse templates, inspect their history, and launch new strategies.
+  Template Score summarizes default-strategy backtests, favoring consistent performance between training and validation, stronger validation CAGR, lower drawdown, balanced trade counts, and solid verification ratios.
+  Longer backtests matter more, with a modest boost for more recent results.</p>
+
+<div class="card">
+  <div class="card-body p-0">
+    {{#if hasTemplates}}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width: 300px;">Template</th>
+              <th class="text-center">Opt. version</th>
+              <th class="text-center">Template Score</th>
+              <th class="text-center">Best Calmar</th>
+              <th class="text-center">Best CAGR</th>
+              <th class="text-center">Validation CAGR</th>
+              <th class="text-center">Best Sharpe</th>
+              <th class="text-center">Top Tickers</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{#each templates}}
+              <tr>
+                <td>
+                  <div class="fw-semibold">
+                    <a href="/templates/{{id}}" class="text-decoration-none">{{name}}</a>
+                  </div>
+                  <div class="text-muted small">{{description}}</div>
+                </td>
+                <td class="text-center">
+                  {{localOptimizationVersion}}
+                </td>
+                <td class="text-center">
+                  {{#if hasTemplateScore}}
+                    <span class="template-score-cell">
+                      <span>{{toFixed templateScore 0}}</span>
+                      {{#if templateScoreBreakdown}}
+                        <button
+                          type="button"
+                          class="btn btn-link p-0 template-score-info"
+                          data-template-score-popover
+                          data-bs-toggle="popover"
+                          data-bs-trigger="focus"
+                          data-bs-placement="left"
+                          data-bs-html="true"
+                          title="Template Score details"
+                          data-bs-content="<div class='small'>
+                            <div class='fw-semibold mb-1'>Component averages (0-1)</div>
+                            <div>Return: {{formatNumber templateScoreBreakdown.componentAverages.returnScore 2}}</div>
+                            <div>Consistency: {{formatNumber templateScoreBreakdown.componentAverages.consistencyScore 2}}</div>
+                            <div>Risk: {{formatNumber templateScoreBreakdown.componentAverages.riskScore 2}}</div>
+                            <div>Liquidity/Confidence: {{formatNumber templateScoreBreakdown.componentAverages.liquidityScore 2}}</div>
+                            <div class='fw-semibold mt-2 mb-1'>Weighting</div>
+                            <div>Periods used: {{templateScoreBreakdown.periodCount}}</div>
+                            <div>Avg length weight: {{formatNumber templateScoreBreakdown.lengthWeightAvg 2}}</div>
+                            <div>Avg recency weight: {{formatNumber templateScoreBreakdown.recencyWeightAvg 2}}</div>
+                            <div class='fw-semibold mt-2 mb-1'>Verification</div>
+                            {{#if templateScoreBreakdown.verificationMultiplier}}
+                              <div>Multiplier: {{formatNumber templateScoreBreakdown.verificationMultiplier 2}}</div>
+                            {{else}}
+                              <div class='text-muted'>No verification multiplier.</div>
+                            {{/if}}
+                            <div class='fw-semibold mt-2 mb-1'>Score (0-100)</div>
+                            <div>Base: {{formatNumber templateScoreBreakdown.baseScore100 0}}</div>
+                            <div>Final: {{formatNumber templateScoreBreakdown.finalScore100 0}}</div>
+                          </div>"
+                          aria-label="Template score breakdown"
+                        >
+                          <i class="fas fa-info-circle"></i>
+                        </button>
+                      {{/if}}
+                    </span>
+                  {{else}}
+                    <span class="text-muted">N/A</span>
+                  {{/if}}
+                </td>
+                <td class="text-center">
+                  {{#if hasBestCalmar}}
+                    {{formatNumber bestCalmar 2}}
+                  {{else}}
+                    <span class="text-muted">N/A</span>
+                  {{/if}}
+                </td>
+                <td class="text-center">
+                  {{#if hasBestCagr}}
+                    {{formatRateAsPercent bestCagr}}
+                  {{else}}
+                    <span class="text-muted">N/A</span>
+                  {{/if}}
+                </td>
+                <td class="text-center">
+                  {{#if hasBestVerifyCagr}}
+                    {{formatRateAsPercent bestVerifyCagr}}
+                  {{else}}
+                    <span class="text-muted">N/A</span>
+                  {{/if}}
+                </td>
+                <td class="text-center">
+                  {{#if hasBestSharpe}}
+                    {{formatNumber bestSharpe 2}}
+                  {{else}}
+                    <span class="text-muted">N/A</span>
+                  {{/if}}
+                </td>
+                <td class="text-center">
+                  {{#if hasTopTickers}}
+                    <a href="/tickers/{{topAbsoluteGainTicker}}">{{topAbsoluteGainTicker}}</a>
+                    {{#if (and topRelativeGainTicker (ne topRelativeGainTicker topAbsoluteGainTicker))}}
+                      <a href="/tickers/{{topRelativeGainTicker}}">{{topRelativeGainTicker}}</a>
+                    {{/if}}
+                  {{else}}
+                    <span class="text-muted">N/A</span>
+                  {{/if}}
+                </td>
+                <td class="text-start">
+                  <div class="d-inline-flex gap-2 align-items-center">
+                    <a href="/templates/{{id}}" class="btn btn-outline-primary btn-sm">
+                      <i class="fas fa-eye me-1"></i>
+                      View
+                    </a>
+                    <a href="/strategies/create?template={{id}}" class="btn btn-primary btn-sm">
+                      <i class="fas fa-plus me-1"></i>
+                      Create
+                    </a>
+                    {{#if ../isAdmin}}
+                      {{#if remoteOptimization.isActive}}
+                        <form
+                          method="POST"
+                          action="/templates/{{id}}/remote-optimize/stop"
+                          class="d-inline"
+                        >
+                            {{> csrf-field}}
+                          <input type="hidden" name="jobId" value="{{remoteOptimization.activeJobId}}">
+                          <button
+                            type="submit"
+                            class="btn btn-danger btn-sm"
+                            {{#unless remoteOptimization.activeJobId}}disabled{{/unless}}
+                            title="Status: {{#if remoteOptimization.activeStatusLabel}}{{remoteOptimization.activeStatusLabel}}{{else}}In Progress{{/if}}{{#if remoteOptimization.activeServerId}} (Hetzner #{{remoteOptimization.activeServerId}}{{#if remoteOptimization.activeServerIp}} / {{remoteOptimization.activeServerIp}}{{/if}}){{/if}}. Delete the remote server for job {{remoteOptimization.activeJobId}} and stop remote optimization."
+                          >
+                            Stop Optimize
+                          </button>
+                        </form>
+                      {{else}}
+                        <form
+                          method="POST"
+                          action="/templates/{{id}}/remote-optimize"
+                          class="d-inline"
+                        >
+                            {{> csrf-field}}
+                          <button
+                            type="submit"
+                            class="btn btn-warning btn-sm"
+                            {{#unless remoteOptimization.hasRemoteOptimizer}}disabled{{/unless}}
+                            {{#if remoteOptimization.tooltip}}title="{{remoteOptimization.tooltip}}"{{/if}}
+                          >
+                            Remote Optimize
+                          </button>
+                        </form>
+                      {{/if}}
+                    {{/if}}
+                  </div>
+                </td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <div class="text-center py-5">
+        <h3 class="text-muted mb-2">No templates available</h3>
+        <p class="text-muted mb-0">Once templates are registered they will appear here for quick access.</p>
+      </div>
+    {{/if}}
+  </div>
+</div>
+
+{{#if hasTemplates}}
+  <div class="card mt-4">
+    <div class="card-header">
+      <div class="fw-semibold">Performance Cloud</div>
+      <div class="text-muted small">Calmar vs Sharpe, Sharpe vs CAGR, and verification/backtest comparisons. Cache entries per template (ranked by Sharpe).</div>
+    </div>
+    <div class="card-body">
+      <div class="template-performance-cloud-grid">
+        <div id="templatePerformanceCloudCalmarSharpe" class="template-performance-cloud" aria-label="Calmar vs Sharpe scatter chart"></div>
+        <div id="templatePerformanceCloudSharpeCagr" class="template-performance-cloud" aria-label="Sharpe vs CAGR scatter chart"></div>
+        <div id="templatePerformanceCloudDrawdownCagr" class="template-performance-cloud" aria-label="Max drawdown vs CAGR scatter chart"></div>
+        <div id="templatePerformanceCloudCagrTrades" class="template-performance-cloud" aria-label="CAGR vs trades scatter chart"></div>
+        <div id="templatePerformanceCloudCagrVerifyCagr" class="template-performance-cloud" aria-label="Verification CAGR vs backtest CAGR scatter chart"></div>
+        <div id="templatePerformanceCloudSharpeVerifySharpe" class="template-performance-cloud" aria-label="Verification Sharpe vs backtest Sharpe scatter chart"></div>
+        <div id="templatePerformanceCloudCalmarVerifyCalmar" class="template-performance-cloud" aria-label="Verification Calmar vs backtest Calmar scatter chart"></div>
+        <div id="templatePerformanceCloudDrawdownVerifyDrawdown" class="template-performance-cloud" aria-label="Verification drawdown vs backtest drawdown scatter chart"></div>
+      </div>
+    </div>
+  </div>
+{{/if}}
+
+<script>
+const performanceCloudPoints = {{{json performanceCloudPoints}}};
+const templateCloudTargetIds = {
+  calmarSharpe: 'templatePerformanceCloudCalmarSharpe',
+  sharpeCagr: 'templatePerformanceCloudSharpeCagr',
+  drawdownCagr: 'templatePerformanceCloudDrawdownCagr',
+  cagrTrades: 'templatePerformanceCloudCagrTrades',
+  cagrVerifyCagr: 'templatePerformanceCloudCagrVerifyCagr',
+  sharpeVerifySharpe: 'templatePerformanceCloudSharpeVerifySharpe',
+  calmarVerifyCalmar: 'templatePerformanceCloudCalmarVerifyCalmar',
+  drawdownVerifyDrawdown: 'templatePerformanceCloudDrawdownVerifyDrawdown'
+};
+const templateCloudSymbols = [
+  'circle',
+  'square',
+  'diamond',
+  'cross',
+  'x',
+  'triangle-up',
+  'triangle-down',
+  'triangle-left',
+  'triangle-right',
+  'pentagon',
+  'hexagon',
+  'star',
+  'star-square',
+  'star-diamond',
+  'hourglass',
+  'bowtie'
+];
+const templateCloudEmptyMessage = 'Not enough backtest cache data to render the performance cloud yet.';
+const defaultPlotlyLayout = {
+  margin: { l: 40, r: 20, t: 40, b: 55 },
+  paper_bgcolor: 'rgba(0,0,0,0)',
+  plot_bgcolor: 'rgba(0,0,0,0)',
+  font: { size: 12 }
+};
+const defaultPlotlyConfig = { displayModeBar: false, responsive: true };
+
+function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatNumber(value, decimals = 2) {
+  if (!Number.isFinite(value)) {
+    return 'N/A';
+  }
+  return value.toFixed(decimals);
+}
+
+function normalizeRate(value) {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return value > 1 ? value / 100 : value;
+}
+
+function formatPercent(value) {
+  const decimalValue = normalizeRate(value);
+  if (decimalValue === null) {
+    return 'N/A';
+  }
+  return `${(decimalValue * 100).toFixed(2)}%`;
+}
+
+function formatCount(value) {
+  if (!Number.isFinite(value)) {
+    return 'N/A';
+  }
+  return Math.round(value).toLocaleString();
+}
+
+function hashString(value) {
+  const raw = String(value ?? '');
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function getTemplateSymbol(id, fallbackIndex) {
+  const symbolIndex = Math.abs(hashString(id ?? String(fallbackIndex))) % templateCloudSymbols.length;
+  return templateCloudSymbols[symbolIndex];
+}
+
+function showChartEmptyState(targetId, message) {
+  const target = document.getElementById(targetId);
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="text-muted text-center py-5 small">${message}</div>`;
+}
+
+function buildHoverText(point, templateName) {
+  const verifyCagrLabel = point.verifyCagr !== null ? formatPercent(point.verifyCagr) : 'N/A';
+  const drawdownLabel = point.maxDrawdownRatio !== null ? formatPercent(point.maxDrawdownRatio) : 'N/A';
+  const verifySharpeLabel = point.verifySharpeRatio !== null ? formatNumber(point.verifySharpeRatio) : 'N/A';
+  const verifyCalmarLabel = point.verifyCalmarRatio !== null ? formatNumber(point.verifyCalmarRatio) : 'N/A';
+  const verifyDrawdownLabel = point.verifyMaxDrawdownRatio !== null
+    ? formatPercent(point.verifyMaxDrawdownRatio)
+    : 'N/A';
+  const tradesLabel = formatCount(point.totalTrades);
+  const tickersLabel = formatCount(point.tickerCount);
+  return [
+    `<b>${templateName}</b>`,
+    `Calmar: ${formatNumber(point.calmarRatio)}`,
+    `Sharpe: ${formatNumber(point.sharpeRatio)}`,
+    `CAGR: ${formatPercent(point.cagr)}`,
+    `Verification CAGR: ${verifyCagrLabel}`,
+    `Verification Sharpe: ${verifySharpeLabel}`,
+    `Verification Calmar: ${verifyCalmarLabel}`,
+    `Max Drawdown: ${drawdownLabel}`,
+    `Verification Max Drawdown: ${verifyDrawdownLabel}`,
+    `Trades: ${tradesLabel}`,
+    `Tickers: ${tickersLabel}`
+  ].join('<br>');
+}
+
+function getPerformanceCloudPoints() {
+  if (!Array.isArray(performanceCloudPoints)) {
+    return [];
+  }
+  return performanceCloudPoints.map((point, index) => {
+    const resolvedTemplateId = point?.templateId ?? point?.id;
+    if (!resolvedTemplateId) {
+      return null;
+    }
+    const templateId = String(resolvedTemplateId);
+    const calmarRatio = toFiniteNumber(point?.calmarRatio ?? point?.calmar);
+    const sharpeRatio = toFiniteNumber(point?.sharpeRatio ?? point?.sharpe);
+    const verifySharpeRatio = toFiniteNumber(point?.verifySharpeRatio ?? point?.verify_sharpe_ratio);
+    const verifyCalmarRatio = toFiniteNumber(point?.verifyCalmarRatio ?? point?.verify_calmar_ratio);
+    const cagr = toFiniteNumber(point?.cagr);
+    const verifyCagr = toFiniteNumber(point?.verifyCagr ?? point?.verify_cagr);
+    const maxDrawdownRatio = toFiniteNumber(point?.maxDrawdownRatio ?? point?.max_drawdown_ratio);
+    const verifyMaxDrawdownRatio = toFiniteNumber(
+      point?.verifyMaxDrawdownRatio ?? point?.verify_max_drawdown_ratio
+    );
+    const totalTrades = toFiniteNumber(point?.totalTrades ?? point?.total_trades);
+    const tickerCount = toFiniteNumber(point?.tickerCount ?? point?.ticker_count);
+    const createdAt = point?.createdAt ?? point?.created_at ?? null;
+
+    if (calmarRatio === null || sharpeRatio === null || cagr === null) {
+      return null;
+    }
+
+    if (calmarRatio < 0.5 || sharpeRatio < 0.5 || cagr < 0.05) {
+      return null;
+    }
+
+    return {
+      templateId,
+      templateName: point?.templateName ?? `Template ${templateId}`,
+      calmarRatio,
+      sharpeRatio,
+      verifySharpeRatio,
+      verifyCalmarRatio,
+      cagr,
+      verifyCagr,
+      maxDrawdownRatio,
+      verifyMaxDrawdownRatio,
+      totalTrades,
+      tickerCount,
+      createdAt
+    };
+  }).filter(point => point !== null);
+}
+
+function renderTemplatePerformanceClouds() {
+  const targets = Object.values(templateCloudTargetIds)
+    .map(targetId => document.getElementById(targetId))
+    .filter(Boolean);
+  if (!targets.length) {
+    return;
+  }
+  if (typeof Plotly === 'undefined') {
+    targets.forEach(target => showChartEmptyState(target.id, 'Plotly is not available to render this chart.'));
+    return;
+  }
+
+  const points = getPerformanceCloudPoints();
+  if (!points.length) {
+    targets.forEach(target => showChartEmptyState(target.id, templateCloudEmptyMessage));
+    return;
+  }
+
+  const groupedPoints = new Map();
+  points.forEach(point => {
+    const existing = groupedPoints.get(point.templateId);
+    if (existing) {
+      existing.points.push(point);
+    } else {
+      groupedPoints.set(point.templateId, {
+        templateName: point.templateName,
+        points: [point]
+      });
+    }
+  });
+
+  const chartUtils = window.ChartUtils;
+  const colorForId = chartUtils && typeof chartUtils.colorForId === 'function'
+    ? chartUtils.colorForId
+    : null;
+  const templateGroups = Array.from(groupedPoints.entries());
+  const showLegend = templateGroups.length <= 12;
+
+  const charts = [
+    {
+      targetId: templateCloudTargetIds.calmarSharpe,
+      xLabel: 'Calmar',
+      yLabel: 'Sharpe',
+      xValue: point => point.calmarRatio,
+      yValue: point => point.sharpeRatio,
+      showLegend: true
+    },
+    {
+      targetId: templateCloudTargetIds.sharpeCagr,
+      xLabel: 'Sharpe',
+      yLabel: 'CAGR',
+      xValue: point => point.sharpeRatio,
+      yValue: point => normalizeRate(point.cagr) ?? 0,
+      yTickFormat: '.0%',
+      showLegend: false
+    },
+    {
+      targetId: templateCloudTargetIds.drawdownCagr,
+      xLabel: 'Max Drawdown',
+      yLabel: 'CAGR',
+      xValue: point => normalizeRate(point.maxDrawdownRatio) ?? 0,
+      yValue: point => normalizeRate(point.cagr) ?? 0,
+      xTickFormat: '.0%',
+      yTickFormat: '.0%',
+      showLegend: false
+    },
+    {
+      targetId: templateCloudTargetIds.cagrTrades,
+      xLabel: 'CAGR',
+      yLabel: 'Trades',
+      xValue: point => normalizeRate(point.cagr) ?? 0,
+      yValue: point => point.totalTrades ?? 0,
+      xTickFormat: '.0%',
+      showLegend: false
+    },
+    {
+      targetId: templateCloudTargetIds.cagrVerifyCagr,
+      xLabel: 'Backtest CAGR',
+      yLabel: 'Verification CAGR',
+      xValue: point => normalizeRate(point.cagr) ?? 0,
+      yValue: point => normalizeRate(point.verifyCagr) ?? 0,
+      xTickFormat: '.0%',
+      yTickFormat: '.0%',
+      filter: point => point.cagr !== null && point.verifyCagr !== null,
+      showLegend: false
+    },
+    {
+      targetId: templateCloudTargetIds.sharpeVerifySharpe,
+      xLabel: 'Backtest Sharpe',
+      yLabel: 'Verification Sharpe',
+      xValue: point => point.sharpeRatio ?? 0,
+      yValue: point => point.verifySharpeRatio ?? 0,
+      filter: point => point.sharpeRatio !== null && point.verifySharpeRatio !== null,
+      showLegend: false
+    },
+    {
+      targetId: templateCloudTargetIds.calmarVerifyCalmar,
+      xLabel: 'Backtest Calmar',
+      yLabel: 'Verification Calmar',
+      xValue: point => point.calmarRatio ?? 0,
+      yValue: point => point.verifyCalmarRatio ?? 0,
+      filter: point => point.calmarRatio !== null && point.verifyCalmarRatio !== null,
+      showLegend: false
+    },
+    {
+      targetId: templateCloudTargetIds.drawdownVerifyDrawdown,
+      xLabel: 'Backtest Max Drawdown',
+      yLabel: 'Verification Max Drawdown',
+      xValue: point => normalizeRate(point.maxDrawdownRatio) ?? 0,
+      yValue: point => normalizeRate(point.verifyMaxDrawdownRatio) ?? 0,
+      xTickFormat: '.0%',
+      yTickFormat: '.0%',
+      filter: point => point.maxDrawdownRatio !== null && point.verifyMaxDrawdownRatio !== null,
+      showLegend: false
+    }
+  ];
+
+  const chartElements = charts
+    .map(chart => ({ chart, element: document.getElementById(chart.targetId) }))
+    .filter(item => item.element);
+
+  const plotPromises = chartElements.map(({ chart, element }) => {
+    const traces = templateGroups.map(([templateId, group], index) => {
+      const groupPoints = group.points;
+      const templateName = group.templateName || `Template ${templateId}`;
+      const markerColor = colorForId ? colorForId(String(templateId)) : '#0d6efd';
+      const chartPoints = chart.filter ? groupPoints.filter(point => chart.filter(point)) : groupPoints;
+      const hoverText = chartPoints.map(point => buildHoverText(point, templateName));
+
+      return {
+        type: 'scatter',
+        mode: 'markers',
+        name: templateName,
+        x: chartPoints.map(point => chart.xValue(point)),
+        y: chartPoints.map(point => chart.yValue(point)),
+        text: hoverText,
+        hovertemplate: '%{text}<extra></extra>',
+        marker: {
+          size: 6,
+          color: markerColor,
+          symbol: getTemplateSymbol(templateId, index),
+          opacity: 0.65
+        }
+      };
+    });
+
+    const layout = {
+      ...defaultPlotlyLayout,
+      showlegend: showLegend && chart.showLegend,
+      legend: {
+        orientation: 'h',
+        yanchor: 'bottom',
+        y: 1.02,
+        xanchor: 'left',
+        x: 0
+      },
+      xaxis: { title: chart.xLabel, tickformat: chart.xTickFormat, automargin: true },
+      yaxis: { title: chart.yLabel, tickformat: chart.yTickFormat, automargin: true }
+    };
+
+    return Promise.resolve(Plotly.react(element, traces, layout, defaultPlotlyConfig));
+  });
+
+  const legendElement = chartElements.find(item => item.chart.showLegend)?.element;
+  if (!legendElement || !showLegend) {
+    return;
+  }
+
+  Promise.all(plotPromises).then(() => {
+    if (legendElement.__templateLegendBound) {
+      return;
+    }
+    legendElement.__templateLegendBound = true;
+
+    const getTrace = (eventData, index) => {
+      if (eventData?.fullData?.[index]) {
+        return eventData.fullData[index];
+      }
+      if (eventData?.data?.[index]) {
+        return eventData.data[index];
+      }
+      if (legendElement._fullData?.[index]) {
+        return legendElement._fullData[index];
+      }
+      if (legendElement.data?.[index]) {
+        return legendElement.data[index];
+      }
+      return null;
+    };
+
+    const applyVisibility = (visibility, indices = null) => {
+      chartElements.forEach(({ element }) => {
+        if (indices) {
+          Plotly.restyle(element, { visible: visibility }, indices);
+        } else {
+          Plotly.restyle(element, { visible: visibility });
+        }
+      });
+    };
+
+    legendElement.on('plotly_legendclick', eventData => {
+      const curveIndex = eventData.curveNumber;
+      const trace = getTrace(eventData, curveIndex);
+      const isHidden = trace && (trace.visible === 'legendonly' || trace.visible === false);
+      const nextVisibility = isHidden ? true : 'legendonly';
+
+      applyVisibility(nextVisibility, [curveIndex]);
+      return false;
+    });
+
+    legendElement.on('plotly_legenddoubleclick', eventData => {
+      const curveIndex = eventData.curveNumber;
+      const traces = templateGroups.map((_, index) => getTrace(eventData, index));
+      const visibleCount = traces.reduce((count, trace) => {
+        if (!trace) {
+          return count;
+        }
+        const isVisible = trace.visible !== 'legendonly' && trace.visible !== false;
+        return count + (isVisible ? 1 : 0);
+      }, 0);
+
+      if (visibleCount === 1 && traces[curveIndex]) {
+        applyVisibility(templateGroups.map(() => true));
+      } else {
+        applyVisibility(templateGroups.map((_, index) => (index === curveIndex ? true : 'legendonly')));
+      }
+      return false;
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  renderTemplatePerformanceClouds();
+
+  if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
+    document.querySelectorAll('[data-template-score-popover]').forEach(element => {
+      if (element.__templateScorePopover) {
+        return;
+      }
+      element.__templateScorePopover = new bootstrap.Popover(element);
+    });
+  }
+});
+</script>

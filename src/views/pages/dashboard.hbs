@@ -1,0 +1,915 @@
+<style>
+    .sortable {
+        user-select: none;
+        transition: background-color 0.2s ease;
+    }
+
+    .sortable:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+
+    .sortable i {
+        opacity: 0.5;
+        transition: opacity 0.2s ease;
+    }
+
+    .sortable:hover i {
+        opacity: 1;
+    }
+
+    .table th.sortable {
+        position: relative;
+    }
+
+    .table th.sortable:active {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+
+    .table tbody tr {
+        height: 40px; /* Fixed row height */
+    }
+
+    .table tbody td {
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    .text-truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .backtest-period-toggle {
+        flex-wrap: nowrap;
+        gap: 0;
+        overflow-x: auto;
+    }
+
+    .backtest-period-toggle .btn {
+        margin: 0;
+    }
+
+    .cagr-chart-wrapper {
+        height: 720px;
+    }
+
+    .chart-empty-state {
+        padding: 1.5rem 1rem;
+    }
+
+    @media (max-width: 768px) {
+        .table-mobile-stack {
+            border-collapse: separate;
+        }
+
+        .table-mobile-stack thead {
+            display: none;
+        }
+
+        .table-mobile-stack,
+        .table-mobile-stack tbody,
+        .table-mobile-stack tr {
+            display: block;
+            width: 100%;
+        }
+
+        .table-mobile-stack tbody tr {
+            background-color: #fff;
+            padding: 1rem;
+            height: auto;
+        }
+
+        .table-mobile-stack tbody td {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            padding: 0.4rem 0;
+            border: none;
+            text-align: right;
+            white-space: normal;
+        }
+
+        .table-mobile-stack tbody td::before {
+            content: attr(data-label);
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            flex: 0 0 45%;
+            text-align: left;
+        }
+
+        .table-mobile-stack tbody td:first-child {
+            display: block;
+            padding-bottom: 0.25rem;
+            text-align: left;
+        }
+
+        .table-mobile-stack tbody td:first-child::before {
+            content: none;
+        }
+
+        .table-mobile-stack tbody td:last-child {
+            padding-bottom: 0;
+        }
+
+        .table-mobile-stack .badge {
+            margin-top: 0.25rem;
+        }
+
+        .backtest-period-toggle {
+            gap: 6px;
+            flex-direction: row !important;
+            width: auto;
+        }
+
+        .backtest-period-toggle .btn {
+            margin-bottom: 0 !important;
+            border-radius: 0;
+            white-space: nowrap;
+        }
+
+        .cagr-chart-wrapper {
+            height: 560px;
+        }
+    }
+
+</style>
+
+<!-- Trading Accounts Overview -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="card h-100">
+            <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
+                <div>
+                    <h5 class="card-title mb-0">Trading Accounts</h5>
+                    <small class="text-muted">Live-synced broker balances and position counts.</small>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="/accounts/new" class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus me-1"></i>
+                        Add Account
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {{#if accounts.length}}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 table-mobile-stack">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Name</th>
+                                <th scope="col" class="text-end">Cash</th>
+                                <th scope="col" class="text-end">Long Equity</th>
+                                <th scope="col" class="text-end">Short Exposure</th>
+                                <th scope="col" class="text-end">Liquidation Value</th>
+                                <th scope="col" class="text-center">Long Positions</th>
+                                <th scope="col" class="text-center">Short Positions</th>
+                                <th scope="col" class="text-center">Buy Orders</th>
+                                <th scope="col" class="text-center">Sell Orders</th>
+                                <th scope="col">Sync</th>
+                                <th scope="col">Added</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each accounts}}
+                            <tr>
+                                <td data-label="Account">
+                                    <div class="fw-semibold">
+                                        <a href="/accounts/{{id}}" class="text-decoration-none text-primary">{{name}}</a>
+                                        {{#if (eq environment 'live')}}
+                                            <span class="badge bg-danger text-uppercase">Live</span>
+                                        {{else}}
+                                            <span class="badge bg-secondary text-uppercase">Paper</span>
+                                        {{/if}}
+                                    </div>
+                                </td>
+                                <td class="text-end" data-label="Cash">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.cash)}}
+                                            {{formatCurrency snapshot.cash}}
+                                            {{#if snapshot.currency}}
+                                                <span class="text-muted ms-1">{{snapshot.currency}}</span>
+                                            {{/if}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-end" data-label="Long Equity">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.longMarketValue)}}
+                                            <span class="{{#if (gt snapshot.longMarketValue 0)}}text-success fw-semibold{{/if}}">
+                                                {{formatCurrency snapshot.longMarketValue}}
+                                            </span>
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-end" data-label="Short Exposure">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.shortMarketValue)}}
+                                            <span class="{{#if (lt snapshot.shortMarketValue 0)}}text-danger fw-semibold{{/if}}">
+                                                {{formatCurrency snapshot.shortMarketValue}}
+                                            </span>
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-end" data-label="Liquidation Value">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.liquidationValue)}}
+                                            <span class="fw-bold">
+                                                {{formatCurrency snapshot.liquidationValue}}
+                                            </span>
+                                            {{#if snapshot.currency}}
+                                                <span class="text-muted ms-1">{{snapshot.currency}}</span>
+                                            {{/if}}
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-center" data-label="Long Positions">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.openLongPositions)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/positions"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-success text-decoration-none"
+                                            >
+                                                {{snapshot.openLongPositions}} long
+                                            </a>
+                                        {{else if (defined snapshot.openTrades)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/positions"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-secondary text-decoration-none"
+                                            >
+                                                {{snapshot.openTrades}}
+                                            </a>
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-center" data-label="Short Positions">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.openShortPositions)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/positions"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-danger text-decoration-none"
+                                            >
+                                                {{snapshot.openShortPositions}} short
+                                            </a>
+                                        {{else if (defined snapshot.openTrades)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/positions"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-secondary text-decoration-none"
+                                            >
+                                                {{snapshot.openTrades}}
+                                            </a>
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-center" data-label="Buy Orders">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.openBuyOrders)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/orders"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-primary text-decoration-none"
+                                            >
+                                                {{snapshot.openBuyOrders}} buy
+                                            </a>
+                                        {{else if (defined snapshot.openOrders)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/orders"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-warning text-dark text-decoration-none"
+                                            >
+                                                {{snapshot.openOrders}}
+                                            </a>
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="text-center" data-label="Sell Orders">
+                                    {{#if snapshot}}
+                                        {{#if (defined snapshot.openSellOrders)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/orders"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-warning text-dark text-decoration-none"
+                                            >
+                                                {{snapshot.openSellOrders}} sell
+                                            </a>
+                                        {{else if (defined snapshot.openOrders)}}
+                                            <a
+                                                href="https://app.alpaca.markets/account/orders"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="badge bg-warning text-dark text-decoration-none"
+                                            >
+                                                {{snapshot.openOrders}}
+                                            </a>
+                                        {{else}}
+                                            <span class="text-muted">N/A</span>
+                                        {{/if}}
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td data-label="Sync">
+                                    <div class="d-flex flex-column">
+                                        <span class="badge bg-{{snapshotBadge.variant}} align-self-start">{{snapshotBadge.label}}</span>
+                                        {{#if snapshot}}
+                                            <small class="text-muted">
+                                                {{#if snapshotMessage}}
+                                                    {{snapshotMessage}}
+                                                {{else}}
+                                                    {{#if snapshot.fetchedAt}}
+                                                        Synced {{formatDateTimeShort snapshot.fetchedAt}}
+                                                    {{/if}}
+                                                {{/if}}
+                                            </small>
+                                        {{else}}
+                                            <small class="text-muted">Not fetched yet</small>
+                                        {{/if}}
+                                    </div>
+                                </td>
+                                <td data-label="Added">{{formatDateTimeShort createdAt}}</td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+                {{else}}
+                <div class="text-center py-5">
+                    <h6 class="text-muted mb-2">No accounts connected yet</h6>
+                    <p class="text-muted small mb-3">Add a paper or live account to pull balances and positions.</p>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Strategy Performance -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
+                <div>
+                    <h5 class="card-title mb-0">Strategy Performance Overview</h5>
+                    <small class="text-muted">Strategies default to highest CAGR first; use the headers to re-sort.</small>
+                </div>
+                <div class="d-flex flex-row flex-md-row align-items-md-center gap-2">
+                    <div class="btn-group btn-group-sm backtest-period-toggle" role="group" aria-label="Select backtest period">
+                        {{#each backtestPeriodOptions}}
+                        <a href="{{href}}"
+                           class="btn {{#if active}}btn-primary active{{else}}btn-outline-primary{{/if}}"
+                           role="button"
+                           {{#if active}}aria-current="page"{{/if}}>
+                            {{label}}
+                        </a>
+                        {{/each}}
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {{#if strategies.length}}
+                <div class="table-responsive">
+                    <table id="strategy-performance-table" class="table table-hover mb-0 table-mobile-stack">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col" class="border-0 sortable" data-sort="name">
+                                    Strategy <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-center sortable" data-sort="status">
+                                    Status <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="cagr">
+                                    CAGR <i class="fas fa-sort-down ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="winRate">
+                                    Win Rate <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="totalTrades">
+                                    Total Trades <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="totalReturn">
+                                    Total Return <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="sharpeRatio">
+                                    Sharpe Ratio <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="calmarRatio">
+                                    Calmar Ratio <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="medianCalmar" title="Median Calmar ratio across all backtests with non-zero trades">
+                                    Median Calmar <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="medianSharpe" title="Median Sharpe across all backtests with non-zero trades">
+                                    Median Sharpe <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="maxDrawdown">
+                                    Max Drawdown <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-end sortable" data-sort="totalTickers">
+                                    Tickers <i class="fas fa-sort ms-1"></i>
+                                </th>
+                                <th scope="col" class="border-0 text-center">
+                                    Strategy
+                                </th>
+                                <th scope="col" class="border-0 text-center">
+                                    Template
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each strategies}}
+                            <tr>
+                                <td class="border-0" data-label="Strategy">
+                                    <div class="d-flex flex-column" style="max-width: 300px;">
+                                        <div class="text-truncate">
+                                            <a
+                                                href="{{#if (and performance.backtestId performance.backtestStartDate)}}/backtests/{{performance.backtestId}}{{else}}/strategies/{{id}}{{/if}}"
+                                                class="fw-bold text-decoration-none"
+                                            >{{name}}</a>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="border-0 text-center" data-label="Status">
+                                    <span class="badge bg-{{#if (eq status 'active')}}success{{else if (eq status 'inactive')}}secondary{{else}}warning{{/if}}">
+                                        {{status}}
+                                    </span>
+                                </td>
+                                <td class="border-0 text-end" data-label="CAGR">
+                                    {{#if (and performance (defined performance.cagr))}}
+                                        <span class="fw-bold {{#if (gt performance.cagr 0)}}text-success{{else}}text-danger{{/if}}">
+                                            {{formatRateAsPercent performance.cagr}}
+                                        </span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Win Rate">
+                                    {{#if (and performance (defined performance.winRate))}}
+                                        <span class="fw-bold">{{formatRateAsPercent performance.winRate}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Total Trades">
+                                    {{#if (and performance (defined performance.totalTrades))}}
+                                        <span class="fw-bold">{{performance.totalTrades}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Total Return">
+                                    {{#if (and performance (defined performance.totalReturn) (defined parameters.initialCapital))}}
+                                        <span class="fw-bold {{#if (gt performance.totalReturn 0)}}text-success{{else}}text-danger{{/if}}">
+                                            {{formatTotalReturnPercent performance.totalReturn  parameters.initialCapital}}
+                                        </span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Sharpe Ratio">
+                                    {{#if (and performance (defined performance.sharpeRatio))}}
+                                        <span class="fw-bold">{{formatPrice performance.sharpeRatio}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Calmar Ratio">
+                                    {{#if (and performance (defined performance.calmarRatio))}}
+                                        <span class="fw-bold">{{formatPrice performance.calmarRatio}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Median Calmar">
+                                    {{#if (defined medianCalmarRatio)}}
+                                        <span class="fw-bold" title="Median Calmar ratio across all recorded backtests with trades">{{formatPrice medianCalmarRatio}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Median Sharpe">
+                                    {{#if (defined medianSharpeRatio)}}
+                                        <span class="fw-bold" title="Median Sharpe across all recorded backtests with trades">{{formatPrice medianSharpeRatio}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Max Drawdown">
+                                    {{#if (and performance (defined performance.maxDrawdownPercent))}}
+                                        <span class="fw-bold text-danger">{{formatPercentAsPercent performance.maxDrawdownPercent}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-end" data-label="Tickers">
+                                    {{#if (and performance (defined performance.totalTickers))}}
+                                        <span class="fw-bold">{{performance.totalTickers}}</span>
+                                    {{else}}
+                                        <span class="text-muted">N/A</span>
+                                    {{/if}}
+                                </td>
+                                <td class="border-0 text-center" data-label="Strategy">
+                                    <a href="/strategies/{{id}}" class="btn btn-outline-primary btn-sm">
+                                        Strategy
+                                    </a>
+                                </td>
+                                <td class="border-0 text-center" data-label="Template">
+                                    <a href="/templates/{{templateId}}" class="btn btn-outline-secondary btn-sm">
+                                        Template
+                                    </a>
+                                </td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+                {{else}}
+                <div class="text-center py-5">
+                    {{#if hasStrategiesAwaitingBacktests}}
+                    <h6 class="text-muted">Strategies are set up, backtests are still running</h6>
+                    <p class="text-muted small">Default strategies already exist. Validation backtests can take a little time to appear here.</p>
+                    {{else}}
+                    <h6 class="text-muted">No strategies to display</h6>
+                    <p class="text-muted small">Create a strategy to see it here.</p>
+                    <a href="/strategies/create" class="btn btn-primary btn-sm mt-2">
+                        <i class="fas fa-plus me-1"></i>
+                        Create Strategy
+                    </a>
+                    {{/if}}
+                </div>
+                {{/if}}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CAGR by Backtest Period -->
+<div class="row g-4 mb-4">
+    <div class="col-12">
+        <div class="card h-100">
+            <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
+                <div>
+                    <h5 class="card-title mb-0">CAGR by Backtest Period</h5>
+                    <small class="text-muted">Validation backtests plotted per window for each strategy.</small>
+                </div>
+                <div class="text-muted small d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Compares latest runs across available windows</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="cagrChartEmptyState" class="chart-empty-state text-center {{#if cagrChartData.hasData}}d-none{{/if}}">
+                    <i class="fas fa-chart-line fa-2x mb-2 d-block"></i>
+                    <div class="text-muted">Not enough backtest data to plot CAGR yet.</div>
+                </div>
+                <div id="cagrChartWrapper" class="position-relative cagr-chart-wrapper {{#unless cagrChartData.hasData}}d-none{{/unless}}">
+                    <canvas id="cagrByPeriodChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    const cagrChartData = {{{ json cagrChartData }}} || {};
+    let cagrChartInstance = null;
+
+    function buildPalette(count) {
+        const palette = [];
+        const step = 360 / Math.max(1, count);
+        for (let i = 0; i < count; i += 1) {
+            const hue = Math.round(i * step) % 360;
+            palette.push(`hsl(${hue}, 70%, 55%)`);
+        }
+        return palette;
+    }
+
+    function colorWithAlpha(color, alpha = 0.15) {
+        if (typeof color !== 'string') {
+            return 'rgba(13, 110, 253, 0.15)';
+        }
+        if (color.startsWith('hsl')) {
+            return color.replace('hsl(', 'hsla(').replace(')', `, ${alpha})`);
+        }
+        if (color.startsWith('rgb')) {
+            return color.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+        }
+        return color;
+    }
+
+    function formatPercentValue(value) {
+        const numeric = typeof value === 'number' ? value : Number(value);
+        if (typeof formatRateAsPercent === 'function' && Number.isFinite(numeric)) {
+            return formatRateAsPercent(numeric);
+        }
+        if (!Number.isFinite(numeric)) {
+            return 'N/A';
+        }
+        const decimal = numeric > 1 ? numeric / 100 : numeric;
+        return `${(decimal * 100).toFixed(2)}%`;
+    }
+
+    function renderCagrChart() {
+        const chartCanvas = document.getElementById('cagrByPeriodChart');
+        const emptyState = document.getElementById('cagrChartEmptyState');
+        const wrapper = document.getElementById('cagrChartWrapper');
+        const hasData = cagrChartData && cagrChartData.hasData && Array.isArray(cagrChartData.series) && cagrChartData.series.length > 0;
+
+        if (!hasData || !chartCanvas) {
+            if (emptyState) {
+                emptyState.classList.remove('d-none');
+            }
+            if (wrapper) {
+                wrapper.classList.add('d-none');
+            }
+            return;
+        }
+
+        if (typeof Chart === 'undefined') {
+            setTimeout(renderCagrChart, 60);
+            return;
+        }
+
+        if (emptyState) {
+            emptyState.classList.add('d-none');
+        }
+        if (wrapper) {
+            wrapper.classList.remove('d-none');
+        }
+
+        const labels = Array.isArray(cagrChartData.labels) ? cagrChartData.labels : [];
+        const palette = buildPalette(cagrChartData.series.length);
+        const datasets = cagrChartData.series.map((series, idx) => {
+            const color = palette[idx % palette.length] || '#0d6efd';
+            const data = Array.isArray(series.values)
+                ? series.values.map(value => {
+                    const numeric = typeof value === 'number' ? value : Number(value);
+                    return Number.isFinite(numeric) ? numeric : null;
+                })
+                : [];
+
+            return {
+                label: series.name || 'Strategy',
+                data,
+                borderColor: color,
+                backgroundColor: colorWithAlpha(color),
+                borderWidth: 2,
+                tension: 0.25,
+                fill: false,
+                spanGaps: false,
+                pointRadius: 3,
+                pointHoverRadius: 5
+            };
+        });
+
+        const ctx = chartCanvas.getContext('2d');
+        if (cagrChartInstance) {
+            cagrChartInstance.destroy();
+            cagrChartInstance = null;
+        }
+
+        cagrChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'nearest',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const baseLabel = context.dataset.label || 'Strategy';
+                                const value = context.parsed.y;
+                                return `${baseLabel}: ${formatPercentValue(value)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Backtest Period'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'CAGR'
+                        },
+                        ticks: {
+                            callback: function (value) {
+                                return formatPercentValue(Number(value));
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function toggleStrategyDropdown(dropdownId) {
+        const dropdown = document.getElementById('dropdown-' + dropdownId);
+        if (!dropdown) return;
+
+        // Close all other dropdowns
+        document.querySelectorAll('.strategy-dropdown-menu').forEach(menu => {
+            if (menu.id !== 'dropdown-' + dropdownId) {
+                menu.classList.remove('show');
+            }
+        });
+
+        // Toggle current dropdown
+        dropdown.classList.toggle('show');
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', function (event) {
+        if (!event.target.closest('.strategy-dropdown')) {
+            document.querySelectorAll('.strategy-dropdown-menu').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        }
+    });
+
+    // Table sorting functionality
+    const defaultSortDirections = {
+        sharpeRatio: 'desc',
+        calmarRatio: 'desc',
+        medianCalmar: 'desc',
+        cagr: 'desc',
+        medianSharpe: 'desc'
+    };
+    const strategyTable = document.getElementById('strategy-performance-table');
+    let currentSort = { column: 'cagr', direction: defaultSortDirections.cagr }; // Default sort by CAGR descending
+
+    function getDefaultDirection(column) {
+        return defaultSortDirections[column] || 'asc';
+    }
+
+    function updateSortIndicators() {
+        document.querySelectorAll('.sortable i').forEach(icon => {
+            icon.className = 'fas fa-sort ms-1';
+        });
+
+        const currentHeader = document.querySelector(`[data-sort="${currentSort.column}"] i`);
+        if (currentHeader) {
+            currentHeader.className = currentSort.direction === 'asc' ? 'fas fa-sort-up ms-1' : 'fas fa-sort-down ms-1';
+        }
+    }
+
+    function sortTable(column, isInitialLoad = false) {
+        if (!strategyTable) return;
+        const tbody = strategyTable.querySelector('tbody');
+        if (!tbody) return; // Exit if no table body found
+
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        if (rows.length === 0) return; // Exit if no rows found
+
+        // Set direction based on column and whether this is initial load
+        if (isInitialLoad) {
+            // For initial load, use the default direction for each column
+            currentSort.direction = getDefaultDirection(column);
+        } else {
+            // Toggle direction if same column, otherwise use default
+            if (currentSort.column === column) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.direction = getDefaultDirection(column);
+            }
+        }
+        currentSort.column = column;
+        updateSortIndicators();
+
+        // Sort rows
+        rows.sort((a, b) => {
+            let aValue, bValue;
+
+            switch (column) {
+                case 'name':
+                    aValue = a.querySelector('a').textContent.trim();
+                    bValue = b.querySelector('a').textContent.trim();
+                    return currentSort.direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+
+                case 'status':
+                    aValue = a.querySelector('.badge').textContent.trim();
+                    bValue = b.querySelector('.badge').textContent.trim();
+                    return currentSort.direction === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+
+                case 'cagr':
+                case 'winRate':
+                case 'totalTrades':
+                case 'totalReturn':
+                case 'sharpeRatio':
+                case 'calmarRatio':
+                case 'medianCalmar':
+                case 'medianSharpe':
+                case 'maxDrawdown':
+                case 'totalTickers':
+                    // Handle performance data columns
+                    const aCell = a.querySelector(`td:nth-child(${getColumnIndex(column)})`);
+                    const bCell = b.querySelector(`td:nth-child(${getColumnIndex(column)})`);
+
+                    if (!aCell || !bCell) return 0;
+
+                    aValue = parseFloat(aCell.textContent.replace(/[$,%]/g, '')) || 0;
+                    bValue = parseFloat(bCell.textContent.replace(/[$,%]/g, '')) || 0;
+                    return currentSort.direction === 'asc' ? aValue - bValue : bValue - aValue;
+
+                default:
+                    return 0;
+            }
+        });
+
+        // Re-append sorted rows
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    function getColumnIndex(column) {
+        const columnMap = {
+            'name': 1,
+            'status': 2,
+            'cagr': 4,
+            'winRate': 5,
+            'totalTrades': 6,
+            'totalReturn': 7,
+            'sharpeRatio': 8,
+            'calmarRatio': 9,
+            'medianCalmar': 10,
+            'medianSharpe': 11,
+            'maxDrawdown': 12,
+            'totalTickers': 13
+        };
+        return columnMap[column] || 1;
+    }
+
+    // Add click event listeners to sortable headers
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.style.cursor = 'pointer';
+        header.addEventListener('click', () => {
+            const column = header.getAttribute('data-sort');
+            sortTable(column);
+        });
+    });
+
+    // Ensure default sort indicator matches server-side ordering on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateSortIndicators();
+        renderCagrChart();
+    });
+
+</script>

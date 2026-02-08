@@ -1,0 +1,109 @@
+<div class="container-fluid">
+  <style>
+    /* Hide number input spinners for the OTP field */
+    #otp::-webkit-outer-spin-button,
+    #otp::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    #otp {
+      -moz-appearance: textfield;
+    }
+  </style>
+  <div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+      <div class="card mt-5">
+        <div class="card-body">
+          <form method="POST" action="/auth/send-otp" id="emailForm">
+              {{> csrf-field}}
+            <div class="mb-3">
+              <label for="email" class="form-label">Email Address</label>
+              <input type="email" class="form-control" id="email" name="email" required
+                     placeholder="Enter your email address">
+            </div>
+            <button type="submit" class="btn btn-primary w-100">
+              Send Access Code
+            </button>
+          </form>
+
+          <form method="POST" action="/auth/verify-otp" id="otpForm" style="display: none;">
+              {{> csrf-field}}
+            <input type="hidden" id="hiddenEmail" name="email">
+            <div class="mb-3">
+              <label for="otp" class="form-label">Access Code</label>
+              <input type="number" class="form-control" id="otp" name="otp" required
+                     placeholder="Enter 6-digit code" maxlength="6" pattern="[0-9]{6}" inputmode="numeric">
+              <div class="form-text">Check your email for the 6-digit access code</div>
+            </div>
+            <button type="submit" class="btn btn-success w-100" id="otpSubmit">
+              Sign In
+            </button>
+            <button type="button" class="btn btn-link w-100 mt-2" onclick="showEmailForm()">
+              Use Different Email
+            </button>
+          </form>
+
+          <div class="text-center mt-4">
+            <small class="text-muted">Access is by invitation only</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Check if we have an email in the URL (from success message)
+  const urlParams = new URLSearchParams(window.location.search);
+  const success = urlParams.get('success');
+
+  if (success && success.toLowerCase().includes('access code')) {
+    // Extract email from localStorage or show OTP form
+    const email = localStorage.getItem('pendingEmail');
+    if (email) {
+      showOtpForm(email);
+    }
+  }
+
+  function showOtpForm(email) {
+    document.getElementById('emailForm').style.display = 'none';
+    document.getElementById('otpForm').style.display = 'block';
+    document.getElementById('hiddenEmail').value = email;
+    document.getElementById('otp').focus();
+  }
+
+  function showEmailForm() {
+    document.getElementById('otpForm').style.display = 'none';
+    document.getElementById('emailForm').style.display = 'block';
+    localStorage.removeItem('pendingEmail');
+  }
+
+  // Store email when form is submitted
+  document.getElementById('emailForm').addEventListener('submit', function(e) {
+    const email = document.getElementById('email').value;
+    localStorage.setItem('pendingEmail', email);
+  });
+
+  const otpForm = document.getElementById('otpForm');
+  const otpInput = document.getElementById('otp');
+  const otpSubmit = document.getElementById('otpSubmit');
+
+  function setOtpSubmitting(isSubmitting) {
+    if (!otpSubmit) return;
+    otpSubmit.disabled = isSubmitting;
+    otpSubmit.textContent = isSubmitting ? 'Signing In...' : 'Sign In';
+  }
+
+  // Disable submit on manual submission
+  otpForm.addEventListener('submit', function() {
+    setOtpSubmitting(true);
+  });
+
+  // Auto-submit OTP form when 6 digits are entered
+  otpInput.addEventListener('input', function(e) {
+    if (e.target.value.length > 5) {
+      setOtpSubmitting(true);
+      otpForm.submit();
+    }
+  });
+</script>

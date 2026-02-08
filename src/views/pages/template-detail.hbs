@@ -1,0 +1,1126 @@
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+  <div class="flex-grow-1">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <h1 class="h2 mb-0">{{template.name}}</h1>
+      {{#if template.category}}
+        <span class="badge bg-secondary">{{template.category}}</span>
+      {{/if}}
+    </div>
+    <p class="text-muted mb-2">{{template.description}}</p>
+    <div class="small text-muted">
+      Template ID: <code>{{template.id}}</code>
+      · Version: {{#if template.version}}{{template.version}}{{else}}—{{/if}}
+      · Author: {{#if template.author}}{{template.author}}{{else}}—{{/if}}
+    </div>
+  </div>
+  <div class="d-flex flex-wrap gap-2">
+    <a href="/templates" class="btn btn-outline-secondary">
+      <i class="fas fa-arrow-left me-1"></i>
+      Back to Templates
+    </a>
+    <a href="/strategies/create?template={{template.id}}" class="btn btn-primary">
+      <i class="fas fa-plus me-1"></i>
+      Create Strategy
+    </a>
+    {{#if isAdmin}}
+      <form
+        method="POST"
+        action="/templates/{{template.id}}/delete"
+        class="d-inline"
+        onsubmit="return confirm('Are you sure you want to delete this template? This will delete all strategies, backtests, and remote optimizer jobs for it. This cannot be undone.');"
+      >
+        {{> csrf-field}}
+        <button type="submit" class="btn btn-danger">
+          <i class="fas fa-trash me-1"></i>
+          Delete Template
+        </button>
+      </form>
+    {{/if}}
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0">Parameters</h5>
+    <small class="text-muted">{{templateSummary.parameterCount}} fields</small>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Label</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Defaults &amp; Constraints</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+          <tbody class="parameter-table-body" style="cursor: default;">
+            {{#if templateSummary.parameterCount}}
+              {{#each templateParameters}}
+              <tr class="parameter-row"
+                onmouseover="this.dataset.hovered = 'true';"
+                onmouseout="this.dataset.hovered = 'false';"
+                style="transition: background-color 0.15s;">
+                <td class="fw-semibold text-nowrap ps-3">{{label}}</td>
+                <td class="text-nowrap"><code>{{name}}</code></td>
+                <td class="text-capitalize text-nowrap">{{type}}</td>
+                <td class="small text-muted text-nowrap">
+                  {{#if hasDefaultValue}}
+                    Default: <code>{{defaultDisplay}}</code>
+                  {{else}}
+                    Default: —
+                  {{/if}}
+                  {{#if required}} · Required{{/if}}
+                  {{#if hasMin}} · Min {{min}}{{/if}}
+                  {{#if hasMax}} · Max {{max}}{{/if}}
+                  {{#if hasStep}} · Step {{step}}{{/if}}
+                </td>
+                <td class="text-truncate" style="max-width: 360px;">
+                  <span class="d-block text-nowrap overflow-hidden">{{description}}</span>
+                </td>
+              </tr>
+            {{/each}}
+          {{else}}
+            <tr>
+              <td colspan="5" class="text-center text-muted py-4">No parameters defined for this template.</td>
+            </tr>
+          {{/if}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div>
+      <h5 class="mb-0">Strategies</h5>
+      <small class="text-muted">Active and historical strategies created from this template.</small>
+    </div>
+    <span class="badge bg-light text-dark">{{templateSummary.strategyCount}} total</span>
+  </div>
+  {{#if hasStrategies}}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Trades</th>
+            <th>Sharpe</th>
+            <th>Calmar</th>
+            <th>Total Return</th>
+            <th>Created</th>
+            <th>Updated</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each strategies}}
+            <tr>
+              <td class="fw-semibold">
+                <a href="/strategies/{{id}}" class="text-decoration-none">{{name}}</a>
+              </td>
+              <td>{{status}}</td>
+              <td>{{performance.totalTrades}}</td>
+              <td>{{formatNumber performance.sharpeRatio 2}}</td>
+              <td>{{formatNumber performance.calmarRatio 2}}</td>
+              <td>{{formatCurrency performance.totalReturn}}</td>
+              <td><small>{{formatDate createdAt}}</small></td>
+              <td><small>{{formatDate updatedAt}}</small></td>
+              <td class="text-end">
+                <a href="/strategies/{{id}}" class="btn btn-outline-primary btn-sm">
+                  <i class="fas fa-eye me-1"></i>
+                  View
+                </a>
+              </td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <div class="card-body text-center text-muted py-4">
+      No strategies have been created from this template yet.
+    </div>
+  {{/if}}
+</div>
+
+{{#if hasBacktestCache}}
+  {{#if hasPerformanceChartData}}
+    <div class="row g-3 mb-4" id="cache-performance-chart-row">
+      <div class="col-12 {{#if hasCagrComparisonChartData}}col-xl-6{{/if}}">
+        <div class="card h-100" id="cache-performance-chart-card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <h5 class="mb-0">Cache Performance Overview</h5>
+              <small class="text-muted">Sharpe, Calmar, and total return plotted together.</small>
+            </div>
+            <span class="badge bg-light text-dark">{{performanceChartPoints.length}} plotted</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-container w-100 position-relative" style="height: 600px; min-height: 320px;">
+              <canvas
+                id="cachePerformanceBubbleChart"
+                class="position-absolute top-0 start-0 w-100 h-100"
+                aria-label="Sharpe vs Calmar vs total return chart"
+              ></canvas>
+            </div>
+            <p class="text-muted small mb-0 mt-2">
+              Bubble size and color reflect total return (red = lowest, green = highest); click any point to jump to the detailed row below.
+            </p>
+          </div>
+        </div>
+      </div>
+      {{#if hasCagrComparisonChartData}}
+        <div class="col-12 col-xl-6">
+          <div class="card h-100" id="cagr-comparison-chart-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div>
+                <h5 class="mb-0">CAGR vs Verify CAGR</h5>
+                <small class="text-muted">Drawdown-colored points to spot stability.</small>
+              </div>
+              <span class="badge bg-light text-dark">{{cagrComparisonPointCount}} plotted</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-container w-100 position-relative" style="height: 600px; min-height: 320px;">
+                <canvas
+                  id="cagrComparisonScatterChart"
+                  class="position-absolute top-0 start-0 w-100 h-100"
+                  aria-label="CAGR vs Verify CAGR chart"
+                ></canvas>
+              </div>
+              <p class="text-muted small mb-0 mt-2">
+                Point color tracks max drawdown (green = lower, red = higher); click any point to jump to the detailed row below.
+              </p>
+            </div>
+          </div>
+        </div>
+      {{/if}}
+    </div>
+  {{/if}}
+{{/if}}
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div>
+      <h5 class="mb-0">Backtest Cache Entries</h5>
+      <small class="text-muted">Locally cached parameter sweeps for this template.</small>
+    </div>
+    <span class="badge bg-light text-dark">{{templateSummary.cacheEntryCount}} cached sets</span>
+  </div>
+  {{#if hasBacktestCache}}
+    <div class="table-responsive">
+      <table id="backtest-cache-table" class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            {{#each backtestCacheParameterColumns}}
+              <th
+                class="text-nowrap cache-sortable"
+                data-sort-key="param-{{@index}}"
+                data-sort-type="auto"
+                role="button"
+                aria-sort="none"
+                style="max-width: 50px; width: 50px; word-break: break-word;"
+              >
+                <div class="d-inline-block text-nowrap" style="writing-mode: vertical-rl; transform: rotate(180deg);">
+                  {{label}}
+                </div>
+              </th>
+            {{/each}}
+            <th class="cache-sortable" data-sort-key="sharpe" data-sort-type="number" role="button" aria-sort="none">Sharpe</th>
+            <th class="cache-sortable" data-sort-key="calmar" data-sort-type="number" role="button" aria-sort="none">Calmar</th>
+            <th class="cache-sortable" data-sort-key="total-return" data-sort-type="number" role="button" aria-sort="none">Total Return</th>
+            <th class="cache-sortable" data-sort-key="cagr" data-sort-type="number" role="button" aria-sort="none">CAGR</th>
+            <th class="cache-sortable" data-sort-key="verify-cagr" data-sort-type="number" role="button" aria-sort="none">Verify CAGR</th>
+            <th class="cache-sortable" data-sort-key="drawdown" data-sort-type="number" role="button" aria-sort="none">Drawdown</th>
+            <th class="cache-sortable" data-sort-key="core-score" data-sort-type="number" role="button" aria-sort="none">Core Score</th>
+            <th class="cache-sortable" data-sort-key="stability-score" data-sort-type="number" role="button" aria-sort="none">Stability</th>
+            <th class="cache-sortable" data-sort-key="final-score" data-sort-type="number" role="button" aria-sort="none">Final Score</th>
+            <th class="cache-sortable" data-sort-key="trades" data-sort-type="number" role="button" aria-sort="none">Trades</th>
+            <th class="cache-sortable" data-sort-key="tickers" data-sort-type="number" role="button" aria-sort="none">Tickers</th>
+            <th class="cache-sortable" data-sort-key="period" data-sort-type="string" role="button" aria-sort="none">Period</th>
+            <th class="cache-sortable" data-sort-key="date-range" data-sort-type="date" role="button" aria-sort="none">Date Range</th>
+            <th class="cache-sortable" data-sort-key="tool" data-sort-type="string" role="button" aria-sort="none">Tool</th>
+            <th class="cache-sortable" data-sort-key="cached-at" data-sort-type="date" role="button" aria-sort="none">Cached</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each backtestCacheEntries}}
+            <tr
+              class="backtest-cache-row"
+              data-cache-entry-id="{{id}}"
+              id="cache-entry-{{id}}"
+              {{#each parameterCells}}
+                data-param-{{@index}}="{{value}}"
+              {{/each}}
+              data-sharpe="{{sharpeRatio}}"
+              data-calmar="{{calmarRatio}}"
+              data-total-return="{{totalReturn}}"
+              data-cagr="{{cagr}}"
+              data-verify-cagr="{{verifyCagr}}"
+              data-drawdown="{{maxDrawdownPercent}}"
+              data-core-score="{{coreScore}}"
+              data-stability-score="{{stabilityScore}}"
+              data-final-score="{{finalScore}}"
+              data-trades="{{totalTrades}}"
+              data-tickers="{{tickerCount}}"
+              data-period="{{periodLabel}}"
+              data-date-range="{{formatDate startDate 'YYYY-MM-DD'}}"
+              data-tool="{{tool}}"
+              data-cached-at="{{createdAt}}"
+            >
+              {{#each parameterCells}}
+                <td class="small text-nowrap{{#if isDifferent}} table-warning fw-semibold{{/if}}" style="min-width: 50px; width: 50px;">
+                  {{value}}
+                </td>
+              {{/each}}
+              <td>
+                {{#if hasSharpeRatio}}
+                  {{formatNumber sharpeRatio 2}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
+                {{#if hasCalmarRatio}}
+                  {{formatNumber calmarRatio 2}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
+                {{#if hasTotalReturn}}
+                  {{formatCurrency totalReturn}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
+                {{#if hasCagr}}
+                  {{formatRateAsPercent cagr}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
+                {{#if hasVerifyCagr}}
+                  {{formatRateAsPercent verifyCagr}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
+                {{#if maxDrawdownPercent}}
+                  {{maxDrawdownPercent}}%
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              {{#if hasScoreSet}}
+                <td>
+                  {{formatNumber coreScore 3}}
+                </td>
+                <td>
+                  {{formatNumber stabilityScore 3}}
+                </td>
+                <td>
+                  {{formatNumber finalScore 3}}
+                </td>
+              {{else}}
+                <td colspan="3">
+                  <span class="text-muted small">
+                    {{#if scoreUnavailableReason}}
+                      {{scoreUnavailableReason}}
+                    {{else}}
+                      Score unavailable.
+                    {{/if}}
+                  </span>
+                </td>
+              {{/if}}
+              <td>{{totalTrades}}</td>
+              <td>{{tickerCount}}</td>
+              <td>{{periodLabel}}</td>
+              <td>
+                <small>{{formatDate startDate 'YYYY-MM-DD'}} – {{formatDate endDate 'YYYY-MM-DD'}}</small>
+              </td>
+              <td>
+                {{#if tool}}{{tool}}{{else}}<span class="text-muted">—</span>{{/if}}
+              </td>
+              <td><small>{{formatDate createdAt}}</small></td>
+              <td class="text-end">
+                <a href="/strategies/create?template={{../template.id}}&params={{encodeURIComponent (json parameters)}}" class="btn btn-outline-primary btn-sm">
+                  Use Params
+                </a>
+              </td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <div class="card-body text-center text-muted py-4">
+      No cached backtest results exist for this template yet.
+    </div>
+  {{/if}}
+</div>
+
+{{#if hasPerformanceChartData}}
+<script>
+  (function () {
+    const performanceChartPointsRaw = {{{json performanceChartPoints}}} || [];
+    const bestCacheEntryId = {{{json bestCacheEntryId}}};
+    const bestCacheEntryKey = bestCacheEntryId ? String(bestCacheEntryId) : null;
+    const hasPerformanceChart = Array.isArray(performanceChartPointsRaw) && performanceChartPointsRaw.length > 0;
+
+    if (!hasPerformanceChart) {
+      return;
+    }
+
+    const usdLabelFormatter = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
+    const whenReady = (fn) => {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fn, { once: true });
+      } else {
+        fn();
+      }
+    };
+
+    const waitForChartJs = (fn) => {
+      if (typeof Chart === 'undefined') {
+        setTimeout(() => waitForChartJs(fn), 60);
+        return;
+      }
+      fn();
+    };
+
+    const buildRowHighlighter = () => {
+      const highlightTimers = new WeakMap();
+      const rowMap = new Map();
+      document.querySelectorAll('[data-cache-entry-id]').forEach(row => {
+        const entryId = row.getAttribute('data-cache-entry-id');
+        if (entryId) {
+          rowMap.set(String(entryId), row);
+        }
+      });
+
+      return (entryId) => {
+        if (!entryId) {
+          return;
+        }
+        const row = rowMap.get(String(entryId));
+        if (!row) {
+          return;
+        }
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('table-info');
+        const existingTimer = highlightTimers.get(row);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+        }
+        const timeoutId = window.setTimeout(() => {
+          row.classList.remove('table-info');
+          highlightTimers.delete(row);
+        }, 2500);
+        highlightTimers.set(row, timeoutId);
+      };
+    };
+
+    const buildChartPointHighlighter = (chart) => {
+      if (!chart || !chart.data || !Array.isArray(chart.data.datasets)) {
+        return () => {};
+      }
+      const datasetIndex = 0;
+      const dataset = chart.data.datasets[datasetIndex]?.data || [];
+      const indexById = new Map();
+      dataset.forEach((point, index) => {
+        const id = point?.cacheEntryId ?? point?.id;
+        if (id !== undefined && id !== null) {
+          indexById.set(String(id), index);
+        }
+      });
+
+      return (entryId) => {
+        if (!entryId) {
+          return;
+        }
+        const key = String(entryId);
+        if (!indexById.has(key)) {
+          return;
+        }
+        const index = indexById.get(key);
+        const activeElements = [{ datasetIndex, index }];
+        if (typeof chart.setActiveElements === 'function') {
+          chart.setActiveElements(activeElements);
+        }
+        if (chart.tooltip && typeof chart.tooltip.setActiveElements === 'function') {
+          const meta = chart.getDatasetMeta(datasetIndex);
+          const element = meta?.data?.[index];
+          const position = element && typeof element.getProps === 'function'
+            ? element.getProps(['x', 'y'], true)
+            : (element ? { x: element.x, y: element.y } : undefined);
+          chart.tooltip.setActiveElements(activeElements, position);
+        }
+        chart.update('none');
+      };
+    };
+
+    const wireCacheRowClicks = (highlighters) => {
+      const callbacks = Array.isArray(highlighters)
+        ? highlighters.filter(cb => typeof cb === 'function')
+        : (typeof highlighters === 'function' ? [highlighters] : []);
+      if (!callbacks.length) {
+        return;
+      }
+      const rows = document.querySelectorAll('.backtest-cache-row[data-cache-entry-id]');
+      rows.forEach(row => {
+        row.addEventListener('click', () => {
+          const entryId = row.getAttribute('data-cache-entry-id');
+          if (entryId) {
+            callbacks.forEach(cb => cb(entryId));
+          }
+        });
+      });
+    };
+
+    const buildReturnPalette = (points) => {
+      const chartUtils = window.ChartUtils;
+      const safeFallback = (point, index) => {
+        if (chartUtils && typeof chartUtils.colorForId === 'function') {
+          return chartUtils.colorForId(String(point?.id ?? index));
+        }
+        const hue = (index * 53) % 360;
+        return `hsl(${hue}, 70%, 48%)`;
+      };
+      const returns = points
+        .map(point => typeof point.totalReturn === 'number' ? point.totalReturn : null)
+        .filter(value => value !== null && Number.isFinite(value));
+      if (!returns.length) {
+        return points.map(safeFallback);
+      }
+      const minReturn = Math.min(...returns);
+      const maxReturn = Math.max(...returns);
+      const hueStart = 0; // red
+      const hueEnd = 140; // green
+      const midpointHue = `hsl(${(hueStart + hueEnd) / 2}, 70%, 45%)`;
+      const colorForReturn = (totalReturn) => {
+        if (!Number.isFinite(totalReturn)) {
+          return null;
+        }
+        if (minReturn === maxReturn) {
+          return midpointHue;
+        }
+        const ratio = (totalReturn - minReturn) / (maxReturn - minReturn);
+        const clamped = Math.min(1, Math.max(0, ratio));
+        const hue = hueStart + clamped * (hueEnd - hueStart);
+        return `hsl(${hue}, 70%, 45%)`;
+      };
+      return points.map((point, index) => colorForReturn(point.totalReturn) || safeFallback(point, index));
+    };
+
+    const buildDrawdownPalette = (points) => {
+      const chartUtils = window.ChartUtils;
+      const safeFallback = (point, index) => {
+        if (chartUtils && typeof chartUtils.colorForId === 'function') {
+          return chartUtils.colorForId(String(point?.id ?? index));
+        }
+        const hue = (index * 47) % 360;
+        return `hsl(${hue}, 68%, 50%)`;
+      };
+      const drawdowns = points
+        .map(point => typeof point.maxDrawdownRatio === 'number' ? point.maxDrawdownRatio : null)
+        .filter(value => value !== null && Number.isFinite(value));
+      if (!drawdowns.length) {
+        return points.map(safeFallback);
+      }
+      const minDrawdown = Math.min(...drawdowns);
+      const maxDrawdown = Math.max(...drawdowns);
+      const hueGood = 140; // green
+      const hueBad = 0; // red
+      const midpointHue = `hsl(${(hueGood + hueBad) / 2}, 70%, 45%)`;
+      const colorForDrawdown = (drawdown) => {
+        if (!Number.isFinite(drawdown)) {
+          return null;
+        }
+        if (minDrawdown === maxDrawdown) {
+          return midpointHue;
+        }
+        const ratio = (drawdown - minDrawdown) / (maxDrawdown - minDrawdown);
+        const clamped = Math.min(1, Math.max(0, ratio));
+        const hue = hueGood + clamped * (hueBad - hueGood);
+        return `hsl(${hue}, 70%, 45%)`;
+      };
+      return points.map((point, index) => colorForDrawdown(point.maxDrawdownRatio) || safeFallback(point, index));
+    };
+
+    const withAlpha = (color, alpha) => {
+      if (typeof color !== 'string' || !color.length) {
+        return '#0d6efd';
+      }
+      if (color.startsWith('hsl(')) {
+        return color.replace('hsl', 'hsla').replace(')', `, ${alpha})`);
+      }
+      return color;
+    };
+
+    const computeBounds = (values, paddingRatio = 0.05) => {
+      const numericValues = values.filter(value => typeof value === 'number' && Number.isFinite(value));
+      if (!numericValues.length) {
+        return null;
+      }
+      let min = Math.min(...numericValues);
+      let max = Math.max(...numericValues);
+      if (min === max) {
+        const bump = Math.max(Math.abs(min) * 0.05, 0.05);
+        return { min: min - bump, max: max + bump };
+      }
+      const span = max - min;
+      const padding = span * paddingRatio;
+      return {
+        min: min - padding,
+        max: max + padding
+      };
+    };
+
+    const formatUsdLabel = (value) => {
+      return typeof value === 'number' && Number.isFinite(value)
+        ? usdLabelFormatter.format(value)
+        : 'N/A';
+    };
+
+    const formatPercent = (value, fractionDigits = 2) => {
+      return typeof value === 'number' && Number.isFinite(value)
+        ? `${(value * 100).toFixed(fractionDigits)}%`
+        : 'N/A';
+    };
+
+    const formatTimestamp = (value) => {
+      if (!value) {
+        return null;
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+      return date.toLocaleString();
+    };
+
+    const isBestCacheEntry = (point) => {
+      if (!bestCacheEntryKey || !point) {
+        return false;
+      }
+      const entryId = point.cacheEntryId ?? point.id;
+      if (entryId === undefined || entryId === null) {
+        return false;
+      }
+      return String(entryId) === bestCacheEntryKey;
+    };
+
+    const renderPerformanceChart = (highlightRow) => {
+      const canvas = document.getElementById('cachePerformanceBubbleChart');
+      if (!canvas) {
+        return () => {};
+      }
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return () => {};
+      }
+
+      const palette = buildReturnPalette(performanceChartPointsRaw);
+      const dataset = performanceChartPointsRaw.map(point => ({
+        x: point.sharpeRatio,
+        y: point.calmarRatio,
+        totalReturn: point.totalReturn,
+        cacheEntryId: point.id,
+        sharpeRatio: point.sharpeRatio,
+        calmarRatio: point.calmarRatio,
+        totalTrades: point.totalTrades,
+        tickerCount: point.tickerCount,
+        periodLabel: point.periodLabel,
+        createdAt: point.createdAt,
+        tool: point.tool,
+        parameterSummary: point.parameterSummary
+      }));
+
+      const xBounds = computeBounds(dataset.map(point => point.x), 0.03);
+      const yBounds = computeBounds(dataset.map(point => point.y), 0.05);
+      const maxAbsReturn = dataset.reduce((max, point) => {
+        const value = typeof point.totalReturn === 'number' ? Math.abs(point.totalReturn) : null;
+        return value !== null && value > max ? value : max;
+      }, 0);
+
+      const getReturnMagnitude = (totalReturn) => {
+        if (!Number.isFinite(totalReturn) || maxAbsReturn <= 0) {
+          return 0;
+        }
+        return Math.min(1, Math.abs(totalReturn) / maxAbsReturn);
+      };
+
+      const bubbleRadius = (totalReturn) => {
+        const normalized = getReturnMagnitude(totalReturn);
+        return 6 + normalized * 12;
+      };
+
+      const bubbleOpacity = (totalReturn) => {
+        const normalized = getReturnMagnitude(totalReturn);
+        return 0.25 + normalized * 0.55;
+      };
+
+      const borderColors = dataset.map((point, index) => (
+        isBestCacheEntry(point)
+          ? '#000'
+          : withAlpha(palette[index], Math.min(1, bubbleOpacity(point.totalReturn) + 0.2))
+      ));
+      const borderWidths = dataset.map(point => (isBestCacheEntry(point) ? 2 : 1));
+
+      const chart = new Chart(ctx, {
+        type: 'bubble',
+        data: {
+          datasets: [{
+            label: 'Cache Entries',
+            data: dataset.map((point, index) => ({
+              ...point,
+              r: bubbleRadius(point.totalReturn)
+            })),
+            parsing: false,
+            backgroundColor: dataset.map((point, index) => withAlpha(
+              palette[index],
+              bubbleOpacity(point.totalReturn)
+            )),
+            borderColor: borderColors,
+            borderWidth: borderWidths,
+            hoverBorderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              title: { display: true, text: 'Sharpe Ratio' },
+              ...(xBounds ? { min: xBounds.min, max: xBounds.max } : {})
+            },
+            y: {
+              title: { display: true, text: 'Calmar Ratio' },
+              ...(yBounds ? { min: yBounds.min, max: yBounds.max } : {})
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: context => {
+                  const point = context.raw || {};
+                  const sharpe = typeof point.sharpeRatio === 'number'
+                    ? point.sharpeRatio.toFixed(2)
+                    : 'N/A';
+                  const calmar = typeof point.calmarRatio === 'number'
+                    ? point.calmarRatio.toFixed(2)
+                    : 'N/A';
+                  const totalReturn = formatUsdLabel(point.totalReturn);
+                  const trades = typeof point.totalTrades === 'number' ? point.totalTrades : 'N/A';
+                  const tickers = typeof point.tickerCount === 'number' ? point.tickerCount : 'N/A';
+                  const pieces = [
+                    `Sharpe: ${sharpe}`,
+                    `Calmar: ${calmar}`,
+                    `Total Return: ${totalReturn}`,
+                    `Trades: ${trades}`,
+                    `Tickers: ${tickers}`
+                  ];
+                  if (point.periodLabel) {
+                    pieces.push(`Period: ${point.periodLabel}`);
+                  }
+                  if (point.tool) {
+                    pieces.push(`Tool: ${point.tool}`);
+                  }
+                  if (point.parameterSummary) {
+                    pieces.push(point.parameterSummary);
+                  }
+                  const createdAt = formatTimestamp(point.createdAt);
+                  if (createdAt) {
+                    pieces.push(`Cached: ${createdAt}`);
+                  }
+                  return pieces;
+                }
+              }
+            }
+          },
+          onClick: (event, elements) => {
+            if (!elements || !elements.length) {
+              return;
+            }
+            const { datasetIndex, index } = elements[0];
+            const point = chart.data.datasets[datasetIndex].data[index];
+            if (point && point.cacheEntryId) {
+              highlightRow(point.cacheEntryId);
+            }
+          }
+        }
+      });
+
+      return buildChartPointHighlighter(chart);
+    };
+
+    const renderCagrComparisonChart = (highlightRow) => {
+      const canvas = document.getElementById('cagrComparisonScatterChart');
+      if (!canvas) {
+        return () => {};
+      }
+
+      const points = performanceChartPointsRaw.filter(point =>
+        typeof point.cagr === 'number' &&
+        Number.isFinite(point.cagr) &&
+        typeof point.verifyCagr === 'number' &&
+        Number.isFinite(point.verifyCagr)
+      );
+
+      if (!points.length) {
+        return () => {};
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return () => {};
+      }
+
+      const palette = buildDrawdownPalette(points);
+      const dataset = points.map(point => {
+        const drawdownRatio = typeof point.maxDrawdownRatio === 'number' ? point.maxDrawdownRatio : null;
+        const drawdownPercent = typeof point.maxDrawdownPercent === 'number'
+          ? point.maxDrawdownPercent
+          : (typeof drawdownRatio === 'number' ? Math.round(drawdownRatio * 100) : null);
+
+        return {
+          x: point.cagr,
+          y: point.verifyCagr,
+          cagr: point.cagr,
+          verifyCagr: point.verifyCagr,
+          drawdownRatio,
+          drawdownPercent,
+          cacheEntryId: point.id,
+          totalTrades: point.totalTrades,
+          tickerCount: point.tickerCount,
+          periodLabel: point.periodLabel,
+          createdAt: point.createdAt,
+          tool: point.tool,
+          parameterSummary: point.parameterSummary
+        };
+      });
+
+      const xBounds = computeBounds(dataset.map(point => point.x), 0.05);
+      const yBounds = computeBounds(dataset.map(point => point.y), 0.05);
+      const percentTickFormatter = (value) => {
+        const numeric = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(numeric)) {
+          return value;
+        }
+        const digits = Math.abs(numeric) < 0.2 ? 2 : 1;
+        return `${(numeric * 100).toFixed(digits)}%`;
+      };
+
+      const borderColors = dataset.map((point, index) => (
+        isBestCacheEntry(point)
+          ? '#000'
+          : withAlpha(palette[index], 0.9)
+      ));
+      const borderWidths = dataset.map(point => (isBestCacheEntry(point) ? 2 : 1.5));
+
+      const chart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+          datasets: [{
+            label: 'Cache Entries',
+            data: dataset,
+            parsing: false,
+            backgroundColor: dataset.map((point, index) => withAlpha(palette[index], 0.65)),
+            borderColor: borderColors,
+            borderWidth: borderWidths,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointHitRadius: 10
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              title: { display: true, text: 'CAGR' },
+              ...(xBounds ? { min: xBounds.min, max: xBounds.max } : {}),
+              ticks: {
+                callback: percentTickFormatter
+              }
+            },
+            y: {
+              title: { display: true, text: 'Verify CAGR' },
+              ...(yBounds ? { min: yBounds.min, max: yBounds.max } : {}),
+              ticks: {
+                callback: percentTickFormatter
+              }
+            }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: context => {
+                  const point = context.raw || {};
+                  const drawdownLabel = typeof point.drawdownRatio === 'number'
+                    ? formatPercent(point.drawdownRatio, 2)
+                    : (typeof point.drawdownPercent === 'number' && Number.isFinite(point.drawdownPercent)
+                      ? `${point.drawdownPercent.toFixed(1)}%`
+                      : 'N/A');
+                  const trades = typeof point.totalTrades === 'number' ? point.totalTrades : 'N/A';
+                  const tickers = typeof point.tickerCount === 'number' ? point.tickerCount : 'N/A';
+                  const pieces = [
+                    `CAGR: ${formatPercent(point.cagr)}`,
+                    `Verify CAGR: ${formatPercent(point.verifyCagr)}`,
+                    `Max Drawdown: ${drawdownLabel}`,
+                    `Trades: ${trades}`,
+                    `Tickers: ${tickers}`
+                  ];
+                  if (point.periodLabel) {
+                    pieces.push(`Period: ${point.periodLabel}`);
+                  }
+                  if (point.tool) {
+                    pieces.push(`Tool: ${point.tool}`);
+                  }
+                  if (point.parameterSummary) {
+                    pieces.push(point.parameterSummary);
+                  }
+                  const createdAt = formatTimestamp(point.createdAt);
+                  if (createdAt) {
+                    pieces.push(`Cached: ${createdAt}`);
+                  }
+                  return pieces;
+                }
+              }
+            }
+          },
+          onClick: (event, elements) => {
+            if (!elements || !elements.length) {
+              return;
+            }
+            const { datasetIndex, index } = elements[0];
+            const point = chart.data.datasets[datasetIndex].data[index];
+            if (point && point.cacheEntryId) {
+              highlightRow(point.cacheEntryId);
+            }
+          }
+        }
+      });
+
+      return buildChartPointHighlighter(chart);
+    };
+
+    const initCharts = () => {
+      const highlightRow = buildRowHighlighter();
+      const highlightPerformancePoint = renderPerformanceChart(highlightRow);
+      const highlightCagrPoint = renderCagrComparisonChart(highlightRow);
+      wireCacheRowClicks([highlightPerformancePoint, highlightCagrPoint]);
+    };
+
+    whenReady(() => waitForChartJs(initCharts));
+  })();
+</script>
+{{/if}}
+
+{{#if hasBacktestCache}}
+<style>
+  #backtest-cache-table th.cache-sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+</style>
+<script>
+  (() => {
+    const whenReady = (fn) => {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fn, { once: true });
+      } else {
+        fn();
+      }
+    };
+
+    const initCacheSorting = () => {
+      const table = document.getElementById('backtest-cache-table');
+      if (!table) {
+        return;
+      }
+      const tbody = table.querySelector('tbody');
+      const headers = Array.from(table.querySelectorAll('thead th[data-sort-key]'));
+      if (!tbody || !headers.length) {
+        return;
+      }
+
+      const datasetKey = (key) => key.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
+
+      const getCellForColumn = (row, targetIndex) => {
+        const cells = Array.from(row.cells);
+        let cursor = 0;
+        for (const cell of cells) {
+          const span = Number(cell.colSpan) || 1;
+          const start = cursor;
+          cursor += span;
+          if (targetIndex >= start && targetIndex < cursor) {
+            return cell;
+          }
+        }
+        return null;
+      };
+
+      const parseValue = (raw, type) => {
+        if (raw === undefined || raw === null) {
+          return null;
+        }
+        const normalized = String(raw).trim();
+        const lower = normalized.toLowerCase();
+        if (!normalized || lower === 'n/a' || lower === 'na') {
+          return null;
+        }
+
+        const cleanNumber = (value) => {
+          const cleaned = String(value).replace(/[^0-9.\-eE]/g, '');
+          if (!cleaned) {
+            return null;
+          }
+          const numeric = Number(cleaned);
+          return Number.isNaN(numeric) ? null : numeric;
+        };
+
+        switch (type) {
+          case 'number':
+            return cleanNumber(normalized);
+          case 'date': {
+            const ts = Date.parse(normalized);
+            return Number.isNaN(ts) ? null : ts;
+          }
+          case 'string':
+            return normalized.toLowerCase();
+          default: {
+            const numeric = cleanNumber(normalized);
+            if (numeric !== null) {
+              return numeric;
+            }
+            return normalized.toLowerCase();
+          }
+        }
+      };
+
+      const getValue = (row, key, type, headerIndex) => {
+        const dsKey = datasetKey(key);
+        const fromDataset = parseValue(row.dataset[dsKey], type);
+        if (fromDataset !== null) {
+          return fromDataset;
+        }
+        const cell = getCellForColumn(row, headerIndex);
+        if (!cell) {
+          return null;
+        }
+        const raw = cell.getAttribute('data-sort-value') ?? cell.textContent;
+        return parseValue(raw, type);
+      };
+
+      const defaultDirections = {
+        'sharpe': 'desc',
+        'calmar': 'desc',
+        'total-return': 'desc',
+        'cagr': 'desc',
+        'verify-cagr': 'desc',
+        'drawdown': 'asc',
+        'core-score': 'desc',
+        'stability-score': 'desc',
+        'final-score': 'desc',
+        'trades': 'desc',
+        'tickers': 'desc',
+        'date-range': 'desc',
+        'cached-at': 'desc'
+      };
+
+      let sortState = { key: null, direction: 'asc' };
+
+      const updateIndicators = () => {
+        headers.forEach(header => {
+          const isActive = header.dataset.sortKey === sortState.key;
+          header.classList.toggle('table-active', isActive);
+          header.setAttribute('aria-sort', isActive ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+        });
+      };
+
+      const getDefaultDirection = (key, type) => {
+        if (defaultDirections[key]) {
+          return defaultDirections[key];
+        }
+        if (type === 'string' || type === 'auto') {
+          return 'asc';
+        }
+        return 'desc';
+      };
+
+      const sortRows = (key) => {
+        const header = headers.find(h => h.dataset.sortKey === key);
+        if (!header) {
+          return;
+        }
+
+        const headerIndex = headers.indexOf(header);
+        const type = header.dataset.sortType || 'auto';
+
+        if (sortState.key === key) {
+          sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = key;
+          sortState.direction = getDefaultDirection(key, type);
+        }
+
+        const rows = Array.from(tbody.querySelectorAll('tr')).map((row, index) => ({ row, index }));
+
+        rows.sort((a, b) => {
+          const aVal = getValue(a.row, key, type, headerIndex);
+          const bVal = getValue(b.row, key, type, headerIndex);
+
+          if (aVal === null && bVal === null) {
+            return a.index - b.index;
+          }
+          if (aVal === null) {
+            return 1;
+          }
+          if (bVal === null) {
+            return -1;
+          }
+
+          const bothNumbers = typeof aVal === 'number' && typeof bVal === 'number';
+          if (bothNumbers) {
+            return sortState.direction === 'asc' ? aVal - bVal : bVal - aVal;
+          }
+
+          const aStr = String(aVal);
+          const bStr = String(bVal);
+          const comparison = aStr.localeCompare(bStr, undefined, { numeric: true, sensitivity: 'base' });
+          return sortState.direction === 'asc' ? comparison : -comparison;
+        });
+
+        rows.forEach(({ row }) => tbody.appendChild(row));
+        updateIndicators();
+      };
+
+      headers.forEach(header => {
+        header.addEventListener('click', () => sortRows(header.dataset.sortKey));
+      });
+
+      updateIndicators();
+    };
+
+    whenReady(initCacheSorting);
+  })();
+</script>
+{{/if}}

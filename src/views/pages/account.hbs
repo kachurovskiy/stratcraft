@@ -1,0 +1,805 @@
+{{#with account}}
+<div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-4">
+    <div>
+        <h1 class="mb-1">Account {{name}}</h1>
+        <p class="text-muted mb-0">Strategies connected to accounts produce operations which open, adjust or close trades.</p>
+    </div>
+    <div class="d-flex flex-column flex-sm-row gap-2 mt-3 mt-md-0">
+        <a href="/strategies/create?accountId={{id}}{{#if strategyPrefillParams}}&params={{encodeURIComponent strategyPrefillParams}}{{/if}}"
+            class="btn btn-sm btn-primary"
+            title="Create a new ATR strategy for this account">
+            <i class="fas fa-diagram-project me-1"></i>
+            Add Strategy
+        </a>
+        <button type="button"
+            class="btn btn-sm btn-secondary"
+            data-account-id="{{id}}"
+            data-action="/accounts/{{id}}/restrictions"
+            data-current-tickers="{{#if excludedTickersInputValue}}{{encodeURIComponent excludedTickersInputValue}}{{/if}}"
+            onclick="return promptTickerRestrictions(this);">
+            {{#if excludedTickerCount}}
+            {{excludedTickerCount}} blocked ticker{{#if (ne excludedTickerCount 1)}}s{{/if}}
+            {{else}}
+            No blocked tickers
+            {{/if}}
+        </button>
+        <button type="button"
+            class="btn btn-sm btn-secondary"
+            data-account-id="{{id}}"
+            data-action="/accounts/{{id}}/keyword-restrictions"
+            data-current-keywords="{{#if excludedKeywordsInputValue}}{{encodeURIComponent excludedKeywordsInputValue}}{{/if}}"
+            onclick="return promptKeywordRestrictions(this);">
+            {{#if excludedKeywordCount}}
+            {{excludedKeywordCount}} blocked keyword{{#if (ne excludedKeywordCount 1)}}s{{/if}}
+            {{else}}
+            No blocked keywords
+            {{/if}}
+        </button>
+        <form method="POST" action="/accounts/{{id}}/delete"
+            onsubmit="return confirm('Delete this account? This cannot be undone.');" class="m-0">
+            {{> csrf-field}}
+            <button type="submit" class="btn btn-sm btn-danger">
+                <i class="fas fa-trash-alt me-1"></i>
+                Delete
+            </button>
+        </form>
+    </div>
+</div>
+
+<section class="mb-4">
+    <div class="card h-100">
+        <div class="card-header">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                <div>
+                    <h6 class="mb-0 text-uppercase small text-muted">Account State</h6>
+                    <div class="fw-semibold">{{name}}</div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="badge bg-light text-dark text-uppercase">{{provider}}</span>
+                    {{#if (eq environment 'live')}}
+                    <span class="badge bg-danger text-uppercase">Live</span>
+                    {{else}}
+                    <span class="badge bg-secondary text-uppercase">Paper</span>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" class="text-center">Cash</th>
+                            <th scope="col" class="text-center">Long Equity</th>
+                            <th scope="col" class="text-center">Short Exposure</th>
+                            <th scope="col" class="text-center">Liquidation Value</th>
+                            <th scope="col" class="text-center">Long Positions</th>
+                            <th scope="col" class="text-center">Short Positions</th>
+                            <th scope="col" class="text-center">Buy Orders</th>
+                            <th scope="col" class="text-center">Sell Orders</th>
+                            <th scope="col">Sync</th>
+                            <th scope="col">Added</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.cash)}}
+                                {{formatCurrency snapshot.cash}}
+                                {{#if snapshot.currency}}
+                                <span class="text-muted ms-1">{{snapshot.currency}}</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.longMarketValue)}}
+                                <span class="{{#if (gt snapshot.longMarketValue 0)}}text-success fw-semibold{{/if}}">
+                                    {{formatCurrency snapshot.longMarketValue}}
+                                </span>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.shortMarketValue)}}
+                                <span class="{{#if (lt snapshot.shortMarketValue 0)}}text-danger fw-semibold{{/if}}">
+                                    {{formatCurrency snapshot.shortMarketValue}}
+                                </span>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.liquidationValue)}}
+                                <span class="fw-bold">
+                                    {{formatCurrency snapshot.liquidationValue}}
+                                </span>
+                                {{#if snapshot.currency}}
+                                <span class="text-muted ms-1">{{snapshot.currency}}</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.openLongPositions)}}
+                                <a href="https://app.alpaca.markets/account/positions" target="_blank" rel="noopener"
+                                    class="badge bg-success text-decoration-none">
+                                    {{snapshot.openLongPositions}} long
+                                </a>
+                                {{else if (defined snapshot.openTrades)}}
+                                <a href="https://app.alpaca.markets/account/positions" target="_blank" rel="noopener"
+                                    class="badge bg-secondary text-decoration-none">
+                                    {{snapshot.openTrades}}
+                                </a>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.openShortPositions)}}
+                                <a href="https://app.alpaca.markets/account/positions" target="_blank" rel="noopener"
+                                    class="badge bg-danger text-decoration-none">
+                                    {{snapshot.openShortPositions}} short
+                                </a>
+                                {{else if (defined snapshot.openTrades)}}
+                                <a href="https://app.alpaca.markets/account/positions" target="_blank" rel="noopener"
+                                    class="badge bg-secondary text-decoration-none">
+                                    {{snapshot.openTrades}}
+                                </a>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.openBuyOrders)}}
+                                <a href="https://app.alpaca.markets/account/orders" target="_blank" rel="noopener"
+                                    class="badge bg-primary text-decoration-none">
+                                    {{snapshot.openBuyOrders}} buy
+                                </a>
+                                {{else if (defined snapshot.openOrders)}}
+                                <a href="https://app.alpaca.markets/account/orders" target="_blank" rel="noopener"
+                                    class="badge bg-warning text-dark text-decoration-none">
+                                    {{snapshot.openOrders}}
+                                </a>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                {{#if snapshot}}
+                                {{#if (defined snapshot.openSellOrders)}}
+                                <a href="https://app.alpaca.markets/account/orders" target="_blank" rel="noopener"
+                                    class="badge bg-warning text-dark text-decoration-none">
+                                    {{snapshot.openSellOrders}} sell
+                                </a>
+                                {{else if (defined snapshot.openOrders)}}
+                                <a href="https://app.alpaca.markets/account/orders" target="_blank" rel="noopener"
+                                    class="badge bg-warning text-dark text-decoration-none">
+                                    {{snapshot.openOrders}}
+                                </a>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                <div class="d-flex flex-column">
+                                    <span class="badge bg-{{snapshotBadge.variant}} align-self-start">{{snapshotBadge.label}}</span>
+                                    {{#if snapshot}}
+                                    <small class="text-muted">
+                                        {{#if snapshotMessage}}
+                                        {{snapshotMessage}}
+                                        {{else}}
+                                        {{#if snapshot.fetchedAt}}
+                                        Synced {{formatDateTimeShort snapshot.fetchedAt}}
+                                        {{/if}}
+                                        {{/if}}
+                                    </small>
+                                    {{else}}
+                                    <small class="text-muted">Not fetched yet</small>
+                                    {{/if}}
+                                </div>
+                            </td>
+                            <td>{{formatDateTimeShort createdAt}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+{{#if uncoveredPositions.length}}
+<section class="mb-4">
+    <div class="card h-100">
+        <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div>
+                <h2 class="h6 text-uppercase mb-1">Untracked Live Positions</h2>
+                <p class="text-muted small mb-0">Positions in this brokerage account that do not have an active {{siteName}} trade.</p>
+            </div>
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                {{#if uncoveredPositions.length}}
+                <form method="POST" action="/accounts/{{id}}/reconcile-trades" class="m-0">
+                    {{> csrf-field}}
+                    <button type="submit" class="btn btn-sm btn-warning">
+                        <i class="fas fa-sync-alt me-1"></i>
+                        Reconcile trades
+                    </button>
+                </form>
+                {{/if}}
+                <span class="badge bg-light text-dark text-uppercase">
+                    {{#if uncoveredPositions.length}}{{uncoveredPositions.length}}{{else}}0{{/if}} found
+                </span>
+            </div>
+        </div>
+        <div class="card-body">
+            {{#if uncoveredPositions.length}}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Ticker</th>
+                            <th scope="col" class="text-center">Side</th>
+                            <th scope="col" class="text-end">Quantity</th>
+                            <th scope="col" class="text-end">Avg Entry</th>
+                            <th scope="col" class="text-end">Market Value</th>
+                            <th scope="col" class="text-end">Unrealized PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#each uncoveredPositions}}
+                        <tr>
+                            <td class="fw-semibold">{{ticker}}</td>
+                            <td class="text-center">
+                                <span class="badge text-uppercase {{#if (eq side 'short')}}bg-danger{{else}}bg-success{{/if}}">
+                                    {{side}}
+                                </span>
+                            </td>
+                            <td class="text-end">
+                                {{#if quantity}}
+                                {{formatNumber quantity}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-end">
+                                {{#if (ne averageEntryPrice null)}}
+                                {{formatPrice averageEntryPrice}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-end">
+                                {{#if (ne marketValue null)}}
+                                {{formatCurrency marketValue}}
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-end">
+                                {{#if (ne unrealizedPnl null)}}
+                                <span class="fw-semibold {{#if (gt unrealizedPnl 0)}}text-success{{else}}{{#if (lt unrealizedPnl 0)}}text-danger{{/if}}{{/if}}">
+                                    {{formatCurrency unrealizedPnl}}
+                                </span>
+                                {{else}}
+                                <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                        </tr>
+                        {{/each}}
+                    </tbody>
+                </table>
+            </div>
+            {{else}}
+            <div class="text-muted small">
+                Every live position currently maps to an active {{siteName}} trade.
+            </div>
+            {{/if}}
+        </div>
+    </div>
+</section>
+{{/if}}
+
+<section class="mb-5">
+    <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
+        <div>
+            <h2 class="h5 mb-1">Connected Strategies</h2>
+            <p class="text-muted mb-0">Review totals for recent operations and live trades.</p>
+        </div>
+        <span class="badge bg-light text-dark text-uppercase">
+            {{#if strategies.length}}{{strategies.length}}{{else}}0{{/if}} linked
+        </span>
+    </div>
+    {{#if strategies.length}}
+    <div class="row g-3">
+        {{#each strategies}}
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-start gap-3">
+                    <div>
+                        <a href="{{detailHref}}" class="fw-semibold text-decoration-none">{{name}}</a>
+                        <div class="small text-muted text-uppercase">Strategy</div>
+                    </div>
+                    <span class="badge bg-secondary text-uppercase">{{status}}</span>
+                </div>
+                <div class="card-body d-flex flex-column flex-lg-row align-items-stretch gap-3 gap-lg-4">
+                    <div class="flex-fill">
+                        <div class="text-uppercase small text-muted">Operations (past {{@root.operationsWindowDays}} days)</div>
+                        <div class="d-flex justify-content-between align-items-end mt-1">
+                            <div>
+                                <div class="fs-3 fw-bold">{{operationsTotal}}</div>
+                                <div class="text-muted small">
+                                    {{#if operationsTotal}}
+                                    {{operationsTotal}} operation{{#if (ne operationsTotal 1)}}s{{/if}}
+                                    {{#if operationsPending}}
+                                    &middot; {{operationsPending}} pending
+                                    {{/if}}
+                                    {{else}}
+                                    No operations recorded in past {{@root.operationsWindowDays}} days
+                                    {{/if}}
+                                </div>
+                            </div>
+                            {{#if operationsHref}}
+                            <a href="{{operationsHref}}" class="btn btn-sm btn-primary">
+                                View operations
+                            </a>
+                            {{/if}}
+                        </div>
+                    </div>
+                    <div class="border-top d-lg-none"></div>
+                    <div class="d-none d-lg-block border-start align-self-stretch"></div>
+                    <div class="flex-fill pt-3 pt-lg-0 ps-lg-4">
+                        <div class="text-uppercase small text-muted">Live Trades</div>
+                        <div class="d-flex justify-content-between align-items-end mt-1">
+                            <div>
+                                <div class="fs-3 fw-bold">{{liveTradesTotal}}</div>
+                                <div class="text-muted small">
+                                    {{#if liveTradesTotal}}
+                                    {{liveTradesActive}} active
+                                    {{#if liveTradesPending}}
+                                    &middot; {{liveTradesPending}} pending
+                                    {{/if}}
+                                    {{else}}
+                                    No live trades tracked for this strategy
+                                    {{/if}}
+                                </div>
+                            </div>
+                            {{#if liveTradesHref}}
+                            <a href="{{liveTradesHref}}" class="btn btn-sm btn-secondary">
+                                View live trades
+                            </a>
+                            {{/if}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{/each}}
+    </div>
+    {{else}}
+    <div class="alert alert-light border">
+        <i class="fas fa-info-circle me-2"></i>
+        No strategies are connected to this account yet.
+    </div>
+    {{/if}}
+</section>
+
+<section class="mb-4" id="accountPortfolioHistorySection">
+    <div class="card h-100">
+        <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div>
+                <h2 class="h5 mb-1">Portfolio PnL</h2>
+                <p class="text-muted small mb-0">Equity and profit/loss since this account was created.</p>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="accountHistorySummary" class="d-flex flex-wrap gap-4 text-muted small mb-3">
+                <span>Loading account performance&hellip;</span>
+            </div>
+            <div id="accountHistoryError" class="alert alert-danger {{#unless historyError}}d-none{{/unless}}" role="alert">
+                {{historyError}}
+            </div>
+            <div id="accountHistoryEmpty" class="text-center text-muted py-4 d-none">
+                Portfolio history isn&rsquo;t available for this account yet.
+            </div>
+            <div id="accountHistoryChartContainer" class="position-relative d-none" style="min-height: 320px;">
+                <canvas id="accountPnlChart" class="position-absolute top-0 start-0 w-100 h-100" data-account-id="{{id}}"></canvas>
+            </div>
+        </div>
+    </div>
+</section>
+
+<form id="tickerRestrictionsPromptForm" method="POST" action="/accounts/{{id}}/restrictions" class="d-none">
+    {{> csrf-field}}
+    <textarea name="excludedTickers"></textarea>
+</form>
+
+<form id="keywordRestrictionsPromptForm" method="POST" action="/accounts/{{id}}/keyword-restrictions" class="d-none">
+    {{> csrf-field}}
+    <textarea name="excludedKeywords"></textarea>
+</form>
+
+<script>
+    function promptTickerRestrictions(button) {
+        if (!button) {
+            return false;
+        }
+        const currentValue = decodeURIComponent(button.getAttribute('data-current-tickers') || '');
+        const nextValue = window.prompt('Enter space-separated tickers to block. Leave blank to clear the list.', currentValue);
+        if (nextValue === null) {
+            return false;
+        }
+        const form = document.getElementById('tickerRestrictionsPromptForm');
+        if (!form) {
+            return false;
+        }
+        const textarea = form.querySelector('textarea[name="excludedTickers"]');
+        if (textarea) {
+            textarea.value = nextValue.trim();
+        }
+        form.setAttribute('action', button.getAttribute('data-action'));
+        form.submit();
+        return false;
+    }
+
+    function promptKeywordRestrictions(button) {
+        if (!button) {
+            return false;
+        }
+        const currentValue = decodeURIComponent(button.getAttribute('data-current-keywords') || '');
+        const nextValue = window.prompt(
+            'Enter space-separated keywords to block (matched against ticker symbols or names). Leave blank to clear the list.',
+            currentValue
+        );
+        if (nextValue === null) {
+            return false;
+        }
+        const form = document.getElementById('keywordRestrictionsPromptForm');
+        if (!form) {
+            return false;
+        }
+        const textarea = form.querySelector('textarea[name="excludedKeywords"]');
+        if (textarea) {
+            textarea.value = nextValue.trim();
+        }
+        form.setAttribute('action', button.getAttribute('data-action'));
+        form.submit();
+        return false;
+    }
+
+    const accountHistoryData = {{{ json history }}} || null;
+    const accountHistoryError = {{{ json historyError }}} || null;
+
+    function initAccountHistoryChart() {
+        if (typeof Chart === 'undefined') {
+            return;
+        }
+        const chartCanvas = document.getElementById('accountPnlChart');
+        if (!chartCanvas) {
+            return;
+        }
+        const chartContainer = document.getElementById('accountHistoryChartContainer');
+        const summaryElement = document.getElementById('accountHistorySummary');
+        const errorElement = document.getElementById('accountHistoryError');
+        const emptyElement = document.getElementById('accountHistoryEmpty');
+
+        let accountHistoryChart = null;
+        let activeCurrency = accountHistoryData && accountHistoryData.currency ? accountHistoryData.currency : 'USD';
+
+        function setError(message) {
+            if (!errorElement) {
+                return;
+            }
+            if (message) {
+                errorElement.textContent = message;
+                errorElement.classList.remove('d-none');
+            } else {
+                errorElement.textContent = '';
+                errorElement.classList.add('d-none');
+            }
+        }
+
+        function toggleEmptyState(isEmpty) {
+            if (emptyElement) {
+                emptyElement.classList.toggle('d-none', !isEmpty);
+            }
+            if (chartContainer) {
+                chartContainer.classList.toggle('d-none', isEmpty);
+            }
+        }
+
+        function destroyChart() {
+            if (accountHistoryChart) {
+                accountHistoryChart.destroy();
+                accountHistoryChart = null;
+            }
+        }
+
+        function setSummaryUnavailable() {
+            if (summaryElement) {
+                summaryElement.innerHTML = '';
+            }
+        }
+
+        function getCurrencyFormatter() {
+            const currency = activeCurrency || 'USD';
+            return new Intl.NumberFormat(undefined, {
+                style: 'currency',
+                currency,
+                maximumFractionDigits: 2
+            });
+        }
+
+        function formatCurrencyValue(value) {
+            const numericValue = Number(value);
+            const formatter = getCurrencyFormatter();
+            if (!Number.isFinite(numericValue)) {
+                return formatter.format(0);
+            }
+            return formatter.format(numericValue);
+        }
+
+        function formatPercentValue(value) {
+            if (!Number.isFinite(value)) {
+                return '—';
+            }
+            return new Intl.NumberFormat(undefined, {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+        }
+
+        function getIsoDateFromTimestamp(timestamp) {
+            const date = new Date(Number(timestamp));
+            if (Number.isNaN(date.getTime())) {
+                return null;
+            }
+            return date.toISOString().slice(0, 10);
+        }
+
+        function formatLabelDate(timestamp) {
+            const isoDate = getIsoDateFromTimestamp(timestamp);
+            return isoDate ?? '';
+        }
+
+        function formatFullDate(timestamp) {
+            const isoDate = getIsoDateFromTimestamp(timestamp);
+            return isoDate ?? '—';
+        }
+        function renderSummary(points) {
+            if (!summaryElement) {
+                return;
+            }
+            if (!points || points.length === 0) {
+                setSummaryUnavailable();
+                return;
+            }
+            const firstPoint = points[0];
+            const lastPoint = points[points.length - 1];
+            const latestPnl = Number(lastPoint.profitLoss ?? 0);
+            const startingEquity = typeof firstPoint.equity === 'number' ? firstPoint.equity : lastPoint.equity ?? 0;
+            const endingEquity = typeof lastPoint.equity === 'number' ? lastPoint.equity : startingEquity;
+            const equityDelta = endingEquity - startingEquity;
+            const pnlPercent = typeof lastPoint.profitLossPct === 'number'
+                ? lastPoint.profitLossPct
+                : (startingEquity !== 0 ? equityDelta / startingEquity : null);
+            const lastDate = formatFullDate(lastPoint.timestamp);
+            const pnlClass = latestPnl >= 0 ? 'text-success' : 'text-danger';
+            const pnlPctClass = pnlPercent !== null && pnlPercent >= 0 ? 'text-success' : 'text-danger';
+
+            summaryElement.innerHTML = [
+                `<div>
+                    <div class="text-uppercase text-muted small">Net PnL</div>
+                    <div class="fw-semibold ${pnlClass}">${formatCurrencyValue(latestPnl)}</div>
+                </div>`,
+                `<div>
+                    <div class="text-uppercase text-muted small">PnL %</div>
+                    <div class="fw-semibold ${pnlPercent === null ? '' : pnlPctClass}">${pnlPercent === null ? '—' : formatPercentValue(pnlPercent)}</div>
+                </div>`,
+                `<div>
+                    <div class="text-uppercase text-muted small">Equity Now</div>
+                    <div class="fw-semibold">${formatCurrencyValue(endingEquity)}</div>
+                </div>`,
+                `<div>
+                    <div class="text-uppercase text-muted small">Last Update</div>
+                    <div class="fw-semibold">${lastDate}</div>
+                </div>`
+            ].join('');
+        }
+
+        function renderChart(points) {
+            if (!chartCanvas) {
+                return;
+            }
+            if (!points || points.length === 0) {
+                destroyChart();
+                return;
+            }
+            const labels = points.map((point) => formatLabelDate(point.timestamp));
+            const pnlValues = points.map((point) => (typeof point.profitLoss === 'number' ? point.profitLoss : null));
+            const equityValues = points.map((point) => (typeof point.equity === 'number' ? point.equity : null));
+
+            if (accountHistoryChart) {
+                accountHistoryChart.data.labels = labels;
+                accountHistoryChart.data.datasets[0].data = pnlValues;
+                accountHistoryChart.data.datasets[1].data = equityValues;
+                accountHistoryChart.update();
+                return;
+            }
+
+            const ctx = chartCanvas.getContext('2d');
+            accountHistoryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Profit / Loss',
+                            data: pnlValues,
+                            borderColor: 'rgba(13, 110, 253, 0.9)',
+                            backgroundColor: 'rgba(13, 110, 253, 0.15)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            spanGaps: true,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Equity',
+                            data: equityValues,
+                            borderColor: 'rgba(32, 201, 151, 0.85)',
+                            backgroundColor: 'rgba(32, 201, 151, 0.05)',
+                            borderWidth: 2,
+                            borderDash: [4, 4],
+                            tension: 0.3,
+                            spanGaps: true,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            ticks: {
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Profit / Loss'
+                            },
+                            ticks: {
+                                callback: (value) => formatCurrencyValue(value)
+                            }
+                        },
+                        y1: {
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Equity'
+                            },
+                            ticks: {
+                                callback: (value) => formatCurrencyValue(value)
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const label = context.dataset.label || '';
+                                    const formatted = formatCurrencyValue(context.parsed.y);
+                                    return `${label}: ${formatted}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderHistory(data) {
+            const points = data && Array.isArray(data.points) ? data.points : [];
+            if (!points.length) {
+                destroyChart();
+                toggleEmptyState(true);
+                setSummaryUnavailable();
+                setError('');
+                return;
+            }
+            activeCurrency = data && data.currency ? data.currency : 'USD';
+            renderChart(points);
+            renderSummary(points);
+            toggleEmptyState(false);
+            setError('');
+        }
+
+        if (accountHistoryError) {
+            destroyChart();
+            toggleEmptyState(true);
+            setSummaryUnavailable();
+            setError(accountHistoryError);
+            return;
+        }
+
+        renderHistory(accountHistoryData);
+    }
+
+    (function bootstrapAccountHistory() {
+        const MAX_ATTEMPTS = 10;
+        let attempts = 0;
+
+        function start() {
+            waitForChart();
+        }
+
+        function waitForChart() {
+            if (typeof Chart === 'undefined') {
+                attempts += 1;
+                if (attempts <= MAX_ATTEMPTS) {
+                    setTimeout(waitForChart, 100);
+                }
+                return;
+            }
+            initAccountHistoryChart();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', start);
+        } else {
+            start();
+        }
+    })();
+</script>
+
+{{/with}}

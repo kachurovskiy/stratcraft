@@ -1,0 +1,989 @@
+<style>
+.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.sortable:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.sortable i {
+    opacity: 0.7;
+}
+
+.sortable:hover i {
+    opacity: 1;
+}
+
+.analytics-chart-container {
+    min-height: 320px;
+}
+
+.analytics-chart-container.analytics-chart-tall {
+    min-height: 520px;
+}
+
+.analytics-chart-subtitle {
+    font-size: 0.85rem;
+}
+</style>
+
+<div class="d-flex flex-column flex-lg-row align-items-lg-center gap-3 mb-3">
+    <div class="flex-grow-1">
+        <h1 class="h2 mb-1">Tickers</h1>
+        <p class="text-muted mb-0">
+            {{#if pagination.total}}
+                Showing {{pagination.total}} ticker{{#if (ne pagination.total 1)}}s{{/if}}
+            {{else}}
+                No tickers available yet
+            {{/if}}
+            {{#if zeroCandlesCount}}
+                &middot; {{zeroCandlesCount}} without candles ({{zeroCandlesEasyToBorrowCount}} easy to borrow, {{zeroCandlesTradableCount}} tradable, {{zeroCandlesNotTradableCount}} not)
+            {{/if}}
+            {{#if validationTickersCount}}
+                &middot; {{validationTickersCount}} validation
+            {{/if}}
+        </p>
+    </div>
+    <form method="GET" action="/tickers" id="tickerSearchForm" class="d-flex flex-row gap-3 align-items-end">
+        <input type="text" id="tickerSearchInput" name="search" value="{{search}}" placeholder="Search tickers..." class="form-control" style="width: 150px;">
+        <select name="sort" class="form-select">
+            <option value="volumeUsd" {{#if (eq sort 'volumeUsd')}}selected{{/if}}>Sort by Volume (USD)</option>
+            <option value="symbol" {{#if (eq sort 'symbol')}}selected{{/if}}>Sort by Symbol</option>
+            <option value="maxFluctuationRatio" {{#if (eq sort 'maxFluctuationRatio')}}selected{{/if}}>Sort by Max Fluctuation</option>
+            <option value="candleCount" {{#if (eq sort 'candleCount')}}selected{{/if}}>Sort by Candle Count</option>
+            <option value="tradeCount" {{#if (eq sort 'tradeCount')}}selected{{/if}}>Sort by Trade Count</option>
+            <option value="lastCandleDate" {{#if (eq sort 'lastCandleDate')}}selected{{/if}}>Sort by Last Candle Date</option>
+        </select>
+        <button type="submit" class="btn btn-primary" style="min-width: 120px;">
+            <i class="fas fa-search me-1"></i>
+            Search
+        </button>
+    </form>
+</div>
+
+{{#if tickerAnalytics.hasData}}
+<div class="row g-4 mb-4">
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="fw-semibold">Candle Count Distribution</div>
+                <div class="text-muted analytics-chart-subtitle">Histogram of available daily candles per ticker.</div>
+            </div>
+            <div class="card-body">
+                <div id="candleCountHistogram" class="analytics-chart-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="fw-semibold">First vs Latest Candle Timing</div>
+                <div class="text-muted analytics-chart-subtitle">Earliest coverage vs most recent candles.</div>
+            </div>
+            <div class="card-body">
+                <div id="coverageTimelineChart" class="analytics-chart-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="fw-semibold">Tradable % by Log Price</div>
+                <div class="text-muted analytics-chart-subtitle">Percentage of tickers tradable within each log-scaled price band.</div>
+            </div>
+            <div class="card-body">
+                <div id="tradableLogPriceChart" class="analytics-chart-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="fw-semibold">Tradable % by Volume</div>
+                <div class="text-muted analytics-chart-subtitle">Percentage of tickers tradable within each log-scaled USD volume band.</div>
+            </div>
+            <div class="card-body">
+                <div id="tradableVolumeChart" class="analytics-chart-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="fw-semibold">Easy to Borrow % by Log Price</div>
+                <div class="text-muted analytics-chart-subtitle">Percentage of easy-to-borrow tickers within each log-scaled price band.</div>
+            </div>
+            <div class="card-body">
+                <div id="easyBorrowLogPriceChart" class="analytics-chart-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <div class="fw-semibold">Easy to Borrow % by Volume</div>
+                <div class="text-muted analytics-chart-subtitle">Percentage of easy-to-borrow tickers within each log-scaled USD volume band.</div>
+            </div>
+            <div class="card-body">
+                <div id="easyBorrowVolumeChart" class="analytics-chart-container"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="fw-semibold">Latest Price vs USD Volume</div>
+                <div class="text-muted analytics-chart-subtitle">Scatterplot of latest close price compared to USD volume.</div>
+            </div>
+            <div class="card-body">
+                <div id="latestPriceVolumeScatter" class="analytics-chart-container analytics-chart-tall"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{{/if}}
+
+{{#if nameWordStats.length}}
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="fw-semibold">Common Name Words</div>
+        <div class="text-muted analytics-chart-subtitle">
+            Most frequent words found in ticker names
+            {{#if nameWordTickerCount}}
+                &middot; Based on {{nameWordTickerCount}} ticker{{#if (ne nameWordTickerCount 1)}}s{{/if}} with a name
+            {{/if}}
+            &middot; Click a bar to search
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="commonNameWordsChart" class="analytics-chart-container"></div>
+    </div>
+</div>
+{{/if}}
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="sortable" data-sort="symbol">
+                            Symbol
+                            {{#if (eq sort 'symbol')}}
+                                <i class="fas fa-sort-{{#if (eq sortDirection 'asc')}}up{{else}}down{{/if}} ms-1"></i>
+                            {{else}}
+                                <i class="fas fa-sort ms-1 text-muted"></i>
+                            {{/if}}
+                        </th>
+                        <th>
+                            Scope
+                        </th>
+                        <th>
+                            Asset Type
+                        </th>
+                        <th>
+                            Expense Ratio
+                        </th>
+                        <th class="sortable" data-sort="volumeUsd">
+                            Volume (USD)
+                            {{#if (eq sort 'volumeUsd')}}
+                                <i class="fas fa-sort-{{#if (eq sortDirection 'asc')}}up{{else}}down{{/if}} ms-1"></i>
+                            {{else}}
+                                <i class="fas fa-sort ms-1 text-muted"></i>
+                            {{/if}}
+                        </th>
+                        <th class="sortable" data-sort="maxFluctuationRatio">
+                            Max Fluctuation
+                            {{#if (eq sort 'maxFluctuationRatio')}}
+                                <i class="fas fa-sort-{{#if (eq sortDirection 'asc')}}up{{else}}down{{/if}} ms-1"></i>
+                            {{else}}
+                                <i class="fas fa-sort ms-1 text-muted"></i>
+                            {{/if}}
+                        </th>
+                        <th class="sortable" data-sort="candleCount">
+                            Daily Candles
+                            {{#if (eq sort 'candleCount')}}
+                                <i class="fas fa-sort-{{#if (eq sortDirection 'asc')}}up{{else}}down{{/if}} ms-1"></i>
+                            {{else}}
+                                <i class="fas fa-sort ms-1 text-muted"></i>
+                            {{/if}}
+                        </th>
+                        <th class="sortable" data-sort="tradeCount">
+                            Trades
+                            {{#if (eq sort 'tradeCount')}}
+                                <i class="fas fa-sort-{{#if (eq sortDirection 'asc')}}up{{else}}down{{/if}} ms-1"></i>
+                            {{else}}
+                                <i class="fas fa-sort ms-1 text-muted"></i>
+                            {{/if}}
+                        </th>
+                        <th class="sortable" data-sort="lastCandleDate">
+                            Last Candle Date
+                            {{#if (eq sort 'lastCandleDate')}}
+                                <i class="fas fa-sort-{{#if (eq sortDirection 'asc')}}up{{else}}down{{/if}} ms-1"></i>
+                            {{else}}
+                                <i class="fas fa-sort ms-1 text-muted"></i>
+                            {{/if}}
+                        </th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#each tickers}}
+                        <tr>
+                            <td>
+                                <a href="/tickers/{{symbol}}" class="fw-bold text-decoration-none">{{symbol}}</a>
+                            </td>
+                            <td>
+                                {{#if training}}
+                                    <span class="badge bg-success">Training</span>
+                                {{else}}
+                                    <span class="badge bg-danger">Validation</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                {{#if (and assetType (lookup ../assetTypeLabels assetType))}}
+                                    {{lookup ../assetTypeLabels assetType}}
+                                {{else}}
+                                    <span class="text-muted">Unknown</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                {{#if expenseRatio}}
+                                    {{formatRateAsPercent expenseRatio}}
+                                {{else}}
+                                    <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                {{#if volumeUsd}}
+                                    {{formatCurrency volumeUsd}}
+                                {{else}}
+                                    <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                {{#if maxFluctuationRatio}}
+                                    {{formatRateAsPercent maxFluctuationRatio}}
+                                {{else}}
+                                    <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td>{{candleCount}}</td>
+                            <td>
+                                {{#if tradeCount}}
+                                    <span class="badge bg-success">{{tradeCount}}</span>
+                                {{else}}
+                                    <span class="text-muted">0</span>
+                                {{/if}}
+                            </td>
+                            <td>
+                                {{#if lastCandleDate}}
+                                    {{formatDate lastCandleDate}}
+                                {{else}}
+                                    <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="/tickers/{{symbol}}" class="btn btn-outline-primary">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <a href="https://www.tradingview.com/chart/?symbol={{symbol}}" target="_blank" class="btn btn-outline-secondary">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                    {{#if (eq user.role 'admin')}}
+                                        <button type="button" class="btn btn-outline-danger" onclick="deleteTicker('{{symbol}}')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    {{/if}}
+                                </div>
+                            </td>
+                        </tr>
+                    {{else}}
+                        <tr>
+                            <td colspan="10" class="text-center text-muted py-4">No tickers found</td>
+                        </tr>
+                    {{/each}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer d-flex flex-column flex-lg-row gap-2 align-items-lg-center justify-content-between">
+        <div class="text-muted small">
+            {{#if pagination.total}}
+                Showing {{pagination.from}}&ndash;{{pagination.to}} of {{pagination.total}} tickers
+            {{else}}
+                No tickers available
+            {{/if}}
+        </div>
+        {{#if pagination.shouldShowControls}}
+            <nav aria-label="Ticker pagination">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item {{#unless pagination.hasPrev}}disabled{{/unless}}">
+                        <button type="button" class="page-link" aria-label="First page" onclick="goToPage(1)" {{#unless pagination.hasPrev}}disabled{{/unless}}>
+                            <i class="fas fa-angle-double-left"></i>
+                        </button>
+                    </li>
+                    <li class="page-item {{#unless pagination.hasPrev}}disabled{{/unless}}">
+                        <button type="button" class="page-link" aria-label="Previous page" {{#if pagination.prevPage}}onclick="goToPage({{pagination.prevPage}})"{{/if}} {{#unless pagination.hasPrev}}disabled{{/unless}}>
+                            <i class="fas fa-angle-left"></i>
+                        </button>
+                    </li>
+                    {{#each pagination.pageNumbers}}
+                        <li class="page-item {{#if (eq this ../pagination.page)}}active{{/if}}">
+                            <button type="button" class="page-link" onclick="goToPage({{this}})" {{#if (eq this ../pagination.page)}}aria-current="page"{{/if}}>
+                                {{this}}
+                            </button>
+                        </li>
+                    {{/each}}
+                    <li class="page-item {{#unless pagination.hasNext}}disabled{{/unless}}">
+                        <button type="button" class="page-link" aria-label="Next page" {{#if pagination.nextPage}}onclick="goToPage({{pagination.nextPage}})"{{/if}} {{#unless pagination.hasNext}}disabled{{/unless}}>
+                            <i class="fas fa-angle-right"></i>
+                        </button>
+                    </li>
+                    <li class="page-item {{#unless pagination.hasNext}}disabled{{/unless}}">
+                        <button type="button" class="page-link" aria-label="Last page" onclick="goToPage({{pagination.totalPages}})" {{#unless pagination.hasNext}}disabled{{/unless}}>
+                            <i class="fas fa-angle-double-right"></i>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+        {{/if}}
+    </div>
+</div>
+
+<script>
+const tickerAnalyticsData = {{{json tickerAnalytics}}};
+const nameWordStatsData = {{{json nameWordStats}}};
+const chartEmptyStateMessage = 'Not enough data to build this chart yet.';
+const defaultPlotlyLayout = {
+    margin: { l: 50, r: 20, t: 30, b: 45 },
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    font: { size: 12 }
+};
+const defaultPlotlyConfig = { displayModeBar: false, responsive: true };
+const priceVolumeCategoryStyles = {
+    easyToBorrow: { label: 'Easy to borrow', color: '#198754' },
+    shortable: { label: 'Shortable', color: '#fd7e14' },
+    tradable: { label: 'Tradable only', color: '#0d6efd' },
+    notTradable: { label: 'Not tradable', color: '#6c757d' }
+};
+const priceVolumeCategoryOrder = ['easyToBorrow', 'shortable', 'tradable', 'notTradable'];
+const tradableStatusAxisLabels = ['Not tradable', 'Tradable'];
+const tradableStatusStyles = {
+    tradable: { label: 'Tradable', color: '#198754' },
+    notTradable: { label: 'Not tradable', color: '#dc3545' }
+};
+
+function toYesNo(value) {
+    return value ? 'Yes' : 'No';
+}
+
+function getPriceVolumePointCategory(point) {
+    const isTradable = Boolean(point?.tradable);
+    const isShortable = Boolean(point?.shortable);
+    const isEasyToBorrow = Boolean(point?.easyToBorrow);
+
+    if (!isTradable) {
+        return 'notTradable';
+    }
+    if (isEasyToBorrow) {
+        return 'easyToBorrow';
+    }
+    if (isShortable) {
+        return 'shortable';
+    }
+    return 'tradable';
+}
+
+function initializeSortableHeaders() {
+    const sortableHeaders = document.querySelectorAll('.sortable');
+
+    sortableHeaders.forEach(header => {
+        header.addEventListener('click', function() {
+            const sortField = this.dataset.sort;
+            const currentSort = '{{sort}}';
+            const currentSortDirection = '{{sortDirection}}';
+            const search = '{{search}}';
+
+            let newSortDirection = 'desc';
+            if (currentSort === sortField) {
+                newSortDirection = currentSortDirection === 'desc' ? 'asc' : 'desc';
+            }
+
+            const url = new URL(window.location);
+            url.searchParams.set('sort', sortField);
+            url.searchParams.set('sortDirection', newSortDirection);
+            if (search) {
+                url.searchParams.set('search', search);
+            } else {
+                url.searchParams.delete('search');
+            }
+            url.searchParams.set('page', '1');
+
+            window.location.href = url.toString();
+        });
+    });
+}
+
+function showChartEmptyState(elementId, message = chartEmptyStateMessage) {
+    const target = document.getElementById(elementId);
+    if (!target) {
+        return;
+    }
+    target.innerHTML = `<div class="text-muted text-center py-5 small">${message}</div>`;
+}
+
+function getHistogramBinCount(totalPoints) {
+    if (!totalPoints || totalPoints <= 0) {
+        return 10;
+    }
+    return Math.min(30, Math.max(5, Math.ceil(Math.sqrt(totalPoints))));
+}
+
+function getPositiveNumber(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function formatCompactNumber(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+        return '0';
+    }
+    const units = [
+        { limit: 1e12, suffix: 'T' },
+        { limit: 1e9, suffix: 'B' },
+        { limit: 1e6, suffix: 'M' },
+        { limit: 1e3, suffix: 'K' }
+    ];
+    for (const unit of units) {
+        if (value >= unit.limit) {
+            const scaled = value / unit.limit;
+            const decimals = scaled >= 10 ? 0 : 1;
+            return `${scaled.toFixed(decimals)}${unit.suffix}`;
+        }
+    }
+    if (value >= 1) {
+        return value >= 100 ? value.toFixed(0) : value.toFixed(1);
+    }
+    return value >= 0.1 ? value.toFixed(2) : value.toPrecision(2);
+}
+
+function formatLogRangeLabel(minValue, maxValue) {
+    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+        return 'N/A';
+    }
+    return `$${formatCompactNumber(minValue)}-$${formatCompactNumber(maxValue)}`;
+}
+
+function getLatestPriceVolumePoints() {
+    return Array.isArray(tickerAnalyticsData?.latestPriceVolumePoints)
+        ? tickerAnalyticsData.latestPriceVolumePoints
+        : [];
+}
+
+function buildFlagPercentageBuckets(points, valueAccessor, flagAccessor, options = {}) {
+    if (typeof valueAccessor !== 'function' || typeof flagAccessor !== 'function') {
+        return null;
+    }
+    const maxBuckets = Number.isFinite(options.maxBuckets) && options.maxBuckets > 0
+        ? Math.floor(options.maxBuckets)
+        : 24;
+
+    const processedPoints = points
+        .map(point => {
+            const metricValue = getPositiveNumber(valueAccessor(point));
+            if (metricValue === null) {
+                return null;
+            }
+            return {
+                metricValue,
+                matchesFlag: Boolean(flagAccessor(point))
+            };
+        })
+        .filter(item => item !== null);
+
+    if (!processedPoints.length) {
+        return null;
+    }
+
+    const values = processedPoints.map(item => item.metricValue);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+
+    if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue <= 0 || maxValue <= 0) {
+        return null;
+    }
+
+    const minExponent = Math.floor(Math.log10(minValue));
+    const maxExponentRaw = Math.ceil(Math.log10(maxValue));
+    const maxExponent = Math.max(maxExponentRaw, minExponent + 1);
+    const exponentSpan = maxExponent - minExponent;
+    const bucketWidth = Math.max(1, Math.ceil(exponentSpan / maxBuckets));
+    const bucketCount = Math.max(1, Math.ceil(exponentSpan / bucketWidth));
+
+    const buckets = Array.from({ length: bucketCount }, (_, idx) => {
+        const startExp = minExponent + idx * bucketWidth;
+        const endExp = idx === bucketCount - 1 ? maxExponent : startExp + bucketWidth;
+        return {
+            startExp,
+            endExp,
+            minValue: 10 ** startExp,
+            maxValue: 10 ** endExp,
+            matches: 0,
+            total: 0
+        };
+    });
+
+    processedPoints.forEach(item => {
+        const logValue = Math.log10(item.metricValue);
+        let bucketIndex = Math.floor((logValue - minExponent) / bucketWidth);
+        if (Number.isNaN(bucketIndex) || bucketIndex < 0) {
+            bucketIndex = 0;
+        } else if (bucketIndex >= buckets.length) {
+            bucketIndex = buckets.length - 1;
+        }
+        const bucket = buckets[bucketIndex];
+        bucket.total += 1;
+        if (item.matchesFlag) {
+            bucket.matches += 1;
+        }
+    });
+
+    return buckets
+        .filter(bucket => bucket.total > 0)
+        .map(bucket => {
+            const percent = (bucket.matches / bucket.total) * 100;
+            return {
+                label: formatLogRangeLabel(bucket.minValue, bucket.maxValue),
+                percent: Number.isFinite(percent) ? percent : 0,
+                matchCount: bucket.matches,
+                totalCount: bucket.total
+            };
+        });
+}
+
+function renderCandleCountHistogram() {
+    const targetId = 'candleCountHistogram';
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    const values = Array.isArray(tickerAnalyticsData?.candleCounts) ? tickerAnalyticsData.candleCounts : [];
+    if (!values.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+    const trace = {
+        type: 'histogram',
+        x: values,
+        nbinsx: getHistogramBinCount(values.length),
+        marker: { color: '#6f42c1' },
+        opacity: 0.85
+    };
+    const layout = {
+        ...defaultPlotlyLayout,
+        xaxis: { title: 'Daily candles per ticker' },
+        yaxis: { title: 'Ticker count' },
+        bargap: 0.05
+    };
+    Plotly.react(targetId, [trace], layout, defaultPlotlyConfig);
+}
+
+function bucketDates(dateStrings) {
+    return dateStrings.reduce((acc, iso) => {
+        if (!iso) {
+            return acc;
+        }
+        const parsed = new Date(iso);
+        if (Number.isNaN(parsed.getTime())) {
+            return acc;
+        }
+        const label = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+    }, {});
+}
+
+function bucketToYears(bucketMap) {
+    return Object.entries(bucketMap).reduce((acc, [label, value]) => {
+        const year = label.slice(0, 4);
+        acc[year] = (acc[year] || 0) + Number(value);
+        return acc;
+    }, {});
+}
+
+function buildCoverageSeries(firstDates, lastDates) {
+    const firstBuckets = bucketDates(firstDates);
+    const lastBuckets = bucketDates(lastDates);
+
+    const monthLabels = Array.from(new Set([
+        ...Object.keys(firstBuckets),
+        ...Object.keys(lastBuckets)
+    ])).sort();
+
+    if (!monthLabels.length) {
+        return null;
+    }
+
+    let labels = monthLabels;
+    let firstValues = labels.map(label => firstBuckets[label] || 0);
+    let lastValues = labels.map(label => lastBuckets[label] || 0);
+    let granularity = 'month';
+
+    if (labels.length > 24) {
+        const firstYearBuckets = bucketToYears(firstBuckets);
+        const lastYearBuckets = bucketToYears(lastBuckets);
+        labels = Array.from(new Set([
+            ...Object.keys(firstYearBuckets),
+            ...Object.keys(lastYearBuckets)
+        ])).sort();
+        firstValues = labels.map(label => firstYearBuckets[label] || 0);
+        lastValues = labels.map(label => lastYearBuckets[label] || 0);
+        granularity = 'year';
+    }
+
+    return {
+        labels,
+        firstValues,
+        lastValues,
+        granularity
+    };
+}
+
+function renderCoverageTimeline() {
+    const targetId = 'coverageTimelineChart';
+    const target = document.getElementById(targetId);
+    if (!target) return;
+
+    const firstDates = Array.isArray(tickerAnalyticsData?.firstCandleDates) ? tickerAnalyticsData.firstCandleDates : [];
+    const lastDates = Array.isArray(tickerAnalyticsData?.lastCandleDates) ? tickerAnalyticsData.lastCandleDates : [];
+    const series = buildCoverageSeries(firstDates, lastDates);
+
+    if (!series) {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const traces = [];
+    if (series.firstValues.some(value => value > 0)) {
+        traces.push({
+            type: 'bar',
+            name: 'First candle',
+            x: series.labels,
+            y: series.firstValues,
+            marker: { color: '#0d6efd' }
+        });
+    }
+    if (series.lastValues.some(value => value > 0)) {
+        traces.push({
+            type: 'bar',
+            name: 'Latest candle',
+            x: series.labels,
+            y: series.lastValues,
+            marker: { color: '#6c757d' }
+        });
+    }
+
+    if (!traces.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const layout = {
+        ...defaultPlotlyLayout,
+        barmode: 'group',
+        xaxis: {
+            title: series.granularity === 'year' ? 'Year' : 'Year-Month',
+            automargin: true
+        },
+        yaxis: { title: 'Ticker count' }
+    };
+
+    Plotly.react(targetId, traces, layout, defaultPlotlyConfig);
+}
+
+function renderPriceVolumeScatter() {
+    const targetId = 'latestPriceVolumeScatter';
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    const points = getLatestPriceVolumePoints();
+    if (!points.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const groupedPoints = points.reduce((acc, point) => {
+        const category = getPriceVolumePointCategory(point);
+        acc[category] = acc[category] || [];
+        acc[category].push(point);
+        return acc;
+    }, {});
+
+    const scatterTraces = priceVolumeCategoryOrder
+        .filter(category => Array.isArray(groupedPoints[category]) && groupedPoints[category].length > 0)
+        .map(category => {
+            const categoryPoints = groupedPoints[category];
+            const style = priceVolumeCategoryStyles[category];
+            return {
+                type: 'scatter',
+                mode: 'markers',
+                name: style?.label || category,
+                x: categoryPoints.map(point => point.price),
+                y: categoryPoints.map(point => point.usdVolume),
+                text: categoryPoints.map(point => point.symbol),
+                customdata: categoryPoints.map(point => [
+                    toYesNo(Boolean(point.tradable)),
+                    toYesNo(Boolean(point.shortable)),
+                    toYesNo(Boolean(point.easyToBorrow))
+                ]),
+                marker: {
+                    size: 7,
+                    color: style?.color || '#d63384',
+                    opacity: 0.25
+                },
+                hovertemplate: '%{text}<br>Price: $%{x:.2f}<br>USD Volume: $%{y:,.0f}<br>Tradable: %{customdata[0]}<br>Shortable: %{customdata[1]}<br>Easy to borrow: %{customdata[2]}<extra></extra>'
+            };
+        });
+
+    if (!scatterTraces.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const layout = {
+        ...defaultPlotlyLayout,
+        xaxis: { title: 'Latest close price ($)', type: 'log' },
+        yaxis: { title: 'Latest USD volume', type: 'log' },
+        legend: {
+            orientation: 'h',
+            yanchor: 'bottom',
+            y: 1.02,
+            xanchor: 'left',
+            x: 0
+        }
+    };
+
+    Plotly.react(targetId, scatterTraces, layout, defaultPlotlyConfig);
+}
+
+function renderFlagPercentageChart({
+    targetId,
+    valueAccessor,
+    xAxisTitle,
+    yAxisTitle,
+    flagAccessor,
+    bucketOptions,
+    barColor = '#0d6efd',
+    hoverLabel = 'Selected'
+}) {
+    const target = document.getElementById(targetId);
+    if (!target) {
+        return;
+    }
+    if (typeof valueAccessor !== 'function' || typeof flagAccessor !== 'function') {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const points = getLatestPriceVolumePoints();
+    if (!points.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const buckets = buildFlagPercentageBuckets(points, valueAccessor, flagAccessor, bucketOptions || {});
+    if (!buckets || !buckets.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+
+    const trace = {
+        type: 'bar',
+        x: buckets.map(bucket => bucket.label),
+        y: buckets.map(bucket => bucket.percent),
+        text: buckets.map(bucket => `${bucket.percent.toFixed(1)}%`),
+        textposition: 'auto',
+        marker: { color: barColor, opacity: 0.85 },
+        customdata: buckets.map(bucket => [bucket.matchCount, bucket.totalCount]),
+        hovertemplate: `Range: %{x}<br>${hoverLabel}: %{customdata[0]} / %{customdata[1]} (%{y:.1f}%)<extra></extra>`
+    };
+
+    const layout = {
+        ...defaultPlotlyLayout,
+        xaxis: { title: xAxisTitle, tickangle: -25, automargin: true },
+        yaxis: { title: yAxisTitle || `${hoverLabel} percentage`, range: [0, 100], ticksuffix: '%' }
+    };
+
+    Plotly.react(targetId, [trace], layout, defaultPlotlyConfig);
+}
+
+function renderTradableLogPriceChart() {
+    renderFlagPercentageChart({
+        targetId: 'tradableLogPriceChart',
+        valueAccessor: point => point.price,
+        xAxisTitle: 'Latest close price range ($, log bands)',
+        yAxisTitle: 'Tradable percentage',
+        flagAccessor: point => point.tradable,
+        bucketOptions: { maxBuckets: 48 },
+        barColor: '#0d6efd',
+        hoverLabel: 'Tradable'
+    });
+}
+
+function renderTradableVolumeChart() {
+    renderFlagPercentageChart({
+        targetId: 'tradableVolumeChart',
+        valueAccessor: point => point.usdVolume,
+        xAxisTitle: 'Latest USD volume range (log bands)',
+        yAxisTitle: 'Tradable percentage',
+        flagAccessor: point => point.tradable,
+        barColor: '#0d6efd',
+        hoverLabel: 'Tradable'
+    });
+}
+
+function renderEasyBorrowLogPriceChart() {
+    renderFlagPercentageChart({
+        targetId: 'easyBorrowLogPriceChart',
+        valueAccessor: point => point.price,
+        xAxisTitle: 'Latest close price range ($, log bands)',
+        yAxisTitle: 'Easy to borrow percentage',
+        flagAccessor: point => point.easyToBorrow,
+        bucketOptions: { maxBuckets: 48 },
+        barColor: '#198754',
+        hoverLabel: 'Easy to borrow'
+    });
+}
+
+function renderEasyBorrowVolumeChart() {
+    renderFlagPercentageChart({
+        targetId: 'easyBorrowVolumeChart',
+        valueAccessor: point => point.usdVolume,
+        xAxisTitle: 'Latest USD volume range (log bands)',
+        yAxisTitle: 'Easy to borrow percentage',
+        flagAccessor: point => point.easyToBorrow,
+        barColor: '#198754',
+        hoverLabel: 'Easy to borrow'
+    });
+}
+
+function renderAnalyticsCharts() {
+    if (!tickerAnalyticsData || !tickerAnalyticsData.hasData) {
+        return;
+    }
+    if (typeof Plotly === 'undefined') {
+        console.warn('Plotly is not available, skipping analytics charts.');
+        return;
+    }
+
+    renderCandleCountHistogram();
+    renderCoverageTimeline();
+    renderTradableLogPriceChart();
+    renderTradableVolumeChart();
+    renderEasyBorrowLogPriceChart();
+    renderEasyBorrowVolumeChart();
+    renderPriceVolumeScatter();
+}
+
+function submitSearchWithWord(word) {
+    if (!word) {
+        return;
+    }
+    const searchForm = document.getElementById('tickerSearchForm');
+    const searchInput = document.getElementById('tickerSearchInput');
+    if (!searchForm || !searchInput) {
+        return;
+    }
+    searchInput.value = word;
+    if (typeof searchForm.requestSubmit === 'function') {
+        searchForm.requestSubmit();
+    } else {
+        searchForm.submit();
+    }
+}
+
+function renderNameWordChart() {
+    const targetId = 'commonNameWordsChart';
+    const target = document.getElementById(targetId);
+    if (!target) {
+        return;
+    }
+    const stats = Array.isArray(nameWordStatsData) ? nameWordStatsData : [];
+    if (!stats.length) {
+        showChartEmptyState(targetId);
+        return;
+    }
+    if (typeof Plotly === 'undefined') {
+        showChartEmptyState(targetId, 'Plotly is not available to render this chart.');
+        return;
+    }
+    const trace = {
+        type: 'bar',
+        x: stats.map(item => item.word),
+        y: stats.map(item => item.count),
+        text: stats.map(item => `${(item.percentage * 100).toFixed(1)}%`),
+        textposition: 'auto',
+        marker: { color: '#20c997', opacity: 0.85 },
+        hovertemplate: 'Word: %{x}<br>Tickers: %{y}<br>Share: %{text}<extra></extra>'
+    };
+    const layout = {
+        ...defaultPlotlyLayout,
+        xaxis: { title: 'Word', automargin: true },
+        yaxis: { title: 'Ticker count' }
+    };
+    Plotly.react(targetId, [trace], layout, defaultPlotlyConfig);
+    if (typeof target.on === 'function') {
+        target.on('plotly_click', event => {
+            const word = event?.points && event.points[0] ? event.points[0].x : null;
+            if (typeof word === 'string' && word) {
+                submitSearchWithWord(word);
+            }
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeSortableHeaders();
+    renderAnalyticsCharts();
+    renderNameWordChart();
+});
+
+function goToPage(pageNumber) {
+    const page = Number(pageNumber);
+    if (!Number.isFinite(page) || page < 1) {
+        return;
+    }
+
+    const url = new URL(window.location);
+    url.searchParams.set('page', page.toString());
+    window.location.href = url.toString();
+}
+
+async function deleteTicker(symbol) {
+    if (!confirm(`Are you sure you want to delete ticker ${symbol}? This will permanently delete all candle data, trades, and the ticker record.`)) {
+        return;
+    }
+
+    try {
+        const response = await (window.csrfFetch || fetch)(`/tickers/${symbol}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            window.location.href = '/tickers';
+        } else {
+            const result = await response.json();
+            alert(`Error: ${result.error || 'Failed to delete ticker'}`);
+        }
+    } catch (error) {
+        console.error('Error deleting ticker:', error);
+        alert('Error: Failed to delete ticker');
+    }
+}
+</script>

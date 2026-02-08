@@ -1,0 +1,88 @@
+<div class="container-sm">
+    <div class="card shadow-sm">
+        <div class="card-header bg-white">
+            <h1 class="h4 mb-0">Add Trading Account</h1>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="/accounts" class="needs-validation">
+                {{> csrf-field}}
+                <div class="mb-3">
+                    <label for="accountName" class="form-label">Account Name</label>
+                    <input type="text" class="form-control" id="accountName" name="name" placeholder="e.g. Alpaca Paper" value="{{form.name}}" required>
+                    <div class="form-text">Give this connection a friendly name so it is easy to recognize.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="accountExcludedTickers" class="form-label">Blocked Tickers (optional)</label>
+                    <textarea
+                        class="form-control"
+                        id="accountExcludedTickers"
+                        name="excludedTickers"
+                        rows="3"
+                        placeholder="TSLA, GME, AMC">{{~#if form.excludedTickers}}{{form.excludedTickers}}{{/if~}}</textarea>
+                    <div class="form-text">Enter comma or newline separated tickers that this account should never purchase.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="accountExcludedKeywords" class="form-label">Blocked Keywords (optional)</label>
+                    <textarea
+                        class="form-control"
+                        id="accountExcludedKeywords"
+                        name="excludedKeywords"
+                        rows="3"
+                        placeholder="leveraged, inverse, crypto">{{~#if form.excludedKeywords}}{{form.excludedKeywords}}{{/if~}}</textarea>
+                    <div class="form-text">Enter comma or newline separated keywords matched against ticker symbols or names.</div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="accountProvider" class="form-label">Provider</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="accountProvider"
+                                name="provider"
+                                value="{{#if form.provider}}{{form.provider}}{{else}}Alpaca{{/if}}"
+                                readonly>
+                            <div class="form-text">Alpaca paper or live accounts are supported at this time.</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="accountEnvironment" class="form-label">Environment</label>
+                            <select class="form-select" id="accountEnvironment" name="environment">
+                                <option value="paper" {{#if (eq form.environment 'paper')}}selected{{/if}}>Paper / Sandbox</option>
+                                <option value="live" {{#if (eq form.environment 'live')}}selected{{/if}}>Live Trading</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="apiKey" class="form-label">API Key</label>
+                            <input type="text" class="form-control" id="apiKey" name="apiKey" value="{{form.apiKey}}" autocomplete="off" required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="apiSecret" class="form-label">API Secret</label>
+                            <input type="password" class="form-control" id="apiSecret" name="apiSecret" autocomplete="new-password" required>
+                            <div class="form-text">We never display the secret after saving, so keep a copy handy.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a class="btn btn-outline-secondary" href="/dashboard">Cancel</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>
+                        Save Account
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

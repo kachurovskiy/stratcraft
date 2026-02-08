@@ -1,0 +1,162 @@
+{
+  "id": "buy_and_hold",
+  "name": "Buy and Hold",
+  "description": "A simple buy-and-hold strategy that buys a specified ticker on the first day and holds it until the end of the backtest period.",
+  "category": "Passive",
+  "author": "StratCraft",
+  "version": "1.0.0",
+  "parameters": [
+    {
+      "name": "initialCapital",
+      "type": "number",
+      "label": "Initial Capital",
+      "description": "Initial capital in USD",
+      "required": true,
+      "default": 100000,
+      "min": 1,
+      "max": 1000000000,
+      "step": 1000
+    },
+    {
+      "name": "tradeSizeRatio",
+      "type": "number",
+      "label": "Trade Size Ratio",
+      "description": "Percentage of portfolio to use for each trade (e.g., 0.002 = 0.2%)",
+      "required": true,
+      "default": 1,
+      "min": 1,
+      "max": 1,
+      "step": 0
+    },
+    {
+      "name": "minimumTradeSize",
+      "type": "number",
+      "label": "Minimum Trade Size ($)",
+      "description": "Minimum dollar value per trade. Orders smaller than this threshold are rounded up or skipped.",
+      "required": true,
+      "default": 50,
+      "min": 10,
+      "max": 1000,
+      "step": 10
+    },
+    {
+      "name": "sellFraction",
+      "type": "number",
+      "label": "Sell Fraction",
+      "description": "Fraction of the position to close when a sell signal is generated (0 = none, 1 = full position only)",
+      "required": true,
+      "default": 0,
+      "min": 0,
+      "max": 0,
+      "step": 1
+    },
+    {
+      "name": "allowShortSelling",
+      "type": "number",
+      "label": "Enable Short Selling",
+      "description": "Set to 1 to allow strategies to enter short positions on sell signals (0 = disabled).",
+      "required": true,
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "step": 1
+    },
+    {
+      "name": "stopLossRatio",
+      "type": "number",
+      "label": "Stop Loss %",
+      "description": "Stop loss percentage (e.g., 0.05 = 5%)",
+      "required": true,
+      "default": 1,
+      "min": 1,
+      "max": 1,
+      "step": 0
+    },
+    {
+      "name": "positionSizingMode",
+      "type": "number",
+      "label": "Position Sizing Mode",
+      "description": "0=fixed, 1=confidence, 2=volatility_target, 3=confidence_vol_target",
+      "required": true,
+      "default": 0,
+      "min": 0,
+      "max": 3,
+      "step": 1
+    },
+    {
+      "name": "volTargetAnnual",
+      "type": "number",
+      "label": "Target Annual Volatility",
+      "description": "Annualized volatility target (e.g., 0.12 = 12%). 0 disables targeting.",
+      "required": true,
+      "default": 0,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.01
+    },
+    {
+      "name": "volLookback",
+      "type": "number",
+      "label": "Volatility Lookback (days)",
+      "description": "Lookback window for realized volatility estimate",
+      "required": true,
+      "default": 20,
+      "min": 10,
+      "max": 120,
+      "step": 5
+    },
+    {
+      "name": "stopLossMode",
+      "type": "number",
+      "label": "Stop Loss Mode",
+      "description": "0=percent, 1=atr",
+      "required": true,
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "step": 1
+    },
+    {
+      "name": "atrPeriod",
+      "type": "number",
+      "label": "ATR Period",
+      "description": "ATR lookback period for ATR-based stops",
+      "required": true,
+      "default": 20,
+      "min": 5,
+      "max": 60,
+      "step": 1
+    },
+    {
+      "name": "atrMultiplier",
+      "type": "number",
+      "label": "ATR Multiplier",
+      "description": "Multiplier for ATR-based stop distance",
+      "required": true,
+      "default": 2.1,
+      "min": 0.5,
+      "max": 5,
+      "step": 0.1
+    },
+    {
+      "name": "maxHoldingDays",
+      "type": "number",
+      "label": "Maximum Holding Days",
+      "description": "Maximum number of days to hold a trade before forced closure",
+      "required": true,
+      "default": 36500,
+      "min": 36500,
+      "max": 36500,
+      "step": 0
+    },
+    {
+      "name": "ticker",
+      "type": "string",
+      "label": "Ticker Symbol",
+      "description": "The stock ticker symbol to buy and hold (e.g., AAPL, MSFT, SPY)",
+      "required": true,
+      "default": null
+    }
+  ],
+  "exampleUsage": "Enter the ticker symbol you want to buy and hold (e.g., SPY, AAPL, MSFT). The strategy will buy on the first day and hold until the end of the backtest period."
+}

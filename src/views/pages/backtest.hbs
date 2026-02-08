@@ -1,0 +1,2138 @@
+<div class="container-fluid">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+        <div>
+            <h2 class="mb-0">{{strategy.name}}</h2>
+            {{#if template.description}}
+            <p class="text-muted mt-1 mb-0">{{template.description}}</p>
+            {{/if}}
+        </div>
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center gap-3 w-100 justify-content-lg-end">
+            <a href="/strategies/{{strategy.id}}" class="btn btn-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i>
+                View Strategy
+            </a>
+            <a href="/templates/{{template.id}}" class="btn btn-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i>
+                View Template
+            </a>
+        </div>
+    </div>
+    <div class="row g-4 align-items-stretch">
+        <div class="col-12 col-lg-auto" style="max-width: 500px;">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Strategy Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Strategy Information -->
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Template</td>
+                                    <td class="text-end fw-bold">{{template.name}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Status</td>
+                                    <td class="text-end">
+                                        <span
+                                            class="badge bg-{{#if (eq strategy.status 'active')}}success{{else if (eq strategy.status 'inactive')}}secondary{{else}}warning{{/if}}">{{strategy.status}}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Ticker Universe</td>
+                                    <td class="text-end">
+                                        <span class="badge {{selectedBacktestScopeBadgeVariant}}">
+                                            {{selectedBacktestScopeLabel}}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Created</td>
+                                    <td class="text-end fw-bold">{{formatDate strategy.createdAt}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Last Updated</td>
+                                    <td class="text-end fw-bold">{{formatDate strategy.updatedAt}}</td>
+                                </tr>
+                                {{#if strategy.performance.backtestStartDate}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Backtest Start Date</td>
+                                    <td class="text-end fw-bold">{{formatDate strategy.performance.backtestStartDate}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Backtest End Date</td>
+                                    <td class="text-end fw-bold">
+                                        {{formatDate strategy.performance.backtestEndDate}}
+                                        {{#if strategy.performance.backtestCompletionReason}}
+                                            <br><small class="text-muted">({{strategy.performance.backtestCompletionReason}})</small>
+                                        {{/if}}
+                                    </td>
+                                </tr>
+                                {{/if}}
+                                {{#if strategy.performance}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Total Trades</td>
+                                    <td class="text-end fw-bold">{{strategy.performance.totalTrades}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Win Rate</td>
+                                    <td class="text-end fw-bold">{{formatRateAsPercent strategy.performance.winRate}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Total Return</td>
+                                    <td
+                                        class="text-end fw-bold {{#if (gt strategy.performance.totalReturn 0)}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatTotalReturnPercent strategy.performance.totalReturn strategy.parameters.initialCapital}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">CAGR</td>
+                                    <td
+                                        class="text-end fw-bold {{#if (gt strategy.performance.cagr 0)}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatRateAsPercent strategy.performance.cagr}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Max Drawdown</td>
+                                    <td class="text-end fw-bold text-danger">{{formatPercentAsPercent
+                                        strategy.performance.maxDrawdownPercent}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Sharpe Ratio</td>
+                                    <td class="text-end fw-bold">{{formatNumber strategy.performance.sharpeRatio}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Calmar Ratio</td>
+                                    <td class="text-end fw-bold">{{formatNumber strategy.performance.calmarRatio}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Median Trade Duration</td>
+                                    <td class="text-end fw-bold">{{toFixed strategy.performance.medianTradeDuration 0}} days</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Average Trade Duration</td>
+                                    <td class="text-end fw-bold">{{toFixed strategy.performance.avgTradeDuration 0}} days</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Median Trade P&L</td>
+                                    <td
+                                        class="text-end fw-bold {{#if (gt strategy.performance.medianTradePnlPercent 0)}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent strategy.performance.medianTradePnlPercent}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Average Trade P&L</td>
+                                    <td
+                                        class="text-end fw-bold {{#if (gt strategy.performance.avgTradePnlPercent 0)}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent strategy.performance.avgTradePnlPercent}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Average Losing P&L</td>
+                                    <td class="text-end fw-bold text-danger">{{formatPercentAsPercent
+                                        strategy.performance.avgLosingPnlPercent}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Average Winning P&L</td>
+                                    <td class="text-end fw-bold text-success">{{formatPercentAsPercent
+                                        strategy.performance.avgWinningPnlPercent}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Median Concurrent Trades</td>
+                                    <td class="text-end fw-bold">{{toFixed
+                                        strategy.performance.medianConcurrentTrades 0}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Average Concurrent Trades</td>
+                                    <td class="text-end fw-bold">{{toFixed
+                                        strategy.performance.avgConcurrentTrades 0}}</td>
+                                </tr>
+                                {{/if}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategy Parameters -->
+        <div class="col-12 col-lg">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-sliders-h me-2"></i>
+                        Strategy Parameters
+                    </h5>
+                    {{#if parameterSummariesCount}}
+                    <span class="badge bg-light text-dark">{{parameterSummariesCount}} defined</span>
+                    {{/if}}
+                </div>
+                <div class="card-body p-0">
+                    {{#if parameterSummariesCount}}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="w-25 ps-3">Parameter</th>
+                                    <th scope="col" class="w-50">Description</th>
+                                    <th scope="col" class="text-end pe-3">Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each (sortBy parameterSummaries 'name')}}
+                                <tr>
+                                    <td class="fw-semibold ps-3">
+                                        {{#if label}}{{label}}{{else}}{{name}}{{/if}}
+                                    </td>
+                                    <td class="text-muted small">
+                                        {{#if description}}{{description}}{{else}}&mdash;{{/if}}
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <span class="{{#if hasOverride}}text-primary fw-semibold{{else}}text-muted{{/if}}">
+                                            {{displayValue}}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                    {{else}}
+                    <div class="p-3">
+                        <p class="text-muted mb-0">This template does not define configurable parameters.</p>
+                    </div>
+                    {{/if}}
+
+                    {{#if extraParameterCount}}
+                    <div class="border-top px-3 py-3">
+                        <h6 class="fw-bold">Additional Parameters</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="ps-3">Name</th>
+                                        <th scope="col" class="text-end pe-3">Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each (sortBy extraParameters 'name')}}
+                                    <tr>
+                                        <td class="fw-semibold ps-3">{{name}}</td>
+                                        <td class="text-end pe-3">{{displayValue}}</td>
+                                    </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="col-12">
+            <div class="row g-3">
+                <!-- Portfolio Value Chart -->
+                <div class="col-12" id="portfolioValueChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-chart-line me-2"></i>
+                                Simulated Portfolio Value Over Time
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 600px; width: 100%;">
+                                <canvas id="portfolioValueChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cash Percentage Chart -->
+                <div class="col-12" id="cashPercentageChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-percentage me-2"></i>
+                                Cash as % of Portfolio
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 250px; width: 100%;">
+                                <canvas id="cashPercentageChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drawdown Chart -->
+                <div class="col-12" id="drawdownChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-chart-line me-2"></i>
+                                Portfolio Drawdown
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 250px; width: 100%;">
+                                <canvas id="drawdownChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Return Distribution Chart -->
+                <div class="col-12" id="dailyReturnDistributionChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-chart-bar me-2"></i>
+                                Daily Return Distribution
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 250px; width: 100%;">
+                                <canvas id="dailyReturnDistributionChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Portfolio Day Movers -->
+                <div class="col-12 col-xl-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-1">
+                                <i class="fas fa-sun me-2"></i>
+                                Top 10 Best Days
+                            </h6>
+                            <p class="text-muted small mb-0">Click a row to open daily trade insights.</p>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3">Date</th>
+                                            <th class="text-end">Change</th>
+                                            <th class="text-end">Change %</th>
+                                            <th class="text-end">Value</th>
+                                            <th class="text-end pe-3">Active</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{#if bestPortfolioDays.length}}
+                                            {{#each bestPortfolioDays}}
+                                                <tr>
+                                                    <td class="ps-3">
+                                                        <a href="{{../tradeDateInsightsUrl}}?date={{date}}" class="text-decoration-none" target="_blank" rel="noopener">{{date}}</a>
+                                                    </td>
+                                                    <td class="text-end fw-bold {{#if (gte change 0)}}text-success{{else}}text-danger{{/if}}">
+                                                        {{formatCurrency change}}
+                                                    </td>
+                                                    <td class="text-end small {{#if (gte changePercent 0)}}text-success{{else}}text-danger{{/if}}">
+                                                        {{toFixed changePercent 2}}%
+                                                    </td>
+                                                    <td class="text-end small">
+                                                        {{formatCurrency value}}
+                                                    </td>
+                                                    <td class="text-end small pe-3">
+                                                        {{activeTrades}}
+                                                    </td>
+                                                </tr>
+                                            {{/each}}
+                                        {{else}}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted py-4">
+                                                    Not enough data to rank best days.
+                                                </td>
+                                            </tr>
+                                        {{/if}}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-xl-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-1">
+                                <i class="fas fa-moon me-2"></i>
+                                Top 10 Worst Days
+                            </h6>
+                            <p class="text-muted small mb-0">Identify pressure points by daily drawdowns.</p>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3">Date</th>
+                                            <th class="text-end">Change</th>
+                                            <th class="text-end">Change %</th>
+                                            <th class="text-end">Value</th>
+                                            <th class="text-end pe-3">Active</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{#if worstPortfolioDays.length}}
+                                            {{#each worstPortfolioDays}}
+                                                <tr>
+                                                    <td class="ps-3">
+                                                        <a href="{{../tradeDateInsightsUrl}}?date={{date}}" class="text-decoration-none" target="_blank" rel="noopener">{{date}}</a>
+                                                    </td>
+                                                    <td class="text-end fw-bold {{#if (lt change 0)}}text-danger{{else}}text-success{{/if}}">
+                                                        {{formatCurrency change}}
+                                                    </td>
+                                                    <td class="text-end small {{#if (lt changePercent 0)}}text-danger{{else}}text-success{{/if}}">
+                                                        {{toFixed changePercent 2}}%
+                                                    </td>
+                                                    <td class="text-end small">
+                                                        {{formatCurrency value}}
+                                                    </td>
+                                                    <td class="text-end small pe-3">
+                                                        {{activeTrades}}
+                                                    </td>
+                                                </tr>
+                                            {{/each}}
+                                        {{else}}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted py-4">
+                                                    Not enough data to rank worst days.
+                                                </td>
+                                            </tr>
+                                        {{/if}}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Best Trades -->
+                <div class="col-12">
+                    {{> trade-table trades=bestTrades title="Top 20 Best Trades by P&L % (Including Open Trades)"}}
+                </div>
+
+                <!-- Worst Trades -->
+                <div class="col-12">
+                    {{> trade-table trades=worstTrades title="Top 20 Worst Trades by P&L % (Including Open Trades)"}}
+                </div>
+
+                <!-- Trades Page CTA -->
+                <div class="col-12">
+                    <div class="card h-100">
+                        <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+                            <div>
+                                <h5 class="card-title mb-1">
+                                    <i class="fas fa-database me-2"></i>
+                                    Full Trade History
+                                </h5>
+                                <p class="text-muted mb-0">
+                                    Browse every trade for this backtest with fast pagination built to handle hundreds of thousands of records.
+                                </p>
+                            </div>
+                            <a href="{{tradesPageUrl}}" class="btn btn-primary mt-3 mt-md-0">
+                                <i class="fas fa-external-link-alt me-2"></i>
+                                Open Trades Page
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Trades by Ticker First Letter -->
+                <div class="col-12" id="tickerLetterTotalsChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-sort-alpha-down me-2"></i>
+                                Trades by Ticker First Letter
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 300px; width: 100%;">
+                                <canvas id="tickerLetterTotalsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Stocks by Absolute Profit -->
+                <div class="col-12" id="topStocksProfitChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-dollar-sign me-2"></i>
+                                Top 50 by Absolute Profit
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 400px; width: 100%;">
+                                <canvas id="topStocksProfitChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Stocks by Absolute Loss -->
+                <div class="col-12" id="topStocksLossChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-arrow-down me-2"></i>
+                                Top 50 by Absolute Loss
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 400px; width: 100%;">
+                                <canvas id="topStocksLossChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Stocks by Relative Profit -->
+                <div class="col-12" id="topStocksRelativeProfitChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-percentage me-2"></i>
+                                Top 50 by Relative Profit
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 400px; width: 100%;">
+                                <canvas id="topStocksRelativeProfitChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Stocks by Relative Loss -->
+                <div class="col-12" id="topStocksRelativeLossChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-arrow-down me-2"></i>
+                                Top 50 by Relative Loss
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 400px; width: 100%;">
+                                <canvas id="topStocksRelativeLossChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ticker Profitability Dot Plot -->
+                <div class="col-12 col-lg-6" id="tickerDotPlotChartContainer" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-bullseye me-2"></i>
+                                Ticker Profitability Dot Plot
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; width: 100%; padding-top: 100%;">
+                                <canvas id="tickerDotPlotChart" style="position: absolute; inset: 0; width: 100%; height: 100%;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Winner vs Loser Holding Dot Plot -->
+                <div class="col-12 col-lg-6" id="tickerWinLossDotPlotChartContainer" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-stopwatch me-2"></i>
+                                Winner vs Loser Holding Periods
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; width: 100%; padding-top: 100%;">
+                                <canvas id="tickerWinLossDotPlotChart" style="position: absolute; inset: 0; width: 100%; height: 100%;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+
+<script>
+    // Global variables to store chart instances and original data
+    let portfolioChart = null;
+    let drawdownChart = null;
+    let dailyReturnDistributionChart = null;
+    let topStocksProfitChart = null;
+    let topStocksLossChart = null;
+    let topStocksRelativeProfitChart = null;
+    let topStocksRelativeLossChart = null;
+    let tickerLetterTotalsChart = null;
+    let tickerDotPlotChart = null;
+    let tickerWinLossDotPlotChart = null;
+    let cashPercentageChart = null;
+
+    // Store original data for filtering
+    let originalPortfolioData = {{{ json portfolioValueData }}};
+    let originalBenchmarkData = {{{ json benchmarkData }}};
+    let originalDrawdownData = {{{ json drawdownData }}};
+    let originalDailyReturnDistributionData = {{{ json dailyReturnDistributionData }}};
+    let originalCashPercentageData = {{{ json cashPercentageData }}};
+    const tradeDateInsightsBaseUrl = {{{ json tradeDateInsightsUrl }}};
+
+    const tradeTickerStats = {{{ json tradeTickerStats }}} || [];
+
+    const currencyFormatter = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0
+    });
+    const RELATIVE_PROFIT_EPSILON = 0.0001;
+
+    function normalizeTickerStatsInput(rawStats) {
+        if (!Array.isArray(rawStats)) return [];
+
+        return rawStats
+            .map(stat => {
+                const ticker = typeof stat.ticker === 'string' ? stat.ticker.toUpperCase() : '';
+                if (!ticker) return null;
+
+                const totalTrades = Number(stat.totalTrades) || 0;
+                const profitableTrades = Number(stat.profitableTrades) || 0;
+                const unprofitableTrades = Number(stat.unprofitableTrades) || 0;
+                const netPnl = Number(stat.netPnl) || 0;
+                const absNetPnl = Number(stat.absNetPnl) || Math.abs(netPnl);
+                const totalBuyCost = Math.abs(Number(stat.totalBuyCost) || 0);
+                const sumPnlPercent = Number(stat.sumPnlPercent) || 0;
+                const pnlPercentCount = Number(stat.pnlPercentCount) || 0;
+                const winSumPercent = Number(stat.winSumPercent) || 0;
+                const winCount = Number(stat.winCount) || 0;
+                const lossSumPercent = Number(stat.lossSumPercent) || 0;
+                const lossCount = Number(stat.lossCount) || 0;
+                const winDurationSum = Number(stat.winDurationSum) || 0;
+                const winDurationCount = Number(stat.winDurationCount) || 0;
+                const lossDurationSum = Number(stat.lossDurationSum) || 0;
+                const lossDurationCount = Number(stat.lossDurationCount) || 0;
+
+                const winRate = totalTrades > 0 ? (profitableTrades / totalTrades) * 100 : 0;
+                const lossRate = totalTrades > 0 ? (unprofitableTrades / totalTrades) * 100 : 0;
+                const avgReturnPercent = pnlPercentCount > 0 ? sumPnlPercent / pnlPercentCount : 0;
+                const avgWinDuration = winDurationCount > 0 ? winDurationSum / winDurationCount : 0;
+                const avgLossDuration = lossDurationCount > 0 ? lossDurationSum / lossDurationCount : 0;
+                const avgWinReturn = winCount > 0 ? winSumPercent / winCount : 0;
+                const avgLossReturn = lossCount > 0 ? lossSumPercent / lossCount : 0;
+
+                return {
+                    ticker,
+                    totalTrades,
+                    profitableTrades,
+                    unprofitableTrades,
+                    netPnl,
+                    absNetPnl,
+                    totalBuyCost,
+                    sumPnlPercent,
+                    pnlPercentCount,
+                    winSumPercent,
+                    winCount,
+                    lossSumPercent,
+                    lossCount,
+                    winDurationSum,
+                    winDurationCount,
+                    lossDurationSum,
+                    lossDurationCount,
+                    winRate,
+                    lossRate,
+                    avgReturnPercent,
+                    avgWinDuration,
+                    avgLossDuration,
+                    avgWinReturn,
+                    avgLossReturn
+                };
+            })
+            .filter(stat => stat !== null);
+    }
+
+    function openTradeDateInsights(dateLabel) {
+        if (!tradeDateInsightsBaseUrl || typeof dateLabel !== 'string' || dateLabel.length === 0) {
+            return;
+        }
+        try {
+            const url = new URL(tradeDateInsightsBaseUrl, window.location.origin);
+            url.searchParams.set('date', dateLabel);
+            const newWindow = window.open(url.toString(), '_blank');
+            if (newWindow) {
+                newWindow.opener = null;
+            }
+        } catch (error) {
+            console.warn('Unable to open trade date insights page', error);
+        }
+    }
+
+    function handlePortfolioChartCanvasClick(event) {
+        if (!portfolioChart || !tradeDateInsightsBaseUrl) {
+            return;
+        }
+        if (!portfolioChart.data || !Array.isArray(portfolioChart.data.labels)) {
+            return;
+        }
+
+        const elements = portfolioChart.getElementsAtEventForMode(event, 'nearest', { intersect: false }, true);
+        if (!elements || elements.length === 0) {
+            return;
+        }
+
+        const matchingElement = elements.find(el => {
+            const dataset = portfolioChart.data.datasets && portfolioChart.data.datasets[el.datasetIndex];
+            return dataset && dataset.label === 'Total Portfolio Value';
+        });
+
+        if (!matchingElement) {
+            return;
+        }
+
+        const dateLabel = portfolioChart.data.labels[matchingElement.index];
+        if (typeof dateLabel !== 'string') {
+            return;
+        }
+
+        openTradeDateInsights(dateLabel);
+    }
+
+    function bindPortfolioChartClickHandler(chartElement) {
+        if (!chartElement) return;
+        const existingHandler = chartElement.dataset.tradeInsightsClickBound;
+        if (existingHandler === 'true') {
+            return;
+        }
+        chartElement.addEventListener('click', handlePortfolioChartCanvasClick);
+        chartElement.dataset.tradeInsightsClickBound = 'true';
+    }
+
+    function renderTradeCharts(rawStats) {
+        const tickerStats = normalizeTickerStatsInput(rawStats);
+        renderTopStocksProfitChart(tickerStats);
+        renderTopStocksLossChart(tickerStats);
+        renderTopStocksRelativeProfitChart(tickerStats);
+        renderTopStocksRelativeLossChart(tickerStats);
+        renderTickerLetterTotalsChart(tickerStats);
+        renderTickerDotPlot(tickerStats);
+        renderTickerWinLossDotPlot(tickerStats);
+    }
+
+    // Align benchmark series (SPY/QQQ) to the portfolio date labels so missing candle days don't shift points
+    function alignBenchmarkSeriesToLabels(labels, series) {
+        if (!Array.isArray(labels) || labels.length === 0) return [];
+        if (!Array.isArray(series) || series.length === 0) return labels.map(() => null);
+
+        const valueByDate = new Map();
+        series.forEach(point => {
+            if (!point) return;
+            const normalizedDate = point.date
+                ? new Date(point.date).toISOString().split('T')[0]
+                : null;
+            const value = Number(point.value);
+            if (normalizedDate && Number.isFinite(value)) {
+                valueByDate.set(normalizedDate, value);
+            }
+        });
+
+        let lastKnownValue = null;
+        return labels.map(label => {
+            const normalizedLabel = label
+                ? new Date(label).toISOString().split('T')[0]
+                : null;
+            if (normalizedLabel && valueByDate.has(normalizedLabel)) {
+                lastKnownValue = valueByDate.get(normalizedLabel);
+            }
+            return lastKnownValue;
+        });
+    }
+
+    // Render portfolio chart
+    function renderPortfolioChart(portfolioData, benchmarkData) {
+        const portfolioChartElement = document.getElementById('portfolioValueChart');
+        const portfolioContainer = document.getElementById('portfolioValueChartContainer');
+
+        if (!portfolioChartElement || !portfolioContainer) return;
+
+        if (!portfolioData || portfolioData.length === 0) {
+            portfolioContainer.style.display = 'none';
+            return;
+        }
+
+        portfolioContainer.style.display = 'block';
+
+        const labels = portfolioData.map(item => item.date);
+        const totalValueData = portfolioData.map(item => item.value);
+        const sanitizedTotalValueData = totalValueData.map(value => value > 0 ? value : 0.0001); // Log scale requires positive values
+        const spyData = alignBenchmarkSeriesToLabels(labels, benchmarkData?.spy);
+        const qqqData = alignBenchmarkSeriesToLabels(labels, benchmarkData?.qqq);
+
+        // Prepare datasets array
+        const datasets = [
+            {
+                label: 'Total Portfolio Value',
+                data: sanitizedTotalValueData,
+                originalValues: totalValueData,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 2,
+                pointHoverRadius: 4
+            },
+            {
+                label: 'Active Trades',
+                data: portfolioData.map(item => item.activeTrades),
+                borderColor: '#dc3545',
+                backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                fill: false,
+                tension: 0.4,
+                pointRadius: 1,
+                pointHoverRadius: 3,
+                yAxisID: 'y1'
+            }
+        ];
+
+        // Add SPY benchmark if available
+        if (benchmarkData && benchmarkData.spy && benchmarkData.spy.length > 0) {
+            datasets.push({
+                label: 'SPY Buy & Hold',
+                data: spyData,
+                borderColor: 'rgba(255, 193, 7, 0.8)',
+                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                fill: false,
+                tension: 0.4,
+                pointRadius: 1,
+                pointHoverRadius: 3,
+                borderDash: [5, 5],
+                spanGaps: true
+            });
+        }
+
+        // Add QQQ benchmark if available
+        if (benchmarkData && benchmarkData.qqq && benchmarkData.qqq.length > 0) {
+            datasets.push({
+                label: 'QQQ Buy & Hold',
+                data: qqqData,
+                borderColor: 'rgba(40, 167, 69, 0.8)',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                fill: false,
+                tension: 0.4,
+                pointRadius: 1,
+                pointHoverRadius: 3,
+                borderDash: [5, 5],
+                spanGaps: true
+            });
+        }
+
+        if (portfolioChart) {
+            portfolioChart.data.labels = labels;
+            portfolioChart.data.datasets = datasets;
+            portfolioChart.update();
+            bindPortfolioChartClickHandler(portfolioChartElement);
+        } else {
+            const portfolioCtx = portfolioChartElement.getContext('2d');
+            portfolioChart = new Chart(portfolioCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            type: 'logarithmic',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Portfolio Value ($, log scale)'
+                            },
+                            ticks: {
+                                callback: function (value) {
+                                    const numericValue = Number(value);
+                                    return '$' + numericValue.toLocaleString();
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Active Trades'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                callback: function (value) {
+                                    return value.toFixed(0);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    if (label === 'Active Trades') {
+                                        return label + ': ' + value.toFixed(0);
+                                    }
+                                    const originalValues = context.dataset.originalValues;
+                                    const originalValue = Array.isArray(originalValues) && originalValues.length > context.dataIndex
+                                        ? originalValues[context.dataIndex]
+                                        : value;
+                                    return label + ': $' + Number(originalValue).toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            bindPortfolioChartClickHandler(portfolioChartElement);
+        }
+    }
+
+    // Render drawdown chart
+    function renderDrawdownChart(drawdownData) {
+        const drawdownChartElement = document.getElementById('drawdownChart');
+        const drawdownContainer = document.getElementById('drawdownChartContainer');
+
+        if (!drawdownChartElement || !drawdownContainer) return;
+
+        if (!drawdownData || drawdownData.length === 0) {
+            drawdownContainer.style.display = 'none';
+            return;
+        }
+
+        drawdownContainer.style.display = 'block';
+
+        if (drawdownChart) {
+            drawdownChart.data.labels = drawdownData.map(item => item.date);
+            drawdownChart.data.datasets[0].data = drawdownData.map(item => item.drawdown);
+            drawdownChart.update();
+        } else {
+            const drawdownCtx = drawdownChartElement.getContext('2d');
+            drawdownChart = new Chart(drawdownCtx, {
+                type: 'line',
+                data: {
+                    labels: drawdownData.map(item => item.date),
+                    datasets: [
+                        {
+                            label: 'Drawdown (%)',
+                            data: drawdownData.map(item => item.drawdown),
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 1,
+                            pointHoverRadius: 3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Drawdown (%)'
+                            },
+                            ticks: {
+                                callback: function (value) {
+                                    return value.toFixed(1) + '%';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    return label + ': ' + value.toFixed(2) + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Render daily return distribution chart (counts days per 1% bucket)
+    function renderDailyReturnDistributionChart(dailyReturnDistributionData) {
+        const chartElement = document.getElementById('dailyReturnDistributionChart');
+        const container = document.getElementById('dailyReturnDistributionChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedData = Array.isArray(dailyReturnDistributionData) ? dailyReturnDistributionData : [];
+
+        if (normalizedData.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const labels = normalizedData.map(item => `${item.returnPercent}%`);
+        const counts = normalizedData.map(item => item.count);
+        const colors = normalizedData.map(item =>
+            item.returnPercent >= 0 ? 'rgba(40, 167, 69, 0.8)' : 'rgba(220, 53, 69, 0.8)'
+        );
+        const borderColors = normalizedData.map(item =>
+            item.returnPercent >= 0 ? '#28a745' : '#dc3545'
+        );
+
+        if (dailyReturnDistributionChart) {
+            dailyReturnDistributionChart.data.labels = labels;
+            dailyReturnDistributionChart.data.datasets[0].data = counts;
+            dailyReturnDistributionChart.data.datasets[0].backgroundColor = colors;
+            dailyReturnDistributionChart.data.datasets[0].borderColor = borderColors;
+            dailyReturnDistributionChart.update();
+            return;
+        }
+
+        const ctx = chartElement.getContext('2d');
+        dailyReturnDistributionChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Number of Days',
+                        data: counts,
+                        backgroundColor: colors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Daily Return (%)'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Days'
+                        },
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function (context) {
+                                return 'Return: ' + context[0].label;
+                            },
+                            label: function (context) {
+                                return 'Days: ' + context.parsed.y;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render trades grouped by ticker first letter
+    function renderTickerLetterTotalsChart(tickerStats) {
+        const chartElement = document.getElementById('tickerLetterTotalsChart');
+        const container = document.getElementById('tickerLetterTotalsChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedStats = Array.isArray(tickerStats) ? tickerStats : [];
+
+        if (normalizedStats.length === 0) {
+            container.style.display = 'none';
+            if (tickerLetterTotalsChart) {
+                tickerLetterTotalsChart.destroy();
+                tickerLetterTotalsChart = null;
+            }
+            return;
+        }
+
+        const letterTotals = {};
+        const letterTickerCounts = {};
+        const seenTickers = new Set();
+        normalizedStats.forEach(stat => {
+            const ticker = typeof stat.ticker === 'string' ? stat.ticker.trim().toUpperCase() : '';
+            if (!ticker) return;
+
+            const firstChar = ticker.charAt(0);
+            const bucket = /^[A-Z]$/.test(firstChar) ? firstChar : 'Other';
+            const trades = Number(stat.totalTrades) || 0;
+
+            if (!letterTotals[bucket]) {
+                letterTotals[bucket] = 0;
+            }
+            letterTotals[bucket] += trades;
+
+            if (!seenTickers.has(ticker)) {
+                seenTickers.add(ticker);
+                if (!letterTickerCounts[bucket]) {
+                    letterTickerCounts[bucket] = 0;
+                }
+                letterTickerCounts[bucket] += 1;
+            }
+        });
+
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        const chartData = alphabet.map(letter => ({
+            letter,
+            totalTrades: letterTotals[letter] || 0,
+            tickerCount: letterTickerCounts[letter] || 0,
+            normalizedTrades: letterTickerCounts[letter] > 0 ? (letterTotals[letter] || 0) / letterTickerCounts[letter] : 0
+        }));
+        const otherTotal = letterTotals['Other'] || 0;
+        const otherTickerCount = letterTickerCounts['Other'] || 0;
+        const totalTrades = chartData.reduce((sum, entry) => sum + entry.totalTrades, 0) + otherTotal;
+
+        if (totalTrades === 0) {
+            container.style.display = 'none';
+            if (tickerLetterTotalsChart) {
+                tickerLetterTotalsChart.destroy();
+                tickerLetterTotalsChart = null;
+            }
+            return;
+        }
+
+        if (otherTotal > 0 || otherTickerCount > 0) {
+            chartData.push({
+                letter: 'Other',
+                totalTrades: otherTotal,
+                tickerCount: otherTickerCount,
+                normalizedTrades: otherTickerCount > 0 ? otherTotal / otherTickerCount : 0
+            });
+        }
+
+        container.style.display = 'block';
+
+        const labels = chartData.map(entry => entry.letter);
+        const data = chartData.map(entry => entry.normalizedTrades);
+        const backgroundColor = 'rgba(13, 110, 253, 0.7)';
+        const borderColor = '#0d6efd';
+        const datasetLabel = 'Avg Trades per Ticker';
+
+        if (tickerLetterTotalsChart) {
+            tickerLetterTotalsChart.data.labels = labels;
+            tickerLetterTotalsChart.data.datasets[0].data = data;
+            tickerLetterTotalsChart.data.datasets[0].label = datasetLabel;
+            tickerLetterTotalsChart.data.datasets[0].customData = chartData;
+            if (tickerLetterTotalsChart.options?.scales?.y?.title) {
+                tickerLetterTotalsChart.options.scales.y.title.text = 'Average Trades per Ticker';
+            }
+            tickerLetterTotalsChart.update();
+            return;
+        }
+
+        const ctx = chartElement.getContext('2d');
+        tickerLetterTotalsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: datasetLabel,
+                    data,
+                    backgroundColor,
+                    borderColor,
+                    borderWidth: 1,
+                    customData: chartData
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Ticker First Letter'
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 0,
+                            minRotation: 0
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Average Trades per Ticker'
+                        },
+                        ticks: {
+                            callback: (value) => {
+                                return typeof value === 'number' ? value.toFixed(2) : value;
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const entry = context.dataset.customData && context.dataset.customData[context.dataIndex];
+                                if (!entry) {
+                                    return `Avg Trades/Ticker: ${context.parsed.y.toFixed(2)}`;
+                                }
+                                const avg = typeof entry.normalizedTrades === 'number' ? entry.normalizedTrades.toFixed(2) : '0.00';
+                                return [
+                                    `Avg Trades/Ticker: ${avg}`,
+                                    `Tickers: ${entry.tickerCount.toLocaleString()}`,
+                                    `Total Trades: ${entry.totalTrades.toLocaleString()}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render top stocks by absolute profit chart
+    function renderTopStocksProfitChart(tickerStats) {
+        const chartElement = document.getElementById('topStocksProfitChart');
+        const container = document.getElementById('topStocksProfitChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedStats = Array.isArray(tickerStats) ? tickerStats : [];
+        const profitableTickers = normalizedStats
+            .filter(stat => Number.isFinite(stat.netPnl) && stat.netPnl > 0)
+            .sort((a, b) => b.netPnl - a.netPnl)
+            .slice(0, 50)
+            .map(stat => ({
+                ticker: stat.ticker,
+                netPnl: Number(stat.netPnl) || 0,
+                totalTrades: stat.totalTrades,
+                winRate: stat.winRate,
+                avgReturnPercent: stat.avgReturnPercent
+            }));
+
+        if (profitableTickers.length === 0) {
+            container.style.display = 'none';
+            if (topStocksProfitChart) {
+                topStocksProfitChart.destroy();
+                topStocksProfitChart = null;
+            }
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const labels = profitableTickers.map(stat => stat.ticker);
+        const data = profitableTickers.map(stat => stat.netPnl);
+        const backgroundColors = Array(data.length).fill('rgba(40, 167, 69, 0.7)');
+        const borderColors = Array(data.length).fill('#28a745');
+
+        if (topStocksProfitChart) {
+            topStocksProfitChart.data.labels = labels;
+            topStocksProfitChart.data.datasets[0].data = data;
+            topStocksProfitChart.data.datasets[0].backgroundColor = backgroundColors;
+            topStocksProfitChart.data.datasets[0].borderColor = borderColors;
+            topStocksProfitChart.data.datasets[0].customData = profitableTickers;
+            topStocksProfitChart.update();
+            return;
+        }
+
+        const ctx = chartElement.getContext('2d');
+
+        topStocksProfitChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Net P&L',
+                    data,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    customData: profitableTickers
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: false
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 60,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Net P&L (USD)'
+                        },
+                        ticks: {
+                            callback: (value) => currencyFormatter.format(value)
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].label,
+                            label: (context) => {
+                                const entry = context.dataset.customData[context.dataIndex];
+                                return [
+                                    `Net Profit: ${currencyFormatter.format(entry.netPnl)}`,
+                                    `Trades: ${entry.totalTrades}`,
+                                    `Win Rate: ${entry.winRate.toFixed(1)}%`,
+                                    `Avg Return/Trade: ${entry.avgReturnPercent.toFixed(2)}%`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render top stocks by absolute loss chart
+    function renderTopStocksLossChart(tickerStats) {
+        const chartElement = document.getElementById('topStocksLossChart');
+        const container = document.getElementById('topStocksLossChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedStats = Array.isArray(tickerStats) ? tickerStats : [];
+        const losingTickers = normalizedStats
+            .filter(stat => Number.isFinite(stat.netPnl) && stat.netPnl < 0)
+            .sort((a, b) => Math.abs(b.netPnl) - Math.abs(a.netPnl))
+            .slice(0, 50)
+            .map(stat => ({
+                ticker: stat.ticker,
+                netPnl: Number(stat.netPnl) || 0,
+                totalTrades: stat.totalTrades,
+                winRate: stat.winRate,
+                avgReturnPercent: stat.avgReturnPercent
+            }));
+
+        if (losingTickers.length === 0) {
+            container.style.display = 'none';
+            if (topStocksLossChart) {
+                topStocksLossChart.destroy();
+                topStocksLossChart = null;
+            }
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const labels = losingTickers.map(stat => stat.ticker);
+        const data = losingTickers.map(stat => stat.netPnl);
+        const backgroundColors = Array(data.length).fill('rgba(220, 53, 69, 0.7)');
+        const borderColors = Array(data.length).fill('#dc3545');
+
+        if (topStocksLossChart) {
+            topStocksLossChart.data.labels = labels;
+            topStocksLossChart.data.datasets[0].data = data;
+            topStocksLossChart.data.datasets[0].backgroundColor = backgroundColors;
+            topStocksLossChart.data.datasets[0].borderColor = borderColors;
+            topStocksLossChart.data.datasets[0].customData = losingTickers;
+            topStocksLossChart.update();
+            return;
+        }
+
+        const ctx = chartElement.getContext('2d');
+
+        topStocksLossChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Net P&L',
+                    data,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    customData: losingTickers
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: false
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 60,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Net P&L (USD)'
+                        },
+                        ticks: {
+                            callback: (value) => currencyFormatter.format(value)
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].label,
+                            label: (context) => {
+                                const entry = context.dataset.customData[context.dataIndex];
+                                return [
+                                    `Net Loss: ${currencyFormatter.format(entry.netPnl)}`,
+                                    `Trades: ${entry.totalTrades}`,
+                                    `Win Rate: ${entry.winRate.toFixed(1)}%`,
+                                    `Avg Return/Trade: ${entry.avgReturnPercent.toFixed(2)}%`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render top stocks by relative profit chart
+    function renderTopStocksRelativeProfitChart(tickerStats) {
+        const chartElement = document.getElementById('topStocksRelativeProfitChart');
+        const container = document.getElementById('topStocksRelativeProfitChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedStats = Array.isArray(tickerStats) ? tickerStats : [];
+        const tickerSummaries = normalizedStats.map(stat => {
+            const netPnl = Number(stat.netPnl) || 0;
+            const totalBuyCost = Number(stat.totalBuyCost) || 0;
+            const totalLiquidationValue = totalBuyCost + netPnl;
+            const relativeProfitPercent = totalBuyCost > 0 ? (netPnl / totalBuyCost) * 100 : null;
+            return {
+                ticker: stat.ticker,
+                relativeProfitPercent,
+                totalTrades: stat.totalTrades,
+                winRate: stat.winRate,
+                netPnl,
+                totalBuyCost,
+                totalLiquidationValue
+            };
+        });
+
+        const profitableTickers = tickerSummaries
+            .filter(stat =>
+                stat.relativeProfitPercent !== null &&
+                Number.isFinite(stat.relativeProfitPercent) &&
+                stat.totalBuyCost > 0 &&
+                stat.relativeProfitPercent > RELATIVE_PROFIT_EPSILON
+            )
+            .sort((a, b) => b.relativeProfitPercent - a.relativeProfitPercent)
+            .slice(0, 50);
+
+        if (profitableTickers.length === 0) {
+            container.style.display = 'none';
+            if (topStocksRelativeProfitChart) {
+                topStocksRelativeProfitChart.destroy();
+                topStocksRelativeProfitChart = null;
+            }
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const labels = profitableTickers.map(stat => stat.ticker);
+        const data = profitableTickers.map(stat => stat.relativeProfitPercent);
+        const backgroundColors = Array(data.length).fill('rgba(40, 167, 69, 0.7)');
+        const borderColors = Array(data.length).fill('#28a745');
+
+        if (topStocksRelativeProfitChart) {
+            topStocksRelativeProfitChart.data.labels = labels;
+            topStocksRelativeProfitChart.data.datasets[0].data = data;
+            topStocksRelativeProfitChart.data.datasets[0].label = 'Relative Profit (%)';
+            topStocksRelativeProfitChart.data.datasets[0].backgroundColor = backgroundColors;
+            topStocksRelativeProfitChart.data.datasets[0].borderColor = borderColors;
+            topStocksRelativeProfitChart.data.datasets[0].customData = profitableTickers;
+            topStocksRelativeProfitChart.update();
+            return;
+        }
+
+        const ctx = chartElement.getContext('2d');
+
+        topStocksRelativeProfitChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Relative Profit (%)',
+                    data,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    customData: profitableTickers
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: false
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 60,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Relative Profit (%)'
+                        },
+                        ticks: {
+                            callback: (value) => {
+                                if (typeof value === 'number' && Number.isFinite(value)) {
+                                    return `${value.toFixed(2)}%`;
+                                }
+                                return value;
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].label,
+                            label: (context) => {
+                                const entry = context.dataset.customData[context.dataIndex];
+                                const relativeProfitDisplay = Number.isFinite(entry.relativeProfitPercent)
+                                    ? `${entry.relativeProfitPercent.toFixed(2)}%`
+                                    : 'N/A';
+                                const relativeValuePercent = entry.totalBuyCost > 0
+                                    ? ((entry.totalLiquidationValue / entry.totalBuyCost) * 100)
+                                    : null;
+                                const relativeValueDisplay = Number.isFinite(relativeValuePercent)
+                                    ? `${relativeValuePercent.toFixed(2)}%`
+                                    : 'N/A';
+                                return [
+                                    `Relative Profit: ${relativeProfitDisplay}`,
+                                    `Ending Value vs Cost: ${relativeValueDisplay}`,
+                                    `Total Buy Cost: ${currencyFormatter.format(entry.totalBuyCost)}`,
+                                    `Liquidation Value: ${currencyFormatter.format(entry.totalLiquidationValue)}`,
+                                    `Trades: ${entry.totalTrades}`,
+                                    `Win Rate: ${entry.winRate.toFixed(1)}%`,
+                                    `Net P&L: ${currencyFormatter.format(entry.netPnl)}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render top stocks by relative loss chart
+    function renderTopStocksRelativeLossChart(tickerStats) {
+        const chartElement = document.getElementById('topStocksRelativeLossChart');
+        const container = document.getElementById('topStocksRelativeLossChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedStats = Array.isArray(tickerStats) ? tickerStats : [];
+        const tickerSummaries = normalizedStats.map(stat => {
+            const netPnl = Number(stat.netPnl) || 0;
+            const totalBuyCost = Number(stat.totalBuyCost) || 0;
+            const totalLiquidationValue = totalBuyCost + netPnl;
+            const relativeProfitPercent = totalBuyCost > 0 ? (netPnl / totalBuyCost) * 100 : null;
+            return {
+                ticker: stat.ticker,
+                relativeProfitPercent,
+                totalTrades: stat.totalTrades,
+                winRate: stat.winRate,
+                netPnl,
+                totalBuyCost,
+                totalLiquidationValue
+            };
+        });
+
+        const losingTickers = tickerSummaries
+            .filter(stat =>
+                stat.relativeProfitPercent !== null &&
+                Number.isFinite(stat.relativeProfitPercent) &&
+                stat.totalBuyCost > 0 &&
+                stat.relativeProfitPercent < -RELATIVE_PROFIT_EPSILON
+            )
+            .sort((a, b) => a.relativeProfitPercent - b.relativeProfitPercent)
+            .slice(0, 50);
+
+        if (losingTickers.length === 0) {
+            container.style.display = 'none';
+            if (topStocksRelativeLossChart) {
+                topStocksRelativeLossChart.destroy();
+                topStocksRelativeLossChart = null;
+            }
+            return;
+        }
+
+        container.style.display = 'block';
+
+        const labels = losingTickers.map(stat => stat.ticker);
+        const data = losingTickers.map(stat => stat.relativeProfitPercent);
+        const backgroundColors = Array(data.length).fill('rgba(220, 53, 69, 0.7)');
+        const borderColors = Array(data.length).fill('#dc3545');
+
+        if (topStocksRelativeLossChart) {
+            topStocksRelativeLossChart.data.labels = labels;
+            topStocksRelativeLossChart.data.datasets[0].data = data;
+            topStocksRelativeLossChart.data.datasets[0].label = 'Relative Loss (%)';
+            topStocksRelativeLossChart.data.datasets[0].backgroundColor = backgroundColors;
+            topStocksRelativeLossChart.data.datasets[0].borderColor = borderColors;
+            topStocksRelativeLossChart.data.datasets[0].customData = losingTickers;
+            topStocksRelativeLossChart.update();
+            return;
+        }
+
+        const ctx = chartElement.getContext('2d');
+
+        topStocksRelativeLossChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Relative Loss (%)',
+                    data,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    customData: losingTickers
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: false
+                        },
+                        ticks: {
+                            autoSkip: false,
+                            maxRotation: 60,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Relative Loss (%)'
+                        },
+                        ticks: {
+                            callback: (value) => {
+                                if (typeof value === 'number' && Number.isFinite(value)) {
+                                    return `${value.toFixed(2)}%`;
+                                }
+                                return value;
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].label,
+                            label: (context) => {
+                                const entry = context.dataset.customData[context.dataIndex];
+                                const relativeLossDisplay = Number.isFinite(entry.relativeProfitPercent)
+                                    ? `${entry.relativeProfitPercent.toFixed(2)}%`
+                                    : 'N/A';
+                                const relativeValuePercent = entry.totalBuyCost > 0
+                                    ? ((entry.totalLiquidationValue / entry.totalBuyCost) * 100)
+                                    : null;
+                                const relativeValueDisplay = Number.isFinite(relativeValuePercent)
+                                    ? `${relativeValuePercent.toFixed(2)}%`
+                                    : 'N/A';
+                                return [
+                                    `Relative Loss: ${relativeLossDisplay}`,
+                                    `Relative Value: ${relativeValueDisplay}`,
+                                    `Total Buy Cost: ${currencyFormatter.format(entry.totalBuyCost)}`,
+                                    `Liquidation Value: ${currencyFormatter.format(entry.totalLiquidationValue)}`,
+                                    `Trades: ${entry.totalTrades}`,
+                                    `Win Rate: ${entry.winRate.toFixed(1)}%`,
+                                    `Net P&L: ${currencyFormatter.format(entry.netPnl)}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render ticker profitability dot plot
+    function renderTickerDotPlot(tickerStats) {
+        const tickerDotPlotChartElement = document.getElementById('tickerDotPlotChart');
+        const tickerDotPlotContainer = document.getElementById('tickerDotPlotChartContainer');
+
+        if (!tickerDotPlotChartElement || !tickerDotPlotContainer) return;
+
+        const normalizedStats = Array.isArray(tickerStats) ? tickerStats : [];
+
+        if (normalizedStats.length === 0) {
+            tickerDotPlotContainer.style.display = 'none';
+            if (tickerDotPlotChart) {
+                tickerDotPlotChart.destroy();
+                tickerDotPlotChart = null;
+            }
+            return;
+        }
+
+        const maxAbsNetPnl = normalizedStats.reduce((max, stat) => Math.max(max, stat.absNetPnl), 0) || 1;
+        const minRadius = 8;
+        const maxRadius = 28;
+
+        const bubbleData = normalizedStats.map(stat => {
+            const radius = minRadius + (stat.absNetPnl / maxAbsNetPnl) * (maxRadius - minRadius);
+
+            return {
+                x: Number.isFinite(stat.winRate) ? stat.winRate : 0,
+                y: Number.isFinite(stat.avgReturnPercent) ? stat.avgReturnPercent : 0,
+                r: radius,
+                ticker: stat.ticker,
+                totalTrades: stat.totalTrades,
+                netPnl: stat.netPnl,
+                winRate: stat.winRate,
+                avgReturnPercent: stat.avgReturnPercent,
+                lossRate: stat.lossRate
+            };
+        });
+
+        const backgroundColors = bubbleData.map(point => point.netPnl >= 0 ? 'rgba(40, 167, 69, 0.75)' : 'rgba(220, 53, 69, 0.75)');
+        const borderColors = bubbleData.map(point => point.netPnl >= 0 ? '#28a745' : '#dc3545');
+
+        tickerDotPlotContainer.style.display = 'block';
+
+        if (tickerDotPlotChart) {
+            tickerDotPlotChart.data.datasets[0].data = bubbleData;
+            tickerDotPlotChart.data.datasets[0].backgroundColor = backgroundColors;
+            tickerDotPlotChart.data.datasets[0].borderColor = borderColors;
+            tickerDotPlotChart.update();
+            return;
+        }
+
+        const tickerDotPlotCtx = tickerDotPlotChartElement.getContext('2d');
+
+        tickerDotPlotChart = new Chart(tickerDotPlotCtx, {
+            type: 'bubble',
+            data: {
+                datasets: [{
+                    label: 'Ticker Profitability',
+                    data: bubbleData,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    hoverBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Win Rate (%)'
+                        },
+                        min: 0,
+                        max: 100,
+                        ticks: {
+                            callback: (value) => value + '%'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Average Return per Trade (%)'
+                        },
+                        ticks: {
+                            callback: (value) => value + '%'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].raw.ticker,
+                            label: (context) => {
+                                const point = context.raw;
+                                return [
+                                    `Win Rate: ${point.winRate.toFixed(1)}%`,
+                                    `Avg Return/Trade: ${point.avgReturnPercent.toFixed(2)}%`,
+                                    `Loss Rate: ${point.lossRate.toFixed(1)}%`,
+                                    `Trades: ${point.totalTrades}`,
+                                    `Net P&L: ${currencyFormatter.format(point.netPnl)}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render winner vs loser holding dot plot
+    function renderTickerWinLossDotPlot(tickerStats) {
+        const holdingChartElement = document.getElementById('tickerWinLossDotPlotChart');
+        const holdingContainer = document.getElementById('tickerWinLossDotPlotChartContainer');
+
+        if (!holdingChartElement || !holdingContainer) return;
+
+        const normalizedStats = Array.isArray(tickerStats)
+            ? tickerStats.filter(stat => stat.winDurationCount > 0 || stat.lossDurationCount > 0)
+            : [];
+
+        if (normalizedStats.length === 0) {
+            holdingContainer.style.display = 'none';
+            if (tickerWinLossDotPlotChart) {
+                tickerWinLossDotPlotChart.destroy();
+                tickerWinLossDotPlotChart = null;
+            }
+            return;
+        }
+
+        const maxAbsNetPnl = normalizedStats.reduce((max, stat) => Math.max(max, stat.absNetPnl), 0) || 1;
+        const minRadius = 8;
+        const maxRadius = 28;
+
+        const bubbleData = normalizedStats.map(stat => {
+            const radius = minRadius + (stat.absNetPnl / maxAbsNetPnl) * (maxRadius - minRadius);
+
+            return {
+                x: Number.isFinite(stat.avgWinDuration) ? stat.avgWinDuration : 0,
+                y: Number.isFinite(stat.avgLossDuration) ? stat.avgLossDuration : 0,
+                r: radius,
+                ticker: stat.ticker,
+                totalTrades: stat.totalTrades,
+                netPnl: stat.netPnl,
+                avgWinDuration: stat.avgWinDuration,
+                avgLossDuration: stat.avgLossDuration,
+                avgWinReturn: stat.avgWinReturn,
+                avgLossReturn: stat.avgLossReturn,
+                winRate: stat.winRate
+            };
+        });
+
+        const backgroundColors = bubbleData.map(point => point.netPnl >= 0 ? 'rgba(40, 167, 69, 0.75)' : 'rgba(220, 53, 69, 0.75)');
+        const borderColors = bubbleData.map(point => point.netPnl >= 0 ? '#28a745' : '#dc3545');
+
+        holdingContainer.style.display = 'block';
+
+        if (tickerWinLossDotPlotChart) {
+            tickerWinLossDotPlotChart.data.datasets[0].data = bubbleData;
+            tickerWinLossDotPlotChart.data.datasets[0].backgroundColor = backgroundColors;
+            tickerWinLossDotPlotChart.data.datasets[0].borderColor = borderColors;
+            tickerWinLossDotPlotChart.update();
+            return;
+        }
+
+        tickerWinLossDotPlotChart = new Chart(holdingChartElement.getContext('2d'), {
+            type: 'bubble',
+            data: {
+                datasets: [{
+                    label: 'Holding Period Comparison',
+                    data: bubbleData,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1,
+                    hoverBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 1,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Avg Holding Period of Winning Trades (days)'
+                        },
+                        min: 0,
+                        ticks: {
+                            callback: (value) => `${value}d`
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Avg Holding Period of Losing Trades (days)'
+                        },
+                        min: 0,
+                        ticks: {
+                            callback: (value) => `${value}d`
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].raw.ticker,
+                            label: (context) => {
+                                const point = context.raw;
+                                const lossReturnDisplay = point.avgLossReturn > 0 ? -point.avgLossReturn : 0;
+                                return [
+                                    `Avg Win Duration: ${point.avgWinDuration.toFixed(1)} days`,
+                                    `Avg Loss Duration: ${point.avgLossDuration.toFixed(1)} days`,
+                                    `Avg Win Return: ${point.avgWinReturn.toFixed(2)}%`,
+                                    `Avg Loss Return: ${lossReturnDisplay.toFixed(2)}%`,
+                                    `Win Rate: ${point.winRate.toFixed(1)}%`,
+                                    `Trades: ${point.totalTrades}`,
+                                    `Net P&L: ${currencyFormatter.format(point.netPnl)}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Render cash percentage chart
+    function renderCashPercentageChart(cashPercentageData) {
+        const cashPercentageChartElement = document.getElementById('cashPercentageChart');
+        const cashPercentageContainer = document.getElementById('cashPercentageChartContainer');
+
+        if (!cashPercentageChartElement || !cashPercentageContainer) return;
+
+        if (!cashPercentageData || cashPercentageData.length === 0) {
+            cashPercentageContainer.style.display = 'none';
+            return;
+        }
+
+        cashPercentageContainer.style.display = 'block';
+
+        const labels = cashPercentageData.map(item => item.date);
+        const cashPercentages = cashPercentageData.map(item => item.cashPercentage);
+        const missedTradesData = cashPercentageData.map(item => item.missedTradesDueToCash || 0);
+
+        const datasets = [
+            {
+                label: 'Cash % of Portfolio',
+                data: cashPercentages,
+                borderColor: '#17a2b8',
+                backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 2,
+                pointHoverRadius: 4,
+                yAxisID: 'y'
+            },
+            {
+                label: 'Missed Trades (No Cash)',
+                data: missedTradesData,
+                borderColor: '#ced4da',
+                backgroundColor: 'rgba(206, 212, 218, 0.3)',
+                fill: false,
+                tension: 0.4,
+                pointRadius: 1,
+                pointHoverRadius: 3,
+                borderDash: [3, 3],
+                yAxisID: 'y1'
+            }
+        ];
+
+        if (cashPercentageChart) {
+            cashPercentageChart.data.labels = labels;
+            cashPercentageChart.data.datasets = datasets;
+            cashPercentageChart.update();
+        } else {
+            const cashPercentageCtx = cashPercentageChartElement.getContext('2d');
+            cashPercentageChart = new Chart(cashPercentageCtx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Cash Percentage (%)'
+                            },
+                            min: 0,
+                            max: 100,
+                            ticks: {
+                                callback: function (value) {
+                                    return value.toFixed(0) + '%';
+                                }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Missed Trades'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                            ticks: {
+                                callback: function (value) {
+                                    return value.toFixed(0);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    if (label === 'Cash % of Portfolio') {
+                                        const originalDataPoint = originalCashPercentageData.find(d => d.date === context.label);
+                                        if (originalDataPoint) {
+                                            return [
+                                                label + ': ' + value.toFixed(2) + '%',
+                                                'Cash: $' + originalDataPoint.cash.toLocaleString(),
+                                                'Total Value: $' + originalDataPoint.totalValue.toLocaleString()
+                                            ];
+                                        }
+                                        return label + ': ' + value.toFixed(2) + '%';
+                                    }
+                                    return label + ': ' + value.toFixed(0);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // Initial render of all charts with full data
+        renderPortfolioChart(originalPortfolioData, originalBenchmarkData);
+        renderDrawdownChart(originalDrawdownData);
+        renderDailyReturnDistributionChart(originalDailyReturnDistributionData);
+        renderCashPercentageChart(originalCashPercentageData);
+        const initialTradeStats = Array.isArray(tradeTickerStats) ? tradeTickerStats : [];
+        renderTradeCharts(initialTradeStats);
+    });
+</script>

@@ -1,0 +1,1 @@
+default_lightgbm|NO_TRADES|final=100000.00|total_return=0.000000|sharpe=0.000000

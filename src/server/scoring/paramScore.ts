@@ -1,0 +1,533 @@
+
+import type { QueryResultRow } from 'pg';
+
+export type BacktestCacheRow = QueryResultRow & {
+  parameters: Record<string, unknown>;
+  sharpe_ratio: number;
+  calmar_ratio: number;
+  total_return: number;
+  cagr: number;
+  max_drawdown: number;
+  max_drawdown_ratio: number;
+  win_rate: number;
+  total_trades: number;
+  verify_sharpe_ratio?: number | null;
+  verify_calmar_ratio?: number | null;
+  verify_cagr?: number | null;
+  verify_max_drawdown_ratio?: number | null;
+  top_abs_gain_ticker?: string | null;
+  top_rel_gain_ticker?: string | null;
+};
+
+export interface BestBacktestParamsResult {
+  parameters: Record<string, unknown>;
+  sharpeRatio: number;
+  calmarRatio: number;
+  totalReturn: number;
+  cagr: number;
+  maxDrawdown: number;
+  maxDrawdownRatio: number;
+  winRate: number | null;
+  totalTrades: number | null;
+  coreScore: number;
+  stabilityScore: number;
+  finalScore: number;
+  sourceRow?: BacktestCacheRow;
+}
+
+type NormalizedCandidate = {
+  parameters: Record<string, unknown>;
+  sharpeRatio: number;
+  calmarRatio: number;
+  totalReturn: number;
+  cagr: number;
+  maxDrawdown: number;
+  maxDrawdownRatio: number;
+  winRate: number | null;
+  totalTrades: number | null;
+  coreScore: number;
+  ddPenalty: number;
+  sourceRow: BacktestCacheRow;
+};
+
+type ScoredCandidate = NormalizedCandidate & {
+  stabilityScore: number;
+  finalScore: number;
+};
+
+export type ScoreAvailabilityReasonCode =
+  | 'missing_metrics'
+  | 'missing_parameters'
+  | 'missing_trades'
+  | 'insufficient_trades';
+
+export type ScoreAvailabilityResult =
+  | { eligible: true }
+  | { eligible: false; reasonCode: ScoreAvailabilityReasonCode; reason: string };
+
+export type ScoreBacktestParametersSummary = {
+  scored: BestBacktestParamsResult[];
+  availabilityById: Map<string, ScoreAvailabilityResult>;
+  availabilityByRow: Map<BacktestCacheRow, ScoreAvailabilityResult>;
+};
+
+type ParameterScaleMap = Map<string, number>;
+
+const PERCENTILE_TOLERANCE = 1e-12;
+const CORE_SCORE_EPSILON = 1e-9;
+const MIN_TRADES = 20;
+const DRAWDOWN_LAMBDA = 3.5;
+const NEIGHBOR_THRESHOLD = 0.15;
+const CORE_SCORE_QUANTILE = 0.6;
+const PAIRWISE_NEIGHBOR_LIMIT = 1500;
+const STABILITY_IGNORED_PARAMS = new Set(['initialCapital']);
+
+export const scoreBacktestParameters = (
+  rows: BacktestCacheRow[]
+): ScoreBacktestParametersSummary => {
+  const availabilityById = new Map<string, ScoreAvailabilityResult>();
+  const availabilityByRow = new Map<BacktestCacheRow, ScoreAvailabilityResult>();
+  const candidates: NormalizedCandidate[] = [];
+  rows.forEach((row) => {
+    const evaluation = evaluateCandidateRow(row);
+    recordAvailability(row, evaluation.availability, availabilityByRow, availabilityById);
+    if (evaluation.candidate) {
+      candidates.push(evaluation.candidate);
+    }
+  });
+
+  if (!candidates.length) {
+    return {
+      scored: [],
+      availabilityById,
+      availabilityByRow
+    };
+  }
+
+  const sharpePercentiles = computePercentileRanks(candidates.map(candidate => candidate.sharpeRatio));
+  const calmarPercentiles = computePercentileRanks(candidates.map(candidate => candidate.calmarRatio));
+  const returnPercentiles = computePercentileRanks(candidates.map(candidate => candidate.totalReturn));
+
+  const scoredCandidates: ScoredCandidate[] = candidates.map((candidate, i) => {
+    const coreScore = Math.cbrt(
+      (sharpePercentiles[i] + CORE_SCORE_EPSILON) *
+      (calmarPercentiles[i] + CORE_SCORE_EPSILON) *
+      (returnPercentiles[i] + CORE_SCORE_EPSILON)
+    );
+    const ddPenalty = Math.exp(-DRAWDOWN_LAMBDA * Math.max(0, candidate.maxDrawdownRatio));
+
+    return {
+      ...candidate,
+      coreScore,
+      ddPenalty,
+      stabilityScore: 0,
+      finalScore: 0
+    };
+  });
+
+  applyStabilityScores(scoredCandidates);
+
+  const sorted = scoredCandidates
+    .map((candidate) => {
+      const stability = clampNumber(candidate.stabilityScore, 0, 1);
+      const finalScore = candidate.coreScore * candidate.ddPenalty * (0.5 + 0.5 * stability);
+      return { ...candidate, finalScore };
+    })
+    .sort((a, b) => b.finalScore - a.finalScore);
+
+  const scored = sorted.map((candidate) => ({
+    parameters: candidate.parameters,
+    sharpeRatio: candidate.sharpeRatio,
+    calmarRatio: candidate.calmarRatio,
+    totalReturn: candidate.totalReturn,
+    cagr: candidate.cagr,
+    maxDrawdown: candidate.maxDrawdown,
+    maxDrawdownRatio: candidate.maxDrawdownRatio,
+    winRate: candidate.winRate,
+    totalTrades: candidate.totalTrades,
+    coreScore: candidate.coreScore,
+    stabilityScore: candidate.stabilityScore,
+    finalScore: candidate.finalScore,
+    sourceRow: candidate.sourceRow
+  }));
+
+  return {
+    scored,
+    availabilityById,
+    availabilityByRow
+  };
+};
+
+type CandidateEvaluationResult = {
+  candidate: NormalizedCandidate | null;
+  availability: ScoreAvailabilityResult;
+};
+
+const evaluateCandidateRow = (
+  row: BacktestCacheRow
+): CandidateEvaluationResult => {
+  const fail = (reasonCode: ScoreAvailabilityReasonCode, reason: string): CandidateEvaluationResult => ({
+    candidate: null,
+    availability: {
+      eligible: false,
+      reasonCode,
+      reason
+    }
+  });
+
+  const sharpe = parseNullableNumber(row.sharpe_ratio);
+  const calmar = parseNullableNumber(row.calmar_ratio);
+  const totalReturn = parseNullableNumber(row.total_return);
+  if (sharpe === null || calmar === null || totalReturn === null) {
+    return fail('missing_metrics', 'Missing Sharpe, Calmar, or total return metrics.');
+  }
+  const cagr = parseNullableNumber(row.cagr) ?? 0;
+  const parameters = parseParameters(row.parameters);
+  if (!parameters || Object.keys(parameters).length === 0) {
+    return fail('missing_parameters', 'Parameter set is empty or invalid.');
+  }
+  const totalTradesValue = parseNullableNumber(row.total_trades);
+  if (totalTradesValue === null) {
+    return fail('missing_trades', 'Total trade count is missing.');
+  }
+  const totalTrades = Math.max(0, Math.round(totalTradesValue));
+  if (MIN_TRADES > 0 && totalTrades < MIN_TRADES) {
+    return fail('insufficient_trades', `Requires at least ${MIN_TRADES} trades (only ${totalTrades} recorded).`);
+  }
+  const candidate: NormalizedCandidate = {
+    parameters,
+    sharpeRatio: sharpe,
+    calmarRatio: calmar,
+    totalReturn,
+    cagr,
+    maxDrawdown: row.max_drawdown,
+    maxDrawdownRatio: row.max_drawdown_ratio,
+    winRate: row.win_rate,
+    totalTrades,
+    coreScore: 0,
+    ddPenalty: 0,
+    sourceRow: row
+  };
+
+  return {
+    candidate,
+    availability: { eligible: true }
+  };
+};
+
+const recordAvailability = (
+  row: BacktestCacheRow,
+  availability: ScoreAvailabilityResult,
+  availabilityByRow: Map<BacktestCacheRow, ScoreAvailabilityResult>,
+  availabilityById: Map<string, ScoreAvailabilityResult>
+): void => {
+  availabilityByRow.set(row, availability);
+  const rowId = getRowId(row);
+  if (rowId) {
+    availabilityById.set(rowId, availability);
+  }
+};
+
+const getRowId = (row: BacktestCacheRow): string | null => {
+  const id = (row as any).id;
+  return typeof id === 'string' && id.trim() ? id : null;
+};
+
+const computePercentileRanks = (values: number[]): number[] => {
+  if (!values.length) {
+    return [];
+  }
+  if (values.length === 1) {
+    return [1];
+  }
+
+  const sorted = values.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
+  const percentiles = new Array(values.length).fill(0);
+  const denominator = sorted.length - 1;
+  let i = 0;
+
+  while (i < sorted.length) {
+    let j = i + 1;
+    while (j < sorted.length && Math.abs(sorted[j].value - sorted[i].value) <= PERCENTILE_TOLERANCE) {
+      j += 1;
+    }
+
+    const lower = i;
+    const upper = j - 1;
+    const averageRank = (lower + upper) / 2;
+    const percentile = denominator === 0 ? 1 : averageRank / denominator;
+
+    for (let index = i; index < j; index += 1) {
+      percentiles[sorted[index].index] = percentile;
+    }
+
+    i = j;
+  }
+
+  return percentiles;
+};
+
+const applyStabilityScores = (
+  candidates: ScoredCandidate[]
+): void => {
+  const scaleMap = computeParameterScales(candidates);
+  const sortedCore = candidates.map(candidate => candidate.coreScore).sort((a, b) => a - b);
+  const quantileIndex = sortedCore.length === 1
+    ? 0
+    : Math.min(
+        sortedCore.length - 1,
+        Math.max(0, Math.floor(clampNumber(CORE_SCORE_QUANTILE, 0, 1) * (sortedCore.length - 1)))
+      );
+  const coreScoreCutoff = sortedCore[quantileIndex];
+
+  if (candidates.length <= PAIRWISE_NEIGHBOR_LIMIT) {
+    applyPairwiseStabilityScores(candidates, coreScoreCutoff, NEIGHBOR_THRESHOLD, scaleMap);
+    return;
+  }
+
+  applyBucketedStabilityScores(candidates, coreScoreCutoff, NEIGHBOR_THRESHOLD, scaleMap);
+};
+
+const applyPairwiseStabilityScores = (
+  candidates: ScoredCandidate[],
+  coreScoreCutoff: number,
+  threshold: number,
+  scaleMap: ParameterScaleMap
+): void => {
+  for (let i = 0; i < candidates.length; i += 1) {
+    let neighborCount = 0;
+    let goodNeighbors = 0;
+
+    for (let j = 0; j < candidates.length; j += 1) {
+      if (i === j) {
+        continue;
+      }
+      const distance = computeParameterDistance(candidates[i].parameters, candidates[j].parameters, scaleMap);
+      if (distance <= threshold) {
+        neighborCount += 1;
+        if (candidates[j].coreScore >= coreScoreCutoff) {
+          goodNeighbors += 1;
+        }
+      }
+    }
+
+    candidates[i].stabilityScore = neighborCount > 0 ? goodNeighbors / neighborCount : 0;
+  }
+};
+
+const applyBucketedStabilityScores = (
+  candidates: ScoredCandidate[],
+  coreScoreCutoff: number,
+  threshold: number,
+  scaleMap: ParameterScaleMap
+): void => {
+  const step = Math.max(threshold, 0.01);
+  const bucketMap = new Map<string, number[]>();
+  const candidateKeys: string[][] = new Array(candidates.length);
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const keys = buildBucketKeysForCandidate(candidates[i].parameters, step, scaleMap);
+    candidateKeys[i] = keys;
+
+    for (const key of keys) {
+      let bucket = bucketMap.get(key);
+      if (!bucket) {
+        bucket = [];
+        bucketMap.set(key, bucket);
+      }
+      bucket.push(i);
+    }
+  }
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const neighborIndexes = new Set<number>([i]);
+    for (const key of candidateKeys[i]) {
+      const indexes = bucketMap.get(key);
+      if (indexes) {
+        indexes.forEach(index => neighborIndexes.add(index));
+      }
+    }
+
+    let neighborCount = 0;
+    let goodNeighbors = 0;
+    for (const neighborIndex of neighborIndexes) {
+      if (neighborIndex === i) {
+        continue;
+      }
+      const distance = computeParameterDistance(candidates[i].parameters, candidates[neighborIndex].parameters, scaleMap);
+      if (distance <= threshold) {
+        neighborCount += 1;
+        if (candidates[neighborIndex].coreScore >= coreScoreCutoff) {
+          goodNeighbors += 1;
+        }
+      }
+    }
+
+    candidates[i].stabilityScore = neighborCount > 0 ? goodNeighbors / neighborCount : 0;
+  }
+};
+
+const buildBucketKeysForCandidate = (
+  parameters: Record<string, unknown>,
+  step: number,
+  scaleMap: ParameterScaleMap
+): string[] => {
+  const safeStep = Math.max(step, 0.01);
+  const keys = new Set<string>();
+  const vectorParts: string[] = [];
+  const sortedKeys = Object.keys(parameters ?? {}).sort();
+
+  for (const key of sortedKeys) {
+    if (STABILITY_IGNORED_PARAMS.has(key)) {
+      continue;
+    }
+    if (!scaleMap.has(key)) {
+      continue;
+    }
+    const value = parameters[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      continue;
+    }
+
+    const scale = scaleMap.get(key) ?? 1;
+    const normalized = value / Math.max(scale, 1e-9);
+    const quantized = Math.round(normalized / safeStep);
+    vectorParts.push(`${key}=${quantized}`);
+    keys.add(`${key}:${quantized}`);
+    keys.add(`${key}:${quantized - 1}`);
+    keys.add(`${key}:${quantized + 1}`);
+  }
+
+  if (!vectorParts.length) {
+    keys.add('vector:__empty__');
+    return Array.from(keys);
+  }
+
+  const vectorKey = `vector:${vectorParts.join('|')}`;
+  keys.add(vectorKey);
+  return Array.from(keys);
+};
+
+const computeParameterDistance = (
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  scaleMap: ParameterScaleMap
+): number => {
+  const parameterKeys = new Set<string>();
+  Object.keys(a ?? {}).forEach(key => {
+    if (!STABILITY_IGNORED_PARAMS.has(key) && scaleMap.has(key)) {
+      parameterKeys.add(key);
+    }
+  });
+  Object.keys(b ?? {}).forEach(key => {
+    if (!STABILITY_IGNORED_PARAMS.has(key) && scaleMap.has(key)) {
+      parameterKeys.add(key);
+    }
+  });
+
+  if (!parameterKeys.size) {
+    return 0;
+  }
+
+  let sumSq = 0;
+  let k = 0;
+  for (const key of parameterKeys) {
+    const rawA = a?.[key];
+    const rawB = b?.[key];
+    const valueA = typeof rawA === 'number' && Number.isFinite(rawA) ? rawA : null;
+    const valueB = typeof rawB === 'number' && Number.isFinite(rawB) ? rawB : null;
+
+    if (valueA !== null && valueB !== null) {
+      const scale = Math.max(scaleMap.get(key) ?? 1, 1e-9);
+      const z = Math.abs(valueA - valueB) / scale;
+      sumSq += z * z;
+    } else {
+      sumSq += 1;
+    }
+    k += 1;
+  }
+
+  return Math.sqrt(sumSq / Math.max(1, k));
+};
+
+const computeParameterScales = (candidates: NormalizedCandidate[]): ParameterScaleMap => {
+  const valuesByKey = new Map<string, number[]>();
+  candidates.forEach(({ parameters }) => {
+    Object.keys(parameters ?? {}).forEach((key) => {
+      if (STABILITY_IGNORED_PARAMS.has(key)) {
+        return;
+      }
+      const value = parameters[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        let arr = valuesByKey.get(key);
+        if (!arr) {
+          arr = [];
+          valuesByKey.set(key, arr);
+        }
+        arr.push(value);
+      }
+    });
+  });
+
+  const scaleMap: ParameterScaleMap = new Map();
+  valuesByKey.forEach((values, key) => {
+    if (!values.length) {
+      return;
+    }
+    values.sort((a, b) => a - b);
+    const hiIndex = Math.floor((values.length - 1) * 0.9);
+    const loIndex = Math.floor((values.length - 1) * 0.1);
+    const p90 = values[hiIndex];
+    const p10 = values[loIndex];
+    const spread = p90 - p10;
+    if (spread < 1e-8) {
+      return;
+    }
+    const scale = Math.max(spread, 1e-6);
+    scaleMap.set(key, scale);
+  });
+
+  return scaleMap;
+};
+
+const parseParameters = (raw: unknown): Record<string, unknown> | null => {
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+    } catch {
+      return null;
+    }
+  }
+
+  if (typeof raw === 'object') {
+    return { ...(raw as Record<string, unknown>) };
+  }
+
+  return null;
+};
+
+const parseNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const clampNumber = (value: number, minValue: number, maxValue: number): number => {
+  if (!Number.isFinite(value)) {
+    return minValue;
+  }
+  return Math.min(Math.max(value, minValue), maxValue);
+};

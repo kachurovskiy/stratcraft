@@ -1,0 +1,358 @@
+<div class="container-fluid">
+  <div class="d-flex flex-column flex-lg-row justify-content-lg-between align-items-lg-center gap-3 mb-3">
+    <div>
+      <h1 class="h2 mb-1">Database Overview</h1>
+      <p class="text-muted mb-0">Review and maintain stored trading data.</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <form method="POST" action="/admin/database/delete-all-data-except-users">
+          {{> csrf-field}}
+        <button type="submit" class="btn btn-danger"
+          onclick="return confirm('This will permanently delete all data except users (tickers, candles, templates, strategies, trades, accounts, account operations, backtests, cache, logs, etc.). This action cannot be undone. Proceed?')">
+          <i class="fas fa-bomb"></i>
+          Delete All Data Except Users
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="d-grid gap-4">
+    <section class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Templates & Lifecycles</h5>
+      </div>
+      <div class="card-body">
+        <div class="list-group list-group-flush">
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-diagram-project text-secondary"></i>
+                <span class="fw-semibold">Templates</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.templates 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-trading-data" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL trading data (strategies, trades, signals and templates)? This action cannot be undone and will completely reset the trading system.');">
+                    Clear trading data
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-3">
+                <i class="fas fa-chess-knight text-secondary"></i>
+                <span>Strategies</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.strategies 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-strategies" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL strategies and their trades? This action cannot be undone and will remove all strategies and backtest results.');">
+                    Clear strategies
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-4">
+                <i class="fas fa-broadcast-tower text-secondary"></i>
+                <span>Signals</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.signals 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-signals" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL stored signals? This will permanently remove every signal across all tickers. This action cannot be undone.');">
+                    Delete signals
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-4">
+                <i class="fas fa-microscope text-secondary"></i>
+                <span>Backtests</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.backtests 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-backtests" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL backtest results and their trades? Account/live trades will be kept. This action cannot be undone.');">
+                    Clear backtests
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-4">
+                <i class="fas fa-exchange-alt text-secondary"></i>
+                <span>Trades</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.trades 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-trades" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL trades (including account trades) from the database? This action cannot be undone and will also remove all backtest results.');">
+                    Clear trades
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-3">
+                <i class="fas fa-archive text-secondary"></i>
+                <span>Backtest cache entries</span>
+                <span class="text-muted">
+                  {{#if backtestCacheStats}}
+                  {{formatNumber backtestCacheStats.totalCount 0}}
+                  {{else}}
+                  0
+                  {{/if}}
+                </span>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary btn-sm" href="/admin/database/backtest-cache/export">
+                  <i class="fas fa-download"></i>
+                  Download SQL
+                </a>
+                <form method="POST" action="/admin/database/clear-backtest-cache" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to remove all cached backtest results? This action cannot be undone.');">
+                    Clear cache
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="border rounded p-3 mt-4">
+          <h6 class="text-uppercase text-muted small mb-3">Backtest Cache Tools</h6>
+          <div class="d-grid gap-3">
+            <form method="POST" action="/admin/database/backtest-cache/import" enctype="multipart/form-data">
+                {{> csrf-field}}
+              <div class="input-group">
+                <span class="input-group-text">
+                  <i class="fas fa-upload"></i>
+                  <span class="ms-2">Import cache</span>
+                </span>
+                <input type="file" name="cacheFile" class="form-control" accept=".sql,.txt" required>
+                <button type="submit" class="btn btn-outline-secondary"
+                  onclick="return confirm('Importing a cache export will replace all existing cached backtests. Continue?');">
+                  Upload
+                </button>
+              </div>
+            </form>
+            <form method="POST" action="/admin/database/clear-backtest-cache-by-template">
+                {{> csrf-field}}
+              <div class="input-group">
+                <span class="input-group-text">
+                  <i class="fas fa-eraser"></i>
+                  <span class="ms-2">Template ID</span>
+                </span>
+                <input type="text" name="templateId" class="form-control" placeholder="template-id" required>
+                <button type="submit" class="btn btn-outline-secondary"
+                  onclick="return confirm('Remove cached backtest results for template ' + (this.form.templateId.value || '(unspecified)') + '? This action cannot be undone.');">
+                  Clear by template
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Tickers & Market Data</h5>
+      </div>
+      <div class="card-body">
+        <div class="list-group list-group-flush">
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-stream text-secondary"></i>
+                <span class="fw-semibold">Tickers</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.tickers 0}}</span>
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="promptAddTickers()">
+                  <i class="fas fa-plus"></i>
+                  Add tickers
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="promptDeleteTickers()">
+                  <i class="far fa-trash-alt"></i>
+                  Delete tickers
+                </button>
+                <form method="POST" action="/admin/database/clear-all-tickers" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL tickers and their related data? This action cannot be undone.');">
+                    <i class="fas fa-bomb"></i>
+                    Delete all tickers
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-3">
+                <i class="fas fa-chart-bar text-secondary"></i>
+                <span>Candles</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.candles 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-candles" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL candles from the database? This action cannot be undone and will remove all price data.');">
+                    Clear candles
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <form id="bulkAddTickersForm" method="POST" action="/admin/database/bulk-add-tickers" class="d-none">
+            {{> csrf-field}}
+          <input type="hidden" name="tickers">
+        </form>
+        <form id="bulkDeleteTickersForm" method="POST" action="/admin/database/bulk-delete-tickers" class="d-none">
+            {{> csrf-field}}
+          <input type="hidden" name="tickers">
+        </form>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h5 class="mb-0">Users & Accounts</h5>
+      </div>
+      <div class="card-body">
+        <div class="list-group list-group-flush">
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-users text-secondary"></i>
+                <span class="fw-semibold">Users</span>
+                <span class="text-muted">{{formatNumber allUsers.length 0}}</span>
+              </div>
+              <div class="text-muted">No direct actions</div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-3">
+                <i class="fas fa-piggy-bank text-secondary"></i>
+                <span>Accounts</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.accounts 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-accounts" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL accounts and detach their credentials? This action cannot be undone.');">
+                    Delete accounts
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="list-group-item">
+            <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+              <div class="d-flex align-items-center gap-2 ps-lg-4">
+                <i class="fas fa-wallet text-secondary"></i>
+                <span>Account operations</span>
+                <span class="text-muted">{{formatNumber databaseEntityCounts.accountOperations 0}}</span>
+              </div>
+              <div>
+                <form method="POST" action="/admin/database/clear-all-account-operations" class="d-inline">
+                    {{> csrf-field}}
+                  <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete ALL account operations? This will permanently remove every pending or historical account operation and cannot be undone.');">
+                    Delete operations
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  function promptTickerAction(formId, promptMessage, confirmMessage) {
+    const tickersInput = prompt(promptMessage);
+    if (tickersInput === null) {
+      return;
+    }
+
+    const trimmed = tickersInput.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    if (confirmMessage && !confirm(confirmMessage)) {
+      return;
+    }
+
+    const form = document.getElementById(formId);
+    if (!form) {
+      console.error('Ticker form not found:', formId);
+      return;
+    }
+
+    const hiddenInput = form.querySelector('input[name="tickers"]');
+    if (!hiddenInput) {
+      console.error('Ticker input missing on form:', formId);
+      return;
+    }
+
+    hiddenInput.value = trimmed;
+    form.submit();
+  }
+
+  function promptAddTickers() {
+    promptTickerAction(
+      'bulkAddTickersForm',
+      'Enter tickers to add (space separated, e.g. AAPL MSFT GOOGL)'
+    );
+  }
+
+  function promptDeleteTickers() {
+    promptTickerAction(
+      'bulkDeleteTickersForm',
+      'Enter tickers to delete (space separated, e.g. AAPL MSFT GOOGL)',
+      'Are you sure you want to delete the specified tickers? This will permanently remove all associated data.'
+    );
+  }
+</script>

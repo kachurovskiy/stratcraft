@@ -1,0 +1,255 @@
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Jobs</h1>
+        <div>
+          <span class="badge bg-primary me-2">Admin: {{user.email}}</span>
+        </div>
+      </div>
+
+      <!-- Job Scheduler Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-info text-white d-flex flex-wrap gap-3 justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-tasks"></i>
+            Job Scheduler
+          </h5>
+          <form method="POST" action="/admin/jobs/queue" class="d-flex align-items-center gap-2 flex-nowrap">
+              {{> csrf-field}}
+            <select name="jobType" class="form-select form-select-sm" aria-label="Job type">
+              {{#each jobTypeOptions}}
+                <option value="{{value}}">{{label}}</option>
+              {{/each}}
+            </select>
+            <button type="submit" class="btn btn-sm btn-light text-uppercase">
+              Enqueue
+            </button>
+          </form>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr class="table-light">
+                  <th class="ps-3">Job</th>
+                  <th>Status</th>
+                  <th>Scheduled</th>
+                  <th>Started</th>
+                  <th>Finished</th>
+                  <th>Duration</th>
+                  <th>Attempts</th>
+                  <th>Details</th>
+                  <th class="text-end pe-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{#if jobTimeline.length}}
+                {{#each jobTimeline}}
+                <tr>
+                  <td class="text-uppercase ps-3">
+                    <div>{{type}}</div>
+                    <div class="text-muted small">Job {{id}}</div>
+                  </td>
+                  <td>
+                    <span class="badge bg-{{jobStatusBadge status}} text-uppercase">{{status}}</span>
+                  </td>
+                  <td>{{#if scheduledFor}}{{formatDateTime scheduledFor}}{{else}}&mdash;{{/if}}</td>
+                  <td>
+                    {{#if startedAt}}
+                    {{formatDateTime startedAt}}
+                    {{else}}
+                    <span class="text-muted">{{#if (eq status 'queued')}}Queued{{else}}&mdash;{{/if}}</span>
+                    {{/if}}
+                  </td>
+                  <td>
+                    {{#if finishedAt}}
+                    {{formatDateTime finishedAt}}
+                    {{else}}
+                    <span class="text-muted">&mdash;</span>
+                    {{/if}}
+                  </td>
+                  <td>
+                    {{#if finishedAt}}
+                    {{#if startedAt}}
+                    {{calcDurationMinutes startedAt finishedAt}} min
+                    {{else}}
+                    <span class="text-muted">n/a</span>
+                    {{/if}}
+                    {{else}}
+                    {{#if startedAt}}
+                    <span class="text-muted">In progress</span>
+                    {{else}}
+                    <span class="text-muted">Pending</span>
+                    {{/if}}
+                    {{/if}}
+                  </td>
+                  <td>
+                    {{attempts}}
+                    {{#if maxRetries}} / {{maxRetries}}{{/if}}
+                  </td>
+                  <td>
+                    {{#if description}}<div>{{description}}</div>{{/if}}
+                    {{#if result.message}}<div>{{result.message}}</div>{{/if}}
+                    {{#if lastError}}<div class="text-danger small">{{lastError}}</div>{{/if}}
+                    {{#if metadata.modelName}}<div class="text-muted small">Model: {{metadata.modelName}}</div>{{/if}}
+                    {{#if lightgbmTrainParams}}<div class="text-muted small"><code>{{lightgbmTrainParams}}</code></div>{{/if}}
+                    {{#if metadata.reason}}<div class="text-muted small">({{metadata.reason}})</div>{{/if}}
+                    {{#if cancellationRequestedAt}}
+                      <div class="text-warning small">Cancel requested {{formatDateTime cancellationRequestedAt}}</div>
+                    {{/if}}
+                  </td>
+                  <td class="text-end pe-3">
+                    <div class="d-inline-flex align-items-center gap-2">
+                      {{#if (ne status 'queued')}}
+                        <a href="/admin/jobs/{{id}}/logs" class="btn btn-sm btn-outline-secondary text-uppercase">
+                          Logs
+                        </a>
+                      {{/if}}
+
+                      {{#if isCancellable}}
+                        <form method="POST" action="/admin/jobs/cancel" class="d-inline">
+                            {{> csrf-field}}
+                          <input type="hidden" name="jobId" value="{{id}}">
+                          <button type="submit" class="btn btn-sm btn-outline-danger text-uppercase"
+                            {{#if cancellationRequestedAt}}disabled{{/if}}
+                            onclick="return confirm('Cancel {{type}} job {{id}}?');">
+                            {{#if cancellationRequestedAt}}
+                              Cancelling...
+                            {{else}}
+                              Cancel
+                            {{/if}}
+                          </button>
+                        </form>
+                      {{/if}}
+
+                      {{#unless (or isCancellable (ne status 'queued'))}}
+                        <span class="text-muted small">&mdash;</span>
+                      {{/unless}}
+                    </div>
+                  </td>
+                </tr>
+                {{/each}}
+                {{else}}
+                <tr>
+                  <td colspan="9" class="text-center text-muted">No jobs to display</td>
+                </tr>
+                {{/if}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Remote Optimization Jobs Section -->
+      <div class="card mb-4">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-cloud-upload-alt"></i>
+            Remote Optimization Jobs
+          </h5>
+          <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            <span class="badge bg-light text-dark text-uppercase">
+              {{remoteOptimizerJobs.length}} tracked
+            </span>
+            <form method="POST" action="/admin/jobs/remote-optimizer-jobs/delete-finished" class="d-inline">
+                {{> csrf-field}}
+              <button type="submit" class="btn btn-sm btn-outline-dark text-uppercase"
+                onclick="return confirm('Delete all finished remote optimization jobs (succeeded or failed)? This cannot be undone.');">
+                <i class="fas fa-trash-alt"></i>
+                Delete Finished
+              </button>
+            </form>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          {{#if remoteOptimizerJobs.length}}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Template / Job</th>
+                    <th>Status</th>
+                    <th>Hetzner Server</th>
+                    <th>Created</th>
+                    <th>Started</th>
+                    <th>Finished</th>
+                    <th>Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{#each remoteOptimizerJobs}}
+                    <tr>
+                      <td class="ps-3">
+                        <div class="fw-semibold">
+                          {{#if templateName}}{{templateName}}{{else}}{{templateId}}{{/if}}
+                        </div>
+                        <div class="text-muted small">
+                          <code>{{templateId}}</code>
+                          <span class="ms-1">Job {{id}}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="badge bg-{{jobStatusBadge status}} text-uppercase">{{status}}</span>
+                      </td>
+                      <td>
+                        {{#if hetznerServerId}}
+                          <div>#{{hetznerServerId}}</div>
+                          {{#if remoteServerIp}}
+                            <div class="text-muted small">{{remoteServerIp}}</div>
+                          {{/if}}
+                        {{else}}
+                          <span class="text-muted">&mdash;</span>
+                        {{/if}}
+                      </td>
+                      <td>
+                        {{#if createdAt}}
+                          {{formatDateTime createdAt}}
+                        {{else}}
+                          <span class="text-muted">&mdash;</span>
+                        {{/if}}
+                      </td>
+                      <td>
+                        {{#if startedAt}}
+                          {{formatDateTime startedAt}}
+                        {{else}}
+                          <span class="text-muted">&mdash;</span>
+                        {{/if}}
+                      </td>
+                      <td>
+                        {{#if finishedAt}}
+                          {{formatDateTime finishedAt}}
+                        {{else}}
+                          <span class="text-muted">&mdash;</span>
+                        {{/if}}
+                      </td>
+                      <td>
+                        {{#if finishedAt}}
+                          {{#if startedAt}}
+                            {{calcDurationMinutes startedAt finishedAt}} min
+                          {{else}}
+                            <span class="text-muted">n/a</span>
+                          {{/if}}
+                        {{else}}
+                          {{#if startedAt}}
+                            <span class="text-muted">In progress</span>
+                          {{else}}
+                            <span class="text-muted">&mdash;</span>
+                          {{/if}}
+                        {{/if}}
+                      </td>
+                    </tr>
+                  {{/each}}
+                </tbody>
+              </table>
+            </div>
+          {{else}}
+            <div class="p-4 text-center text-muted">
+              No remote optimization jobs have been recorded yet.
+            </div>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
