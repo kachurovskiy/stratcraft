@@ -44,6 +44,7 @@ const REMOTE_API_MTLS_CLIENT_KEY_PATH = `${REMOTE_API_MTLS_DIR}/client.key`;
 const REMOTE_COMMAND_OUTPUT_LIMIT = 4000;
 const REMOTE_JOB_LOG_LIMIT = 400;
 const REMOTE_SCRIPT_LOG_TAIL_LINES = 400;
+const REMOTE_SCRIPT_LOG_MAX_BYTES = 256_000;
 const REMOTE_JOB_PERSIST_DEBOUNCE_MS = 1000;
 const REMOTE_JOB_RECONCILE_INTERVAL_MS = 60_000;
 const REMOTE_JOB_RUNNING_STALE_AFTER_MS = 15 * 60 * 1000;
@@ -185,13 +186,45 @@ export class RemoteOptimizationService {
     };
     job.remoteSshPrivateKey = Buffer.from(privateKey, 'utf8');
 
-    const command = `if [ -f ${REMOTE_SCRIPT_LOG_PATH} ]; then tail -n ${REMOTE_SCRIPT_LOG_TAIL_LINES} ${REMOTE_SCRIPT_LOG_PATH}; else echo "Log file not found at ${REMOTE_SCRIPT_LOG_PATH}"; fi`;
-    const result = await this.execRemoteCommand(job, command);
-    job.remoteSshPrivateKey = undefined;
+    const normalizeLogTail = (value: string): string => {
+      if (!value) {
+        return '';
+      }
+      const normalized = value.replace(/\r\n/g, '\n');
+      const lines = normalized.split('\n');
+      if (lines.length <= REMOTE_SCRIPT_LOG_TAIL_LINES) {
+        return normalized.trimEnd();
+      }
+      return lines.slice(-REMOTE_SCRIPT_LOG_TAIL_LINES).join('\n');
+    };
+
+    let log = '';
+    let logHeader = '';
+    try {
+      const fileResult = await this.readRemoteFileTail(job, REMOTE_SCRIPT_LOG_PATH, REMOTE_SCRIPT_LOG_MAX_BYTES);
+      if (fileResult) {
+        const sizeLabel = `${fileResult.size} bytes`;
+        const truncatedLabel = fileResult.truncated ? ', truncated' : '';
+        logHeader = `Log file: ${REMOTE_SCRIPT_LOG_PATH} (${sizeLabel}${truncatedLabel})`;
+        log = normalizeLogTail(fileResult.content);
+      } else {
+        logHeader = `Log file not found at ${REMOTE_SCRIPT_LOG_PATH}.`;
+      }
+    } finally {
+      job.remoteSshPrivateKey = undefined;
+    }
+
+    if (logHeader) {
+      if (log) {
+        log = `${logHeader}\n${log}`;
+      } else {
+        log = `${logHeader}\nLog file is empty.`;
+      }
+    }
 
     return {
       job: this.buildSnapshotFromEntity(entity),
-      log: result.stdout,
+      log,
       tailLines: REMOTE_SCRIPT_LOG_TAIL_LINES
     };
   }
@@ -619,6 +652,71 @@ export class RemoteOptimizationService {
     });
   }
 
+  private async readRemoteFileTail(
+    job: RemoteOptimizationJobRecord,
+    remotePath: string,
+    maxBytes: number
+  ): Promise<{ content: string; size: number; truncated: boolean } | null> {
+    const config = this.getSshConfig(job);
+    return new Promise((resolve, reject) => {
+      const conn = new SSHClient();
+      const fail = (err: unknown): void => {
+        conn.end();
+        reject(new Error(`Failed to read ${remotePath}: ${this.describeError(err)}`));
+      };
+      this.registerKeyboardInteractiveHandler(conn);
+      conn.on('ready', () => {
+        conn.sftp((err, sftp) => {
+          if (err || !sftp) {
+            fail(err ?? new Error('Failed to establish SFTP session'));
+            return;
+          }
+          sftp.stat(remotePath, (statErr, stats) => {
+            if (statErr || !stats) {
+              conn.end();
+              if (this.isRemoteFileMissing(statErr)) {
+                resolve(null);
+                return;
+              }
+              reject(new Error(`Failed to stat ${remotePath}: ${this.describeError(statErr)}`));
+              return;
+            }
+            const size = Number(stats.size ?? 0);
+            if (!Number.isFinite(size) || size <= 0) {
+              conn.end();
+              resolve({ content: '', size: 0, truncated: false });
+              return;
+            }
+            const safeMaxBytes = Math.max(1, Math.trunc(maxBytes));
+            const start = Math.max(0, size - safeMaxBytes);
+            const length = size - start;
+            sftp.open(remotePath, 'r', (openErr, handle) => {
+              if (openErr || !handle) {
+                conn.end();
+                fail(openErr ?? new Error('Failed to open remote log file'));
+                return;
+              }
+              const buffer = Buffer.alloc(length);
+              sftp.read(handle, buffer, 0, length, start, (readErr, bytesRead) => {
+                sftp.close(handle, () => {
+                  conn.end();
+                  if (readErr) {
+                    reject(new Error(`Failed to read ${remotePath}: ${this.describeError(readErr)}`));
+                    return;
+                  }
+                  const content = buffer.slice(0, bytesRead).toString('utf8');
+                  resolve({ content, size, truncated: start > 0 });
+                });
+              });
+            });
+          });
+        });
+      });
+      conn.on('error', fail);
+      conn.connect(config);
+    });
+  }
+
   private async execRemoteCommand(job: RemoteOptimizationJobRecord, command: string): Promise<CommandResult> {
     this.log(job, `Executing remote command: ${command}`, 'info', { stage: job.currentStage });
     const config = this.getSshConfig(job);
@@ -820,7 +918,10 @@ printf '%s\\n' '${ackToken}'
   private async launchRemoteOptimizeProcess(job: RemoteOptimizationJobRecord): Promise<void> {
     const command = `
 cd /root
-nohup bash ${REMOTE_SCRIPT_REMOTE_PATH} > ${REMOTE_SCRIPT_LOG_PATH} 2>&1 < /dev/null &
+touch ${REMOTE_SCRIPT_LOG_PATH}
+chmod 600 ${REMOTE_SCRIPT_LOG_PATH} || true
+printf '%s\\n' "[$(date -Iseconds)] Remote optimizer log initialized" >> ${REMOTE_SCRIPT_LOG_PATH}
+nohup bash ${REMOTE_SCRIPT_REMOTE_PATH} >> ${REMOTE_SCRIPT_LOG_PATH} 2>&1 < /dev/null &
 PID=$!
 printf '%s\\n' "$PID" > ${REMOTE_SCRIPT_PID_PATH}
 `.trim();
@@ -1000,6 +1101,7 @@ import html
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 site_name = os.environ.get('SITE_NAME', 'StratCraft')
@@ -1054,12 +1156,38 @@ req = urllib.request.Request(
     method="POST"
 )
 
+def read_response_body(resp):
+    try:
+        body = resp.read()
+    except Exception:
+        return ''
+    if body is None:
+        return ''
+    if isinstance(body, bytes):
+        return body.decode('utf-8', errors='ignore')
+    return str(body)
+
 try:
     with urllib.request.urlopen(req, timeout=30) as response:
         status_code = response.getcode() or 0
+        response_body = read_response_body(response)
     if status_code < 200 or status_code >= 300:
-        print(f"Failed to send completion email: status={status_code}", file=sys.stderr)
+        snippet = response_body[:2000] if response_body else ''
+        detail = f" status={status_code}"
+        if snippet:
+            detail += f" body={snippet}"
+        print(f"Failed to send completion email:{detail}", file=sys.stderr)
         sys.exit(1)
+except urllib.error.HTTPError as exc:
+    body = read_response_body(exc)
+    snippet = body[:2000] if body else ''
+    detail = f" HTTP {exc.code}"
+    if exc.reason:
+        detail += f" {exc.reason}"
+    if snippet:
+        detail += f" body={snippet}"
+    print(f"Failed to send completion email:{detail}", file=sys.stderr)
+    sys.exit(1)
 except Exception as exc:
     print(f"Failed to send completion email: {exc}", file=sys.stderr)
     sys.exit(1)
@@ -1711,6 +1839,18 @@ exit 0
       return error.message;
     }
     return String(error);
+  }
+
+  private isRemoteFileMissing(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+    const code = (error as { code?: string | number }).code;
+    if (code === 2 || code === 'ENOENT') {
+      return true;
+    }
+    const message = (error as { message?: string }).message;
+    return typeof message === 'string' && message.toLowerCase().includes('no such file');
   }
 
   private delay(ms: number): Promise<void> {
