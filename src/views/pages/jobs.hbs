@@ -175,6 +175,7 @@
                     <th>Started</th>
                     <th>Finished</th>
                     <th>Duration</th>
+                    <th class="text-end pe-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,6 +237,20 @@
                           {{else}}
                             <span class="text-muted">&mdash;</span>
                           {{/if}}
+                        {{/if}}
+                      </td>
+                      <td class="text-end pe-3">
+                        {{#if remoteServerIp}}
+                          {{#if (or (eq status 'running') (eq status 'handoff'))}}
+                            <a href="/admin/jobs/remote-optimizer-jobs/{{id}}/logs"
+                               class="btn btn-sm btn-outline-secondary text-uppercase">
+                              Logs
+                            </a>
+                          {{else}}
+                            <span class="text-muted">&mdash;</span>
+                          {{/if}}
+                        {{else}}
+                          <span class="text-muted">&mdash;</span>
                         {{/if}}
                       </td>
                     </tr>

@@ -1,0 +1,101 @@
+<style>
+  .remote-log-container {
+    max-height: 70vh;
+    overflow-y: auto;
+    background: #0f111a;
+    color: #f5f6fa;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: 12px;
+    border-radius: 6px;
+  }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+          <h1 class="mb-0">Remote Optimizer Logs</h1>
+          <div class="text-muted small">
+            {{#if job.templateName}}{{job.templateName}}{{else}}{{job.templateId}}{{/if}}
+            <span class="text-muted text-lowercase">·</span>
+            Job {{job.id}}
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-cloud-upload-alt"></i>
+            Remote Optimizer Details
+          </h5>
+          <span class="badge bg-{{jobStatusBadge job.status}} text-uppercase">{{job.status}}</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Template</div>
+              <div>{{#if job.templateName}}{{job.templateName}}{{else}}{{job.templateId}}{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Template ID</div>
+              <div><code>{{job.templateId}}</code></div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Server</div>
+              <div>
+                {{#if job.hetznerServerId}}
+                  #{{job.hetznerServerId}}
+                  {{#if job.remoteServerIp}}
+                    <div class="text-muted small">{{job.remoteServerIp}}</div>
+                  {{/if}}
+                {{else}}
+                  <span class="text-muted">&mdash;</span>
+                {{/if}}
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Fetched</div>
+              <div>{{formatDateTime fetchedAt}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Created</div>
+              <div>{{#if job.createdAt}}{{formatDateTime job.createdAt}}{{else}}&mdash;{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Started</div>
+              <div>{{#if job.startedAt}}{{formatDateTime job.startedAt}}{{else}}&mdash;{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Finished</div>
+              <div>{{#if job.finishedAt}}{{formatDateTime job.finishedAt}}{{else}}&mdash;{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Log Tail</div>
+              <div>Last {{tailLines}} lines</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">
+            <i class="fas fa-file-alt"></i>
+            Logs
+          </h5>
+        </div>
+        <div class="card-body">
+          {{#if log}}
+            <pre class="remote-log-container">{{log}}</pre>
+          {{else}}
+            <div class="text-muted">No logs available yet.</div>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

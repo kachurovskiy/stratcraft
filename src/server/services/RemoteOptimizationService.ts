@@ -43,6 +43,7 @@ const REMOTE_API_MTLS_CLIENT_CERT_PATH = `${REMOTE_API_MTLS_DIR}/client.crt`;
 const REMOTE_API_MTLS_CLIENT_KEY_PATH = `${REMOTE_API_MTLS_DIR}/client.key`;
 const REMOTE_COMMAND_OUTPUT_LIMIT = 4000;
 const REMOTE_JOB_LOG_LIMIT = 400;
+const REMOTE_SCRIPT_LOG_TAIL_LINES = 400;
 const REMOTE_JOB_PERSIST_DEBOUNCE_MS = 1000;
 const REMOTE_JOB_RECONCILE_INTERVAL_MS = 60_000;
 const REMOTE_JOB_RUNNING_STALE_AFTER_MS = 15 * 60 * 1000;
@@ -141,6 +142,58 @@ export class RemoteOptimizationService {
     this.ensureStaleJobReconciliation();
     const entities = await this.db.remoteOptimizerJobs.getRemoteOptimizerJobs();
     return entities.map(entity => this.buildSnapshotFromEntity(entity));
+  }
+
+  async getRemoteOptimizerLog(jobId: string): Promise<{
+    job: RemoteOptimizationJobSnapshot;
+    log: string;
+    tailLines: number;
+  }> {
+    const trimmedJobId = jobId.trim();
+    if (!trimmedJobId) {
+      throw new Error('Job ID is required to load remote optimizer logs.');
+    }
+
+    const entity = await this.db.remoteOptimizerJobs.getRemoteOptimizerJob(trimmedJobId);
+    if (!entity) {
+      throw new Error(`Remote optimization job ${trimmedJobId} was not found.`);
+    }
+    if (entity.status !== 'running' && entity.status !== 'handoff') {
+      throw new Error(`Remote optimization job ${trimmedJobId} is ${entity.status}; logs are only available while running.`);
+    }
+    if (!entity.remoteServerIp) {
+      throw new Error(`Remote optimization job ${trimmedJobId} does not have a server IP yet.`);
+    }
+
+    const privateKey = await this.requireHetznerPrivateKey();
+    const job: RemoteOptimizationJobRecord = {
+      id: entity.id,
+      templateId: entity.templateId,
+      templateName: entity.templateName,
+      status: entity.status,
+      createdAt: entity.createdAt,
+      startedAt: entity.startedAt,
+      finishedAt: entity.finishedAt,
+      remoteServerIp: entity.remoteServerIp ?? undefined,
+      hetznerServerId: entity.hetznerServerId ?? undefined,
+      triggeredBy: {
+        userId: 'unknown',
+        email: 'unknown'
+      },
+      logBuffer: [],
+      currentStage: 'fetching-remote-logs'
+    };
+    job.remoteSshPrivateKey = Buffer.from(privateKey, 'utf8');
+
+    const command = `if [ -f ${REMOTE_SCRIPT_LOG_PATH} ]; then tail -n ${REMOTE_SCRIPT_LOG_TAIL_LINES} ${REMOTE_SCRIPT_LOG_PATH}; else echo "Log file not found at ${REMOTE_SCRIPT_LOG_PATH}"; fi`;
+    const result = await this.execRemoteCommand(job, command);
+    job.remoteSshPrivateKey = undefined;
+
+    return {
+      job: this.buildSnapshotFromEntity(entity),
+      log: result.stdout,
+      tailLines: REMOTE_SCRIPT_LOG_TAIL_LINES
+    };
   }
 
   async triggerOptimization(request: RemoteOptimizationRequest): Promise<RemoteOptimizationJobSnapshot> {
@@ -937,12 +990,12 @@ send_email() {
   local message="$2"
   local completion="$3"
 
-  if [ -z "$RESEND_API_KEY" ] || [ -z "$EMAIL_TO" ]; then
+  if [ -z "$RESEND_API_KEY" ] || [ -z "$EMAIL_TO" ] || [ -z "$EMAIL_FROM" ]; then
     echo "Skipping email notification; missing configuration."
-    return
+    return 0
   fi
 
-  SITE_NAME="$SITE_NAME" STATUS="$status" MESSAGE="$message" COMPLETED_AT="$completion" TEMPLATE_ID="$TEMPLATE_ID" TEMPLATE_NAME="$TEMPLATE_NAME" JOB_ID="$JOB_ID" LOG_FILE="$LOG_FILE" EMAIL_TO="$EMAIL_TO" EMAIL_FROM="$EMAIL_FROM" RESEND_API_KEY="$RESEND_API_KEY" python3 <<'PY'
+  if ! SITE_NAME="$SITE_NAME" STATUS="$status" MESSAGE="$message" COMPLETED_AT="$completion" TEMPLATE_ID="$TEMPLATE_ID" TEMPLATE_NAME="$TEMPLATE_NAME" JOB_ID="$JOB_ID" LOG_FILE="$LOG_FILE" EMAIL_TO="$EMAIL_TO" EMAIL_FROM="$EMAIL_FROM" RESEND_API_KEY="$RESEND_API_KEY" python3 <<'PY'
 import html
 import json
 import os
@@ -1002,10 +1055,18 @@ req = urllib.request.Request(
 )
 
 try:
-    urllib.request.urlopen(req, timeout=30)
+    with urllib.request.urlopen(req, timeout=30) as response:
+        status_code = response.getcode() or 0
+    if status_code < 200 or status_code >= 300:
+        print(f"Failed to send completion email: status={status_code}", file=sys.stderr)
+        sys.exit(1)
 except Exception as exc:
     print(f"Failed to send completion email: {exc}", file=sys.stderr)
+    sys.exit(1)
 PY
+  then
+    return 1
+  fi
 }
 
 delete_server() {
@@ -1023,7 +1084,10 @@ finalize() {
   local message="$2"
   local completion="$3"
   write_status "$status" "$message" "$completion"
-  send_email "$status" "$message" "$completion"
+  if ! send_email "$status" "$message" "$completion"; then
+    echo "Email notification failed; skipping server deletion for inspection."
+    return 0
+  fi
   delete_server
 }
 

@@ -134,6 +134,38 @@ router.get('/:jobId/logs', (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
+// Remote optimizer log viewer (admin only)
+router.get('/remote-optimizer-jobs/:jobId/logs', (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAuth(req, res, next);
+}, (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAdmin(req, res, next);
+}, async (req: Request, res: Response) => {
+  try {
+    const jobId = typeof req.params.jobId === 'string' ? req.params.jobId.trim() : '';
+    if (!jobId) {
+      return res.redirect(`${JOBS_PAGE_PATH}?error=${encodeURIComponent('Job ID is required.')}`);
+    }
+
+    const { job, log, tailLines } = await req.remoteOptimizerService.getRemoteOptimizerLog(jobId);
+    res.render('pages/remote-optimizer-logs', {
+      title: 'Remote Optimizer Logs',
+      page: 'jobs',
+      user: req.user,
+      job,
+      log,
+      tailLines,
+      fetchedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Error loading remote optimizer logs:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load remote optimizer logs';
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: errorMessage
+    });
+  }
+});
+
 // Queue job (admin only)
 router.post('/queue', (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAuth(req, res, next);
