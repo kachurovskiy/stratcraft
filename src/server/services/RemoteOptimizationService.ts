@@ -207,9 +207,19 @@ export class RemoteOptimizationService {
         const truncatedLabel = fileResult.truncated ? ', truncated' : '';
         logHeader = `Log file: ${REMOTE_SCRIPT_LOG_PATH} (${sizeLabel}${truncatedLabel})`;
         log = normalizeLogTail(fileResult.content);
+        if (!log && fileResult.size > 0) {
+          const fallback = await this.execRemoteCommand(
+            job,
+            `tail -n ${REMOTE_SCRIPT_LOG_TAIL_LINES} ${REMOTE_SCRIPT_LOG_PATH} || true`
+          );
+          log = normalizeLogTail([fallback.stdout, fallback.stderr].filter(Boolean).join('\n'));
+        }
       } else {
         logHeader = `Log file not found at ${REMOTE_SCRIPT_LOG_PATH}.`;
       }
+    } catch (error) {
+      logHeader = 'Failed to read remote log file.';
+      log = this.describeError(error);
     } finally {
       job.remoteSshPrivateKey = undefined;
     }

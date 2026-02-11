@@ -1,9 +1,10 @@
 use crate::commands::market_data_snapshot::ensure_market_data_file;
 use crate::config::{require_setting_date, EngineRuntimeSettings};
 use crate::context::{AppContext, MarketDataFilters};
-use crate::data_context::TickerScope;
+use crate::data_context::{MarketData, TickerScope};
+use crate::optimizer_status::OptimizerStatus;
 use anyhow::Result;
-use log::info;
+use log::{info, warn};
 use std::path::Path;
 
 pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -> Result<()> {
@@ -17,8 +18,18 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
         market_data_file.display()
     );
 
-    let db = app.database().await?;
-    let settings = db.get_all_settings().await?;
+    let settings = match app.database().await {
+        Ok(db) => db.get_all_settings().await?,
+        Err(error) => {
+            warn!(
+                "Database unavailable ({}). Using settings from market data snapshot.",
+                error
+            );
+            let status = OptimizerStatus::new();
+            let snapshot = MarketData::load_from_file(market_data_file, &status)?;
+            snapshot.settings().clone()
+        }
+    };
     let training_start = require_setting_date(&settings, "OPTIMIZER_TRAINING_START_DATE")?;
     let training_end = require_setting_date(&settings, "OPTIMIZER_TRAINING_END_DATE")?;
     info!(

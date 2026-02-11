@@ -248,16 +248,15 @@ fn resolve_market_data_path(cli_value: Option<PathBuf>) -> PathBuf {
 }
 
 fn command_requires_database(command: &Commands) -> bool {
-    matches!(
-        command,
-        Commands::Optimize { .. }
-            | Commands::Verify { .. }
-            | Commands::GenerateSignals
-            | Commands::BacktestActive { .. }
-            | Commands::BacktestAccounts
-            | Commands::PlanOperations
-            | Commands::ReconcileTrades
-            | Commands::ExportMarketData { .. }
-            | Commands::TrainLightgbm { .. }
-    )
+    match command {
+        Commands::Optimize { data_file, .. } => data_file.is_none(),
+        Commands::Verify { .. }
+        | Commands::GenerateSignals
+        | Commands::BacktestActive { .. }
+        | Commands::BacktestAccounts
+        | Commands::PlanOperations
+        | Commands::ReconcileTrades
+        | Commands::ExportMarketData { .. }
+        | Commands::TrainLightgbm { .. } => true,
+    }
 }
