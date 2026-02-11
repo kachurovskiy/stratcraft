@@ -343,6 +343,7 @@ export class JobScheduler {
 
   private wakeUp(): void {
     if (this.currentJobId) {
+      this.planOptimizePreemption();
       return;
     }
 
@@ -371,10 +372,13 @@ export class JobScheduler {
     const queuedJobs = Array.from(this.jobs.values())
       .filter(job => job.status === 'queued' && job.scheduledFor.getTime() <= now)
       .sort((a, b) => {
-        const diff = a.scheduledFor.getTime() - b.scheduledFor.getTime();
-        if (diff !== 0) return diff;
-        return a.createdAt.getTime() - b.createdAt.getTime();
+        return this.compareJobsBySchedule(a, b);
       });
+
+    const nonOptimize = queuedJobs.find(job => job.type !== 'optimize');
+    if (nonOptimize) {
+      return nonOptimize;
+    }
 
     return queuedJobs[0] ?? null;
   }
@@ -383,10 +387,30 @@ export class JobScheduler {
     return Array.from(this.jobs.values())
       .filter(job => job.status === 'queued')
       .sort((a, b) => {
-        const diff = a.scheduledFor.getTime() - b.scheduledFor.getTime();
-        if (diff !== 0) return diff;
-        return a.createdAt.getTime() - b.createdAt.getTime();
+        return this.compareJobsBySchedule(a, b);
       })[0] ?? null;
+  }
+
+  private getNextReadyNonOptimizeJob(now: number): JobRecord | null {
+    return Array.from(this.jobs.values())
+      .filter(job => job.status === 'queued' && job.type !== 'optimize' && job.scheduledFor.getTime() <= now)
+      .sort((a, b) => {
+        return this.compareJobsBySchedule(a, b);
+      })[0] ?? null;
+  }
+
+  private getNextScheduledNonOptimizeJob(): JobRecord | null {
+    return Array.from(this.jobs.values())
+      .filter(job => job.status === 'queued' && job.type !== 'optimize')
+      .sort((a, b) => {
+        return this.compareJobsBySchedule(a, b);
+      })[0] ?? null;
+  }
+
+  private compareJobsBySchedule(a: JobRecord, b: JobRecord): number {
+    const diff = a.scheduledFor.getTime() - b.scheduledFor.getTime();
+    if (diff !== 0) return diff;
+    return a.createdAt.getTime() - b.createdAt.getTime();
   }
 
   private startJob(job: JobRecord): void {
@@ -395,6 +419,9 @@ export class JobScheduler {
     job.attempts += 1;
     this.currentJobId = job.id;
     this.recordActivity();
+    if (job.type === 'optimize') {
+      this.planOptimizePreemption();
+    }
 
     const handler = this.jobHandlers[job.type];
     const context: JobHandlerContext = {
@@ -411,6 +438,43 @@ export class JobScheduler {
     });
 
     this.currentJobPromise = this.executeJob(job, handler, context);
+  }
+
+  private planOptimizePreemption(): void {
+    if (!this.currentJobId) {
+      return;
+    }
+
+    const current = this.jobs.get(this.currentJobId);
+    if (!current || current.type !== 'optimize') {
+      return;
+    }
+
+    const now = Date.now();
+    const readyJob = this.getNextReadyNonOptimizeJob(now);
+    if (readyJob) {
+      if (this.wakeTimer) {
+        clearTimeout(this.wakeTimer);
+        this.wakeTimer = null;
+      }
+      this.cancelJob(current.id, `Preempted by scheduled ${readyJob.type} job`);
+      return;
+    }
+
+    const upcoming = this.getNextScheduledNonOptimizeJob();
+    if (!upcoming) {
+      if (this.wakeTimer) {
+        clearTimeout(this.wakeTimer);
+        this.wakeTimer = null;
+      }
+      return;
+    }
+
+    const delay = Math.max(0, upcoming.scheduledFor.getTime() - now);
+    if (this.wakeTimer) {
+      clearTimeout(this.wakeTimer);
+    }
+    this.wakeTimer = setTimeout(() => this.wakeUp(), Math.min(delay, 60_000));
   }
 
   private async executeJob(
