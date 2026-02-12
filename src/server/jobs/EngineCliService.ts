@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
-import { LoggingService, LogSource } from '../services/LoggingService';
+import { LoggingService, LogLevel, LogSource } from '../services/LoggingService';
 
 const ENGINE_SOURCE: LogSource = 'engine-cli';
 
@@ -229,19 +229,13 @@ export class EngineCliService {
 
       const dataParts: string[] = [];
       child.stdout?.on('data', chunk => {
-        const text = chunk.toString().trim();
-        if (text) {
-          this.loggingService.info(ENGINE_SOURCE, text, this.mergeLogMetadata(logMetadata));
-          dataParts.push(text);
-        }
+        const text = chunk.toString();
+        dataParts.push(...this.logEngineOutput(text, 'info', logMetadata));
       });
 
       child.stderr?.on('data', chunk => {
-        const text = chunk.toString().trim();
-        if (text) {
-          this.loggingService.warn(ENGINE_SOURCE, text, this.mergeLogMetadata(logMetadata));
-          dataParts.push(text);
-        }
+        const text = chunk.toString();
+        dataParts.push(...this.logEngineOutput(text, 'warn', logMetadata));
       });
 
       child.on('error', error => {
@@ -331,21 +325,15 @@ export class EngineCliService {
       let stderr = '';
       const dataParts: string[] = [];
       child.stdout?.on('data', chunk => {
-        stdout += chunk.toString();
-        const text = chunk.toString().trim();
-        if (text) {
-          this.loggingService.info(ENGINE_SOURCE, text, this.mergeLogMetadata(logMetadata));
-          dataParts.push(text);
-        }
+        const raw = chunk.toString();
+        stdout += raw;
+        dataParts.push(...this.logEngineOutput(raw, 'info', logMetadata));
       });
 
       child.stderr?.on('data', chunk => {
-        stderr += chunk.toString();
-        const text = chunk.toString().trim();
-        if (text) {
-          this.loggingService.warn(ENGINE_SOURCE, text, this.mergeLogMetadata(logMetadata));
-          dataParts.push(text);
-        }
+        const raw = chunk.toString();
+        stderr += raw;
+        dataParts.push(...this.logEngineOutput(raw, 'warn', logMetadata));
       });
 
       child.on('error', error => {
@@ -429,6 +417,49 @@ export class EngineCliService {
     if (this.forceKillTimer) {
       clearTimeout(this.forceKillTimer);
       this.forceKillTimer = null;
+    }
+  }
+
+  private logEngineOutput(
+    rawText: string,
+    fallbackLevel: LogLevel,
+    logMetadata?: Record<string, unknown>
+  ): string[] {
+    const mergedMetadata = this.mergeLogMetadata(logMetadata);
+    const lines = rawText.split(/\r?\n/);
+    const logged: string[] = [];
+
+    for (const line of lines) {
+      const text = line.trim();
+      if (!text) {
+        continue;
+      }
+      const level = this.parseEngineLogLevel(text) ?? fallbackLevel;
+      this.loggingService.log(ENGINE_SOURCE, level, text, mergedMetadata);
+      logged.push(text);
+    }
+
+    return logged;
+  }
+
+  private parseEngineLogLevel(line: string): LogLevel | null {
+    const match = line.match(/^\[[^\]]+\s+(TRACE|DEBUG|INFO|WARN|ERROR)\s+[^\]]+\]/i);
+    if (!match) {
+      return null;
+    }
+
+    switch (match[1].toUpperCase()) {
+      case 'TRACE':
+      case 'DEBUG':
+        return 'debug';
+      case 'INFO':
+        return 'info';
+      case 'WARN':
+        return 'warn';
+      case 'ERROR':
+        return 'error';
+      default:
+        return null;
     }
   }
 }
