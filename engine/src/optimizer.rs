@@ -1,7 +1,7 @@
 use crate::app_url::resolve_api_base_url;
 use crate::backtest_api_client::build_async_client;
 use crate::cache::{CacheManager, CacheStoreParams};
-use crate::config::EngineRuntimeSettings;
+use crate::config::{EngineRuntimeSettings, LocalOptimizationObjective};
 use crate::data_context::MarketData;
 use crate::database::Database;
 use crate::engine::Engine;
@@ -65,6 +65,18 @@ impl<'a> OptimizationEngine<'a> {
     fn is_drawdown_within_limit(result: &OptimizationResult, max_drawdown_ratio: f64) -> bool {
         let ratio = result.max_drawdown_ratio;
         ratio.is_finite() && ratio <= max_drawdown_ratio
+    }
+
+    fn objective_score(result: &OptimizationResult, objective: LocalOptimizationObjective) -> f64 {
+        let score = match objective {
+            LocalOptimizationObjective::Cagr => result.cagr,
+            LocalOptimizationObjective::Sharpe => result.sharpe_ratio,
+        };
+        if score.is_finite() {
+            score
+        } else {
+            f64::NEG_INFINITY
+        }
     }
 
     async fn load_strategy_template(&mut self, template_id: &str) -> Result<StrategyTemplate> {
@@ -151,6 +163,8 @@ impl<'a> OptimizationEngine<'a> {
         let runtime_settings = EngineRuntimeSettings::from_settings_map(self.data.settings())?;
         let local_optimization_version = runtime_settings.local_optimization_version;
         let max_drawdown_ratio = runtime_settings.max_allowed_drawdown_ratio;
+        let objective = runtime_settings.local_optimization_objective;
+        let objective_label = objective.label();
         let step_multipliers = runtime_settings
             .local_optimization_step_multipliers
             .as_slice();
@@ -170,7 +184,7 @@ impl<'a> OptimizationEngine<'a> {
         );
 
         let mut best_result: Option<OptimizationResult> = None;
-        let mut best_cagr = f64::NEG_INFINITY;
+        let mut best_score = f64::NEG_INFINITY;
 
         loop {
             let mut seen_variations = HashSet::new();
@@ -203,29 +217,35 @@ impl<'a> OptimizationEngine<'a> {
                 .evaluate_variation_batch(
                     template_id,
                     &neighbor_variations,
-                    best_cagr,
+                    best_score,
                     max_drawdown_ratio,
+                    objective,
                 )
                 .await?
             {
                 VariationOutcome::Improved(result) => {
+                    let score = Self::objective_score(&result, objective);
                     if best_result.is_none() {
                         info!(
-                            "Initial valid candidate: CAGR {:.2}% with max drawdown {:.2}%.",
+                            "Initial valid candidate: {} {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
+                            objective_label,
+                            score,
                             result.cagr * 100.0,
                             result.max_drawdown_ratio * 100.0
                         );
                     } else {
                         info!(
-                            "New best CAGR: {:.2}% (previous: {:.2}%), max drawdown {:.2}%.",
+                            "New best {}: {:.4} (previous: {:.4}), CAGR {:.2}%, max drawdown {:.2}%.",
+                            objective_label,
+                            score,
+                            best_score,
                             result.cagr * 100.0,
-                            best_cagr * 100.0,
                             result.max_drawdown_ratio * 100.0
                         );
                     }
 
                     let params_changed = result.parameters != current_params;
-                    best_cagr = result.cagr;
+                    best_score = score;
                     current_params = result.parameters.clone();
                     best_result = Some(result);
 
@@ -244,20 +264,17 @@ impl<'a> OptimizationEngine<'a> {
             return Ok(());
         };
 
+        let final_score = Self::objective_score(&best_result, objective);
         info!(
-            "Local search finished. Best CAGR: {:.2}% with max drawdown {:.2}%.",
+            "Local search finished. Best {}: {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
+            objective_label,
+            final_score,
             best_result.cagr * 100.0,
             best_result.max_drawdown_ratio * 100.0
         );
 
         let final_results = self
-            .run_parallel_backtests(
-                template_id,
-                &[current_params.clone()],
-                None,
-                true,
-                max_drawdown_ratio,
-            )
+            .run_parallel_backtests(template_id, &[current_params.clone()], true)
             .await?;
 
         if final_results.is_empty() {
@@ -305,21 +322,16 @@ impl<'a> OptimizationEngine<'a> {
         &mut self,
         template_id: &str,
         variations: &[HashMap<String, f64>],
-        best_cagr: f64,
+        best_score: f64,
         max_drawdown_ratio: f64,
+        objective: LocalOptimizationObjective,
     ) -> Result<VariationOutcome> {
         if variations.is_empty() {
             return Ok(VariationOutcome::NoChange);
         }
 
         let results = self
-            .run_parallel_backtests(
-                template_id,
-                variations,
-                Some(best_cagr),
-                true,
-                max_drawdown_ratio,
-            )
+            .run_parallel_backtests(template_id, variations, true)
             .await?;
 
         if results.is_empty() {
@@ -342,11 +354,12 @@ impl<'a> OptimizationEngine<'a> {
         }
 
         if let Some(best_in_batch) = feasible_results.iter().max_by(|a, b| {
-            a.cagr
-                .partial_cmp(&b.cagr)
+            Self::objective_score(a, objective)
+                .partial_cmp(&Self::objective_score(b, objective))
                 .unwrap_or(std::cmp::Ordering::Equal)
         }) {
-            if best_in_batch.cagr > best_cagr {
+            let best_in_batch_score = Self::objective_score(best_in_batch, objective);
+            if best_in_batch_score > best_score {
                 Ok(VariationOutcome::Improved(best_in_batch.clone()))
             } else {
                 Ok(VariationOutcome::NoChange)
@@ -400,9 +413,7 @@ impl<'a> OptimizationEngine<'a> {
         variations: &[HashMap<String, f64>],
         use_cache: bool,
     ) -> Result<Vec<OptimizationResult>> {
-        let max_drawdown_ratio = EngineRuntimeSettings::from_settings_map(self.data.settings())?
-            .max_allowed_drawdown_ratio;
-        self.run_parallel_backtests(template_id, variations, None, use_cache, max_drawdown_ratio)
+        self.run_parallel_backtests(template_id, variations, use_cache)
             .await
     }
 
@@ -483,9 +494,7 @@ impl<'a> OptimizationEngine<'a> {
         &mut self,
         template_id: &str,
         variations: &[HashMap<String, f64>],
-        current_best_cagr: Option<f64>,
         use_cache: bool,
-        max_drawdown_ratio: f64,
     ) -> Result<Vec<OptimizationResult>> {
         if variations.is_empty() {
             return Ok(Vec::new());
@@ -589,7 +598,6 @@ impl<'a> OptimizationEngine<'a> {
         let mut results = Vec::new();
         let mut completed = 0;
         let mut failed_workers = 0;
-        let mut best_cagr = current_best_cagr.unwrap_or(f64::NEG_INFINITY);
         let pb = ProgressBar::new(variation_count as u64);
         pb.set_style(
             ProgressStyle::default_bar()
@@ -607,9 +615,6 @@ impl<'a> OptimizationEngine<'a> {
                     pb.set_position(completed as u64);
 
                     if let Some(opt_result) = result.result {
-                        if Self::is_drawdown_within_limit(&opt_result, max_drawdown_ratio) {
-                            best_cagr = best_cagr.max(opt_result.cagr);
-                        }
                         results.push(opt_result);
                     } else {
                         failed_workers += 1;

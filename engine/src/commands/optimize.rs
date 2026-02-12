@@ -38,8 +38,10 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
         training_end.format("%Y-%m-%d")
     );
     let runtime_settings = EngineRuntimeSettings::from_settings_map(&settings)?;
+    let objective_label = runtime_settings.local_optimization_objective.label();
     info!(
-        "Objective: maximize CAGR while keeping max drawdown at or below {:.0}%.",
+        "Objective: maximize {} while keeping max drawdown at or below {:.0}%.",
+        objective_label,
         runtime_settings.max_allowed_drawdown_ratio * 100.0
     );
     let mut context = app

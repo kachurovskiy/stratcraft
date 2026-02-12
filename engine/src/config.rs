@@ -40,6 +40,32 @@ impl Default for StopLossConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalOptimizationObjective {
+    Cagr,
+    Sharpe,
+}
+
+impl LocalOptimizationObjective {
+    pub fn parse(raw: &str) -> Result<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "cagr" => Ok(Self::Cagr),
+            "sharpe" | "sharpe_ratio" => Ok(Self::Sharpe),
+            other => Err(anyhow!(
+                "OPTIMIZATION_OBJECTIVE must be CAGR or SHARPE (value: {})",
+                other
+            )),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Cagr => "CAGR",
+            Self::Sharpe => "Sharpe ratio",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct EngineRuntimeSettings {
     pub trade_close_fee_rate: f64,
@@ -51,6 +77,7 @@ pub struct EngineRuntimeSettings {
     pub minimum_dollar_volume_lookback: usize,
     pub local_optimization_version: i32,
     pub local_optimization_step_multipliers: Vec<f64>,
+    pub local_optimization_objective: LocalOptimizationObjective,
     pub max_allowed_drawdown_ratio: f64,
 }
 
@@ -74,6 +101,13 @@ impl EngineRuntimeSettings {
             require_setting_i32(settings, "LOCAL_OPTIMIZATION_VERSION", 0)?;
         let local_optimization_step_multipliers =
             require_setting_f64_list(settings, "LOCAL_OPTIMIZATION_STEP_MULTIPLIERS")?;
+        let raw_local_optimization_objective = settings
+            .get("OPTIMIZATION_OBJECTIVE")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("cagr");
+        let local_optimization_objective =
+            LocalOptimizationObjective::parse(raw_local_optimization_objective)?;
         let max_allowed_drawdown_ratio =
             require_setting_f64(settings, "MAX_ALLOWED_DRAWDOWN_RATIO", Some(0.0), Some(1.0))?;
 
@@ -95,6 +129,7 @@ impl EngineRuntimeSettings {
             minimum_dollar_volume_lookback,
             local_optimization_version,
             local_optimization_step_multipliers,
+            local_optimization_objective,
             max_allowed_drawdown_ratio,
         })
     }

@@ -2053,6 +2053,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::LocalOptimizationObjective;
     use crate::models::{AccountOperationType, SignalAction, StrategySignal, Trade, TradeStatus};
     use crate::trading_rules::PRICE_EPSILON;
     use chrono::{Duration, Utc};
@@ -2071,6 +2072,7 @@ mod tests {
             local_optimization_step_multipliers: vec![
                 -5.0, -4.0, -3.0, -2.0, -1.0, 1.0, 2.0, 3.0, 4.0, 5.0,
             ],
+            local_optimization_objective: LocalOptimizationObjective::Cagr,
             max_allowed_drawdown_ratio: 0.40,
         }
     }

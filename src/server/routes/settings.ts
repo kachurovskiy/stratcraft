@@ -498,6 +498,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'number'
   },
   {
+    key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE,
+    group: 'optimizer',
+    label: 'Optimization Objective',
+    description: 'Objective metric for local search (CAGR or SHARPE).',
+    placeholder: 'CAGR',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.HETZNER_API_TOKEN,
     group: 'optimizer',
     label: 'Hetzner API Token',
