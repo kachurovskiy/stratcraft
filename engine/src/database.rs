@@ -76,7 +76,9 @@ impl Database {
         let mut settings = HashMap::with_capacity(rows.len());
         for row in rows {
             let key: String = row.get(0);
-            let value: String = row.get(1);
+            let raw_value: String = row.get(1);
+            let value = decrypt_database_value(&raw_value)
+                .with_context(|| format!("failed to decrypt setting {}", key))?;
             settings.insert(key, value);
         }
         Ok(settings)

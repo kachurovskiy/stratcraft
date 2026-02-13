@@ -1222,7 +1222,18 @@ finalize() {
   local message="$2"
   local completion="$3"
   write_status "$status" "$message" "$completion"
+  local email_failed=0
   if ! send_email "$status" "$message" "$completion"; then
+    email_failed=1
+  fi
+  if [ "$status" = "success" ]; then
+    if [ "$email_failed" -eq 1 ]; then
+      echo "Email notification failed; proceeding with server deletion."
+    fi
+    delete_server
+    return 0
+  fi
+  if [ "$email_failed" -eq 1 ]; then
     echo "Email notification failed; skipping server deletion for inspection."
     return 0
   fi
