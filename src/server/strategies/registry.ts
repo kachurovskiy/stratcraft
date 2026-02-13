@@ -83,17 +83,7 @@ export class StrategyRegistry {
         continue;
       }
 
-      // Attempt to fetch best-known parameters from remote API and merge with defaults
-      this.logging?.info('StrategyManager', `Creating default strategy for template ${template.id} - fetching best params from remote`);
-      let mergedParams = await this.getBestMergedParamsOrNull(template);
-      if (!mergedParams) {
-        this.logging?.warn('StrategyManager', `Remote best params unavailable for ${template.id}; trying local database cache`);
-        mergedParams = await this.getLocalBestMergedParamsOrNull(template);
-      }
-      if (!mergedParams) {
-        this.logging?.warn('StrategyManager', `No best params found (remote/local) for ${template.id}; using template defaults`);
-        mergedParams = this.buildDefaultParameters(template);
-      }
+      const mergedParams = await this.resolveDefaultStrategyParameters(template, 'Creating default strategy');
 
       const strategyName = `${template.name}`;
 
@@ -190,6 +180,26 @@ export class StrategyRegistry {
     }
   }
 
+  private async resolveDefaultStrategyParameters(
+    template: StrategyTemplate,
+    actionLabel: string
+  ): Promise<Record<string, any>> {
+    this.logging?.info(
+      'StrategyManager',
+      `${actionLabel} for template ${template.id} - fetching best params from remote`
+    );
+    let mergedParams = await this.getBestMergedParamsOrNull(template);
+    if (!mergedParams) {
+      this.logging?.warn('StrategyManager', `Remote best params unavailable for ${template.id}; trying local database cache`);
+      mergedParams = await this.getLocalBestMergedParamsOrNull(template);
+    }
+    if (!mergedParams) {
+      this.logging?.warn('StrategyManager', `No best params found (remote/local) for ${template.id}; using template defaults`);
+      mergedParams = this.buildDefaultParameters(template);
+    }
+    return mergedParams;
+  }
+
   getTemplate(templateId: string): StrategyTemplate | undefined {
     return this.templates.find(t => t.id === templateId);
   }
@@ -230,6 +240,60 @@ export class StrategyRegistry {
       ids.forEach((id) => this.disabledTemplateIds.add(id));
     } catch (error) {
       this.logging?.error('StrategyManager', 'Failed to load disabled templates from settings', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  async ensureDefaultStrategyForTemplate(templateId: string): Promise<void> {
+    if (typeof templateId !== 'string' || templateId.trim().length === 0) {
+      throw new Error('templateId is required to ensure default strategy');
+    }
+
+    const normalized = templateId.trim();
+    if (this.disabledTemplateIds.has(normalized)) {
+      this.logging?.info('StrategyManager', `Skipping default strategy for disabled template ${normalized}`);
+      return;
+    }
+
+    if (normalized.startsWith('lightgbm_')) {
+      await this.ensureLightgbmDefaultStrategies();
+      return;
+    }
+
+    const template = this.getTemplate(normalized);
+    if (!template) {
+      this.logging?.warn('StrategyManager', `Template ${normalized} not found while ensuring default strategy`);
+      return;
+    }
+
+    if (template.id === 'buy_and_hold') {
+      const existingDefaults = await this.db.strategies.getStrategiesByIdLike('default_buy_and_hold_%');
+      const existingDefaultStrategyIds = new Set(existingDefaults.map(s => s.id));
+      await this.ensureBuyAndHoldDefaults(template, existingDefaultStrategyIds);
+      return;
+    }
+
+    const defaultStrategyId = `default_${template.id}`;
+    const existingDefault = await this.db.strategies.getStrategiesByIdLike(defaultStrategyId);
+    if (existingDefault.some(strategy => strategy.id === defaultStrategyId)) {
+      return;
+    }
+
+    const mergedParams = await this.resolveDefaultStrategyParameters(template, 'Recreating default strategy');
+    const strategyName = `${template.name}`;
+
+    try {
+      await this.db.strategies.insertStrategy({
+        id: defaultStrategyId,
+        name: strategyName,
+        templateId: template.id,
+        parameters: mergedParams,
+        status: 'active'
+      });
+      this.logging?.info('StrategyManager', `Recreated default strategy for ${template.id}`, { strategyId: defaultStrategyId });
+    } catch (error) {
+      this.logging?.error('StrategyManager', `Failed to recreate default strategy for ${template.id}`, {
         error: error instanceof Error ? error.message : String(error)
       });
     }

@@ -37,6 +37,15 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
         try {
           await deps.engineCli.run('optimize', [template.id], ctx.abortSignal, logMetadata);
           optimizedCount += 1;
+          try {
+            await deps.strategyRegistry.ensureDefaultStrategyForTemplate(template.id);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            ctx.loggingService.error(OPTIMIZE_SOURCE, `Failed to recreate default strategy for ${template.id}`, {
+              ...logMetadata,
+              error: message
+            });
+          }
         } catch (error) {
           if (ctx.abortSignal.aborted) {
             throw new Error('Optimization cancelled');
