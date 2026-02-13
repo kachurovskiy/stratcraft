@@ -212,10 +212,6 @@ export class AlpacaAccountConnector implements AccountConnector {
     if (intraday) {
       params.intraday_reporting = intraday;
     }
-    const pnlReset = this.normalizePnlReset(options?.pnlReset, normalizedTimeframe);
-    if (pnlReset) {
-      params.pnl_reset = pnlReset;
-    }
     const normalizedPeriod = this.normalizeHistoryPeriod(options?.period);
     const hasStart = Boolean(normalizedStart);
     const hasEnd = Boolean(normalizedEnd);
@@ -233,9 +229,7 @@ export class AlpacaAccountConnector implements AccountConnector {
   private normalizePortfolioHistoryResponse(data: any): AccountPortfolioHistory {
     const timestamps = Array.isArray(data?.timestamp) ? data.timestamp : [];
     const equityValues = Array.isArray(data?.equity) ? data.equity : [];
-    const profitLossValues = Array.isArray(data?.profit_loss) ? data.profit_loss : [];
-    const profitLossPctValues = Array.isArray(data?.profit_loss_pct) ? data.profit_loss_pct : [];
-    const count = Math.max(timestamps.length, equityValues.length, profitLossValues.length, profitLossPctValues.length);
+    const count = Math.max(timestamps.length, equityValues.length);
     const points: AccountPortfolioHistoryPoint[] = [];
 
     for (let i = 0; i < count; i++) {
@@ -245,9 +239,7 @@ export class AlpacaAccountConnector implements AccountConnector {
       }
       points.push({
         timestamp: Math.round(tsSeconds * 1000),
-        equity: this.toNumber(equityValues[i]),
-        profitLoss: this.toNumber(profitLossValues[i]),
-        profitLossPct: this.toNumber(profitLossPctValues[i])
+        equity: this.toNumber(equityValues[i])
       });
     }
 
@@ -321,22 +313,6 @@ export class AlpacaAccountConnector implements AccountConnector {
       }
     }
     return 'extended_hours';
-  }
-
-  private normalizePnlReset(
-    value: string | undefined,
-    timeframe: string | null
-  ): string | null {
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (normalized === 'per_day' || normalized === 'no_reset') {
-        return normalized;
-      }
-    }
-    if (timeframe && timeframe !== '1D') {
-      return 'no_reset';
-    }
-    return null;
   }
 
   async dispatchOperation(

@@ -54,8 +54,6 @@ export interface AccountSnapshot {
 export type AccountPortfolioHistoryPoint = {
   timestamp: number;
   equity: number | null;
-  profitLoss: number | null;
-  profitLossPct: number | null;
 };
 
 export interface AccountPortfolioHistory {
@@ -74,7 +72,6 @@ export interface AccountPortfolioHistoryRequest {
   intradayReporting?: 'market_hours' | 'extended_hours' | 'continuous';
   start?: string;
   end?: string;
-  pnlReset?: 'per_day' | 'no_reset';
 }
 
 export type AccountPositionSide = 'long' | 'short';

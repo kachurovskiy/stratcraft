@@ -421,19 +421,19 @@
     <div class="card h-100">
         <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
             <div>
-                <h2 class="h5 mb-1">Portfolio PnL</h2>
-                <p class="text-muted small mb-0">Equity and profit/loss since this account was created.</p>
+                <h2 class="h5 mb-1">Portfolio Equity</h2>
+                <p class="text-muted small mb-0">Account equity over time.</p>
             </div>
         </div>
         <div class="card-body">
             <div id="accountHistorySummary" class="d-flex flex-wrap gap-4 text-muted small mb-3">
-                <span>Loading account performance&hellip;</span>
+                <span>Loading equity history&hellip;</span>
             </div>
             <div id="accountHistoryError" class="alert alert-danger {{#unless historyError}}d-none{{/unless}}" role="alert">
                 {{historyError}}
             </div>
             <div id="accountHistoryEmpty" class="text-center text-muted py-4 d-none">
-                Portfolio history isn&rsquo;t available for this account yet.
+                Equity history isn&rsquo;t available for this account yet.
             </div>
             <div id="accountHistoryChartContainer" class="position-relative d-none" style="min-height: 320px;">
                 <canvas id="accountPnlChart" class="position-absolute top-0 start-0 w-100 h-100" data-account-id="{{id}}"></canvas>
@@ -572,16 +572,6 @@
             return formatter.format(numericValue);
         }
 
-        function formatPercentValue(value) {
-            if (!Number.isFinite(value)) {
-                return '—';
-            }
-            return new Intl.NumberFormat(undefined, {
-                style: 'percent',
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(value);
-        }
 
         function getIsoDateFromTimestamp(timestamp) {
             const date = new Date(Number(timestamp));
@@ -610,25 +600,14 @@
             }
             const firstPoint = points[0];
             const lastPoint = points[points.length - 1];
-            const latestPnl = Number(lastPoint.profitLoss ?? 0);
             const startingEquity = typeof firstPoint.equity === 'number' ? firstPoint.equity : lastPoint.equity ?? 0;
             const endingEquity = typeof lastPoint.equity === 'number' ? lastPoint.equity : startingEquity;
-            const equityDelta = endingEquity - startingEquity;
-            const pnlPercent = typeof lastPoint.profitLossPct === 'number'
-                ? lastPoint.profitLossPct
-                : (startingEquity !== 0 ? equityDelta / startingEquity : null);
             const lastDate = formatFullDate(lastPoint.timestamp);
-            const pnlClass = latestPnl >= 0 ? 'text-success' : 'text-danger';
-            const pnlPctClass = pnlPercent !== null && pnlPercent >= 0 ? 'text-success' : 'text-danger';
 
             summaryElement.innerHTML = [
                 `<div>
-                    <div class="text-uppercase text-muted small">Net PnL</div>
-                    <div class="fw-semibold ${pnlClass}">${formatCurrencyValue(latestPnl)}</div>
-                </div>`,
-                `<div>
-                    <div class="text-uppercase text-muted small">PnL %</div>
-                    <div class="fw-semibold ${pnlPercent === null ? '' : pnlPctClass}">${pnlPercent === null ? '—' : formatPercentValue(pnlPercent)}</div>
+                    <div class="text-uppercase text-muted small">Start Equity</div>
+                    <div class="fw-semibold">${formatCurrencyValue(startingEquity)}</div>
                 </div>`,
                 `<div>
                     <div class="text-uppercase text-muted small">Equity Now</div>
@@ -650,13 +629,11 @@
                 return;
             }
             const labels = points.map((point) => formatLabelDate(point.timestamp));
-            const pnlValues = points.map((point) => (typeof point.profitLoss === 'number' ? point.profitLoss : null));
             const equityValues = points.map((point) => (typeof point.equity === 'number' ? point.equity : null));
 
             if (accountHistoryChart) {
                 accountHistoryChart.data.labels = labels;
-                accountHistoryChart.data.datasets[0].data = pnlValues;
-                accountHistoryChart.data.datasets[1].data = equityValues;
+                accountHistoryChart.data.datasets[0].data = equityValues;
                 accountHistoryChart.update();
                 return;
             }
@@ -668,25 +645,14 @@
                     labels,
                     datasets: [
                         {
-                            label: 'Profit / Loss',
-                            data: pnlValues,
-                            borderColor: 'rgba(13, 110, 253, 0.9)',
-                            backgroundColor: 'rgba(13, 110, 253, 0.15)',
+                            label: 'Equity',
+                            data: equityValues,
+                            borderColor: 'rgba(32, 201, 151, 0.9)',
+                            backgroundColor: 'rgba(32, 201, 151, 0.12)',
                             borderWidth: 2,
                             tension: 0.3,
                             spanGaps: true,
                             yAxisID: 'y'
-                        },
-                        {
-                            label: 'Equity',
-                            data: equityValues,
-                            borderColor: 'rgba(32, 201, 151, 0.85)',
-                            backgroundColor: 'rgba(32, 201, 151, 0.05)',
-                            borderWidth: 2,
-                            borderDash: [4, 4],
-                            tension: 0.3,
-                            spanGaps: true,
-                            yAxisID: 'y1'
                         }
                     ]
                 },
@@ -707,20 +673,6 @@
                         y: {
                             display: true,
                             position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Profit / Loss'
-                            },
-                            ticks: {
-                                callback: (value) => formatCurrencyValue(value)
-                            }
-                        },
-                        y1: {
-                            display: true,
-                            position: 'right',
-                            grid: {
-                                drawOnChartArea: false
-                            },
                             title: {
                                 display: true,
                                 text: 'Equity'
