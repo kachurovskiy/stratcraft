@@ -13,6 +13,27 @@ use std::path::Path;
 use std::sync::Arc;
 
 const MARKET_DATA_SNAPSHOT_VERSION: u32 = 5;
+const SNAPSHOT_ALLOWED_SETTINGS: [&str; 19] = [
+    "BACKTEST_API_SECRET",
+    "DOMAIN",
+    "LIGHTGBM_TRAINING_END_DATE",
+    "LIGHTGBM_TRAINING_START_DATE",
+    "LOCAL_OPTIMIZATION_STEP_MULTIPLIERS",
+    "LOCAL_OPTIMIZATION_VERSION",
+    "MAX_ALLOWED_DRAWDOWN_RATIO",
+    "MINIMUM_DOLLAR_VOLUME_FOR_ENTRY",
+    "MINIMUM_DOLLAR_VOLUME_LOOKBACK",
+    "OPTIMIZATION_OBJECTIVE",
+    "OPTIMIZER_TRAINING_END_DATE",
+    "OPTIMIZER_TRAINING_START_DATE",
+    "SHORT_BORROW_FEE_ANNUAL_RATE",
+    "TRADE_CLOSE_FEE_RATE",
+    "TRADE_ENTRY_PRICE_MAX",
+    "TRADE_ENTRY_PRICE_MIN",
+    "TRADE_SLIPPAGE_RATE",
+    "VERIFY_WINDOW_END_DATE",
+    "VERIFY_WINDOW_START_DATE",
+];
 
 #[derive(Clone, Copy)]
 pub enum TickerScope {
@@ -159,6 +180,14 @@ impl SnapshotParameter {
             description: self.description,
         })
     }
+}
+
+fn scrub_snapshot_settings(settings: &HashMap<String, String>) -> HashMap<String, String> {
+    settings
+        .iter()
+        .filter(|(key, _)| SNAPSHOT_ALLOWED_SETTINGS.contains(&key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
 }
 
 pub struct MarketData {
@@ -331,6 +360,7 @@ impl MarketData {
             )
         })?;
         let mut writer = BufWriter::new(file);
+        let settings = scrub_snapshot_settings(self.settings.as_ref());
         let snapshot = MarketDataSnapshot {
             version: MARKET_DATA_SNAPSHOT_VERSION,
             generated_at: Utc::now(),
@@ -349,7 +379,7 @@ impl MarketData {
                 })
                 .collect(),
             ticker_expense_map: self.ticker_expense_map.as_ref().clone(),
-            settings: self.settings.as_ref().clone(),
+            settings,
         };
         bincode::serialize_into(&mut writer, &snapshot)
             .context("Failed to serialize market data snapshot")?;

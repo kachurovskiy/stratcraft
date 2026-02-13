@@ -332,7 +332,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
           nextOpen: marketClock.nextOpen?.toISOString() ?? null,
           nextClose: marketClock.nextClose?.toISOString() ?? null
         });
-        scheduleNext(ctx, autoDailyCandleSyncEnabled);
+        await scheduleNext(deps, ctx, autoDailyCandleSyncEnabled, logMetadata);
         return { message: 'Candle sync skipped while market is open' };
       }
     }
@@ -353,7 +353,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
 
     if (!tickers.length) {
       ctx.loggingService.warn(CANDLE_SOURCE, 'No tickers available for candle sync after Alpaca refresh', logMetadata);
-      scheduleNext(ctx, autoDailyCandleSyncEnabled);
+      await scheduleNext(deps, ctx, autoDailyCandleSyncEnabled, logMetadata);
       return {
         message: 'No tickers found for synchronization'
       };
@@ -456,10 +456,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
       });
     }
 
-    ctx.loggingService.info(CANDLE_SOURCE, 'Refreshing market data snapshot after candle update pass', logMetadata);
-    await deps.engineCli.run('export-market-data', [], ctx.abortSignal, logMetadata);
-
-    scheduleNext(ctx, autoDailyCandleSyncEnabled);
+    await scheduleNext(deps, ctx, autoDailyCandleSyncEnabled, logMetadata);
 
     return {
       message: `Updated ${updatedTickers.size} tickers`,
@@ -569,7 +566,10 @@ async function determineTickersToRefresh(
   return missingTickers;
 }
 
-function scheduleNext(ctx: JobHandlerContext, autoDailyCandleSyncEnabled: boolean): void {
+async function scheduleNext(deps: JobHandlerDependencies, ctx: JobHandlerContext, autoDailyCandleSyncEnabled: boolean, logMetadata: { jobId: string }): Promise<void> {
+  ctx.loggingService.info(CANDLE_SOURCE, 'Refreshing market data snapshot after candle update pass', logMetadata);
+  await deps.engineCli.run('export-market-data', [], ctx.abortSignal, logMetadata);
+
   const hasPendingSignalJob = ctx.scheduler.hasPendingJob(job => job.type === 'generate-signals');
   if (!hasPendingSignalJob) {
     ctx.scheduler.scheduleJob('generate-signals', {
