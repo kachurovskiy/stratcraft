@@ -3,6 +3,12 @@ import { Database } from '../database/Database';
 import { normalizeMtlsAccessCertPassword, SETTING_KEYS } from '../constants';
 import { LoggingService } from './LoggingService';
 import { isLocalDomain, resolveAppBaseUrl, resolveAppDomain, resolveFromEmail, resolveSiteName } from '../utils/appUrl';
+import {
+  calculateEstimatedCashImpact,
+  calculateOrderSizeStats,
+  type CashImpactSummary,
+  type OrderSizeStats
+} from '../utils/dispatchSummaryCalculations';
 import { MtlsLockdownService } from './MtlsLockdownService';
 
 const escapeHtml = (value: string): string => (
@@ -56,23 +62,12 @@ export interface OperationDispatchSummaryPayload {
     operationType: string;
     quantity: number | null;
     price: number | null;
+    orderType?: 'market' | 'limit' | null;
     status: string;
     statusReason?: string;
   }>;
 }
 
-type CashImpactSummary = {
-  impact: number;
-  considered: number;
-  missingPricing: number;
-  eligible: number;
-};
-
-type OrderSizeStats = {
-  min: number;
-  avg: number;
-  max: number;
-};
 
 export class EmailService {
   private static readonly USD_FORMATTER = new Intl.NumberFormat('en-US', {
@@ -209,9 +204,18 @@ export class EmailService {
     }
     const subject = subjectParts.join(' | ');
 
-    const cashImpactSummary = this.calculateEstimatedCashImpact(summary.operations);
+    let cashImpactSummary: CashImpactSummary | null = null;
+    try {
+      cashImpactSummary = await calculateEstimatedCashImpact(summary.operations, {
+        candlesRepo: this.db.candles
+      });
+    } catch (error) {
+      this.loggingService.warn('system', 'Failed to calculate cash impact summary', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
     const cashImpactSnippet = this.renderCashImpactSummary(cashImpactSummary);
-    const orderSizeStats = this.calculateOrderSizeStats(summary.operations);
+    const orderSizeStats = calculateOrderSizeStats(summary.operations);
     const orderSizeStatsSnippet = this.renderOrderSizeStats(orderSizeStats);
 
     const failedOperations = summary.operations.filter(op => op.status === 'failed');
@@ -588,39 +592,6 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
     };
   }
 
-  private calculateEstimatedCashImpact(
-    operations: OperationDispatchSummaryPayload['operations']
-  ): CashImpactSummary | null {
-    let impact = 0;
-    let considered = 0;
-    let missingPricing = 0;
-    let eligible = 0;
-
-    for (const op of operations) {
-      const direction = this.getOperationCashDirection(op.operationType);
-      if (direction === 0) {
-        continue;
-      }
-
-      eligible += 1;
-      const quantity = this.normalizePositiveNumber(op.quantity);
-      const price = this.normalizePositiveNumber(op.price);
-      if (quantity === null || price === null) {
-        missingPricing += 1;
-        continue;
-      }
-
-      impact += direction * quantity * price;
-      considered += 1;
-    }
-
-    if (eligible === 0) {
-      return null;
-    }
-
-    return { impact, considered, missingPricing, eligible };
-  }
-
   private renderCashImpactSummary(summary: CashImpactSummary | null): string {
     const baseStyle = 'margin:12px 0;color:#1f3b64;';
     if (!summary) {
@@ -632,38 +603,27 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
     }
 
     const formattedImpact = EmailService.USD_FORMATTER.format(summary.impact);
+    const hasLimitOrders = summary.limitOrders > 0;
     const directionLabel = summary.impact > 0
-      ? 'Cash increases if all orders fill.'
+      ? hasLimitOrders
+        ? 'Estimated cash increase with limit fill weighting.'
+        : 'Cash increases if all orders fill.'
       : summary.impact < 0
-        ? 'Cash decreases if all orders fill.'
-        : 'No net cash change if all orders fill.';
+        ? hasLimitOrders
+          ? 'Estimated cash decrease with limit fill weighting.'
+          : 'Cash decreases if all orders fill.'
+        : hasLimitOrders
+          ? 'Estimated net cash change with limit fill weighting.'
+          : 'No net cash change if all orders fill.';
     const emphasisColor = summary.impact > 0 ? '#1f7a1f' : summary.impact < 0 ? '#c0392b' : '#1f3b64';
     const missingText = summary.missingPricing > 0
       ? `<span style="color:#6c757d;margin-left:8px;">${summary.missingPricing} of ${summary.eligible} order${summary.missingPricing === 1 ? '' : 's'} missing price data.</span>`
       : '';
+    const limitText = hasLimitOrders
+      ? `<span style="color:#6c757d;margin-left:8px;">${summary.limitAdjusted} of ${summary.limitOrders} limit order${summary.limitOrders === 1 ? '' : 's'} adjusted for expected fills${summary.limitMissing > 0 ? `; ${summary.limitMissing} missing ticker data.` : '.'}</span>`
+      : '';
 
-    return `<p style="${baseStyle}"><strong style="color:${emphasisColor};">${formattedImpact}</strong> <span style="color:${emphasisColor};">${directionLabel}</span>${missingText}</p>`;
-  }
-
-  private calculateOrderSizeStats(
-    operations: OperationDispatchSummaryPayload['operations']
-  ): OrderSizeStats | null {
-    const sizes: number[] = [];
-    for (const op of operations) {
-      const quantity = this.normalizePositiveNumber(op.quantity);
-      const price = this.normalizePositiveNumber(op.price);
-      if (quantity === null || price === null) {
-        continue;
-      }
-      sizes.push(Math.abs(quantity * price));
-    }
-    if (sizes.length === 0) {
-      return null;
-    }
-    const min = Math.min(...sizes);
-    const max = Math.max(...sizes);
-    const avg = sizes.reduce((sum, value) => sum + value, 0) / sizes.length;
-    return { min, avg, max };
+    return `<p style="${baseStyle}"><strong style="color:${emphasisColor};">${formattedImpact}</strong> <span style="color:${emphasisColor};">${directionLabel}</span>${limitText}${missingText}</p>`;
   }
 
   private renderOrderSizeStats(stats: OrderSizeStats | null): string {
@@ -675,26 +635,6 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
     const avg = EmailService.USD_FORMATTER.format(stats.avg);
     const max = EmailService.USD_FORMATTER.format(stats.max);
     return `<p style="${baseStyle}"><strong>Order size summary:</strong> min ${min}, avg ${avg}, max ${max}</p>`;
-  }
-
-  private getOperationCashDirection(operationType: string): number {
-    switch (operationType) {
-      case 'open_position':
-        return -1;
-      case 'close_position':
-      case 'update_stop_loss':
-        return 1;
-      default:
-        return 0;
-    }
-  }
-
-  private normalizePositiveNumber(value: unknown): number | null {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-      return null;
-    }
-    const magnitude = Math.abs(value);
-    return magnitude;
   }
 
 }

@@ -120,6 +120,7 @@ export function createDispatchOperationsHandler(deps: JobHandlerDependencies): J
           operationType: candidate.operation.operationType,
           quantity: candidate.operation.quantity ?? null,
           price: candidate.operation.price ?? null,
+          orderType: candidate.operation.orderType ?? null,
           status: result.status,
           statusReason: result.reason
         });
