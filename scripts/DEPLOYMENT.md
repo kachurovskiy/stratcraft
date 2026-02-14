@@ -6,7 +6,7 @@ Quick deployment guide for StratCraft on a Hetzner Cloud Ubuntu server with HTTP
 
 1. Create a server in Hetzner Cloud:
    - Image: Ubuntu 22.04 LTS (or 24.04)
-   - Size: **CPX62 (16 vCPU)** recommended
+   - Size: initial **CPX22 (2 vCPU)**, rescaled to **CPX62 (16 vCPU)** - ensures high performance initially and ability to rescale to cheap type after initial calculations
    - Add your SSH key (recommended)
    - If you use a Hetzner Firewall, allow inbound TCP `22`, `80`, `443`
 
