@@ -225,6 +225,21 @@ CREATE TABLE IF NOT EXISTS account_operations (
     FOREIGN KEY (strategy_id) REFERENCES strategies(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS account_signal_skips (
+    id BIGSERIAL PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    account_id TEXT,
+    ticker TEXT NOT NULL,
+    signal_date DATE NOT NULL,
+    action TEXT NOT NULL,
+    source TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    details TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (strategy_id) REFERENCES strategies(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS system_logs (
     id BIGSERIAL PRIMARY KEY,
     source TEXT NOT NULL,
@@ -367,6 +382,8 @@ CREATE INDEX IF NOT EXISTS idx_account_operations_account_status ON account_oper
 CREATE INDEX IF NOT EXISTS idx_account_operations_strategy_status ON account_operations(strategy_id, status);
 CREATE INDEX IF NOT EXISTS idx_account_operations_status ON account_operations(status);
 CREATE INDEX IF NOT EXISTS idx_account_operations_trade_id ON account_operations(trade_id);
+CREATE INDEX IF NOT EXISTS idx_account_signal_skips_strategy_date ON account_signal_skips(strategy_id, signal_date);
+CREATE INDEX IF NOT EXISTS idx_account_signal_skips_created_at ON account_signal_skips(created_at);
 CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy_id ON backtest_results(strategy_id);
 CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
 CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);

@@ -1,5 +1,5 @@
 import type { Database } from '../database/Database';
-import type { BacktestResultRecord } from '../database/types';
+import type { AccountSignalSkipRow, BacktestResultRecord } from '../database/types';
 import type { BacktestScope, Trade } from '../../shared/types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 
@@ -80,6 +80,7 @@ const SLIPPAGE_DEFAULT = 0.003;
 const SAMPLE_DAY_LIMIT = 5;
 const SAMPLE_TRADE_LIMIT = 10;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export const BACKTEST_SCOPE_META: Record<BacktestScope, { label: string; badge: string }> = {
   validation: { label: 'Validation tickers', badge: 'bg-warning text-dark' },
@@ -176,6 +177,64 @@ type TradeDifferenceReason = {
   label: string;
   detail: string | null;
   badge: string;
+};
+
+const SKIP_REASON_LABELS: Record<string, string> = {
+  buy_ops_already_planned: 'Buy already planned',
+  signal_excluded: 'Excluded',
+  signal_not_tradable: 'Not tradable',
+  signal_pending_buy_order: 'Buy order pending',
+  signal_already_traded: 'Already traded',
+  missing_candles: 'Missing candles',
+  missing_candle_for_date: 'Missing candle for date',
+  price_out_of_range: 'Price out of range',
+  insufficient_volume: 'Insufficient volume',
+  price_unavailable: 'Price unavailable',
+  insufficient_size: 'Position too small',
+  insufficient_cash: 'Insufficient cash',
+  discount_not_reached: 'Discount not reached',
+  trade_already_open: 'Trade already open',
+  missing_next_candle: 'Missing next candle',
+  short_selling_disabled: 'Short selling disabled',
+  position_exists: 'Position already open',
+  sell_fraction_zero: 'Sell disabled',
+  sell_no_active_position: 'No active position',
+  sell_exit_order_pending: 'Exit order pending',
+  sell_trade_after_latest_candle: 'Trade after latest candle',
+  sell_missing_candles: 'Missing candles',
+  sell_missing_candle_for_date: 'Missing candle for date',
+  sell_latest_candle_precedes_trade: 'Candle before trade'
+};
+
+const SKIP_REASON_BADGES: Record<string, string> = {
+  buy_ops_already_planned: 'bg-secondary',
+  signal_excluded: 'bg-secondary',
+  signal_not_tradable: 'bg-secondary',
+  signal_pending_buy_order: 'bg-secondary',
+  signal_already_traded: 'bg-secondary',
+  trade_already_open: 'bg-secondary',
+  short_selling_disabled: 'bg-dark text-light',
+  sell_fraction_zero: 'bg-dark text-light',
+  insufficient_cash: 'bg-warning text-dark',
+  insufficient_size: 'bg-warning text-dark',
+  insufficient_volume: 'bg-warning text-dark',
+  price_out_of_range: 'bg-warning text-dark',
+  price_unavailable: 'bg-warning text-dark',
+  discount_not_reached: 'bg-warning text-dark',
+  missing_candles: 'bg-warning text-dark',
+  missing_candle_for_date: 'bg-warning text-dark',
+  missing_next_candle: 'bg-warning text-dark',
+  sell_exit_order_pending: 'bg-secondary',
+  sell_trade_after_latest_candle: 'bg-warning text-dark',
+  sell_missing_candles: 'bg-warning text-dark',
+  sell_missing_candle_for_date: 'bg-warning text-dark',
+  sell_latest_candle_precedes_trade: 'bg-warning text-dark',
+  sell_no_active_position: 'bg-secondary'
+};
+
+const SKIP_SOURCE_LABELS: Record<string, string> = {
+  backtest: 'Engine backtest',
+  plan_operations: 'Operation planning'
 };
 
 const buildTradesByDate = (trades: Trade[]): Map<string, Trade[]> => {
@@ -312,22 +371,79 @@ const buildSnapshotMap = (
   return map;
 };
 
+const buildSignalSkipIndex = (skips: AccountSignalSkipRow[]): Map<string, AccountSignalSkipRow[]> => {
+  const index = new Map<string, AccountSignalSkipRow[]>();
+  for (const skip of skips) {
+    const action = typeof skip.action === 'string' ? skip.action.toLowerCase() : '';
+    const source = typeof skip.source === 'string' ? skip.source.toLowerCase() : '';
+    const dateKey = typeof skip.signal_date === 'string' ? skip.signal_date : toDateKey(skip.signal_date);
+    const key = `${skip.ticker}|${action}|${source}|${dateKey}`;
+    const bucket = index.get(key) ?? [];
+    bucket.push(skip);
+    index.set(key, bucket);
+  }
+
+  for (const [key, bucket] of index.entries()) {
+    bucket.sort((a, b) => {
+      const aDate = a.created_at instanceof Date ? a.created_at : new Date(a.created_at);
+      const bDate = b.created_at instanceof Date ? b.created_at : new Date(b.created_at);
+      return bDate.getTime() - aDate.getTime();
+    });
+    index.set(key, bucket);
+  }
+
+  return index;
+};
+
+const matchSignalSkip = (
+  trade: Trade,
+  source: string,
+  index: Map<string, AccountSignalSkipRow[]>
+): AccountSignalSkipRow | null => {
+  const action = trade.quantity < 0 ? 'sell' : 'buy';
+  const tradeDate = trade.date;
+  const dateKeys = [toDateKey(tradeDate), toDateKey(new Date(tradeDate.getTime() - ONE_DAY_MS))];
+  for (const dateKey of dateKeys) {
+    const key = `${trade.ticker}|${action}|${source}|${dateKey}`;
+    const matches = index.get(key);
+    if (matches && matches.length > 0) {
+      return matches[0];
+    }
+  }
+  return null;
+};
+
+const buildSignalSkipReason = (skip: AccountSignalSkipRow, source: string): TradeDifferenceReason => {
+  const sourceLabel = SKIP_SOURCE_LABELS[source] ?? source;
+  const reasonLabel = SKIP_REASON_LABELS[skip.reason] ?? skip.reason.replace(/_/g, ' ');
+  const detailParts = [`Skipped in ${sourceLabel}`];
+  if (skip.details) {
+    detailParts.push(skip.details);
+  }
+
+  return {
+    label: reasonLabel,
+    detail: detailParts.join(' • '),
+    badge: SKIP_REASON_BADGES[skip.reason] ?? 'bg-secondary'
+  };
+};
+
 const buildExclusiveTradeReason = ({
   trade,
   otherBacktest,
   otherBacktestLabel,
-  otherScopeLabel,
-  otherTickersInScope,
   otherTickersTraded,
-  otherSnapshotsByDate
+  otherSnapshotsByDate,
+  skipIndex,
+  skipSource
 }: {
   trade: Trade;
   otherBacktest: BacktestResultRecord;
   otherBacktestLabel: string;
-  otherScopeLabel: string;
-  otherTickersInScope: Set<string>;
   otherTickersTraded: Set<string>;
   otherSnapshotsByDate: Map<string, BacktestResultRecord['dailySnapshots'][number]>;
+  skipIndex: Map<string, AccountSignalSkipRow[]>;
+  skipSource: string;
 }): TradeDifferenceReason => {
   const tradeDate = trade.date;
   const tradeTime = tradeDate.getTime();
@@ -339,12 +455,9 @@ const buildExclusiveTradeReason = ({
     };
   }
 
-  if (otherTickersInScope.size > 0 && !otherTickersInScope.has(trade.ticker)) {
-    return {
-      label: `Ticker not in ${otherBacktestLabel} scope`,
-      detail: otherScopeLabel,
-      badge: 'bg-info text-dark'
-    };
+  const matchedSkip = matchSignalSkip(trade, skipSource, skipIndex);
+  if (matchedSkip) {
+    return buildSignalSkipReason(matchedSkip, skipSource);
   }
 
   const snapshot = otherSnapshotsByDate.get(toDateKey(tradeDate));
@@ -379,7 +492,8 @@ const buildExclusiveTradeSamples = ({
   engineOnlyIds,
   liveOnlyIds,
   engineBacktest,
-  liveBacktest
+  liveBacktest,
+  skipIndex
 }: {
   engineTrades: Trade[];
   liveTrades: Trade[];
@@ -387,11 +501,8 @@ const buildExclusiveTradeSamples = ({
   liveOnlyIds: Set<string>;
   engineBacktest: BacktestResultRecord;
   liveBacktest: BacktestResultRecord;
+  skipIndex: Map<string, AccountSignalSkipRow[]>;
 }): TradeDifferenceSample[] => {
-  const engineScopeLabel = BACKTEST_SCOPE_META[normalizeBacktestScope(engineBacktest.tickerScope)].label;
-  const liveScopeLabel = BACKTEST_SCOPE_META[normalizeBacktestScope(liveBacktest.tickerScope)].label;
-  const engineTickersInScope = new Set(engineBacktest.tickers);
-  const liveTickersInScope = new Set(liveBacktest.tickers);
   const engineTickersTraded = new Set(engineTrades.map(trade => trade.ticker));
   const liveTickersTraded = new Set(liveTrades.map(trade => trade.ticker));
   const engineSnapshotsByDate = buildSnapshotMap(engineBacktest.dailySnapshots);
@@ -422,18 +533,17 @@ const buildExclusiveTradeSamples = ({
     const isEngine = side === 'engine';
     const otherBacktest = isEngine ? liveBacktest : engineBacktest;
     const otherBacktestLabel = isEngine ? 'live trades backtest' : 'engine backtest';
-    const otherScopeLabel = isEngine ? liveScopeLabel : engineScopeLabel;
-    const otherTickersInScope = isEngine ? liveTickersInScope : engineTickersInScope;
     const otherTickersTraded = isEngine ? liveTickersTraded : engineTickersTraded;
     const otherSnapshotsByDate = isEngine ? liveSnapshotsByDate : engineSnapshotsByDate;
+    const skipSource = isEngine ? 'plan_operations' : 'backtest';
     const reason = buildExclusiveTradeReason({
       trade,
       otherBacktest,
       otherBacktestLabel,
-      otherScopeLabel,
-      otherTickersInScope,
       otherTickersTraded,
-      otherSnapshotsByDate
+      otherSnapshotsByDate,
+      skipIndex,
+      skipSource
     });
 
     return {
@@ -642,13 +752,32 @@ export const buildBacktestComparisonView = async ({
     liveOnlyIds,
     differenceDates
   );
+  const exclusiveCandidates = [
+    ...engineTrades.filter(trade => engineOnlyIds.has(trade.id)),
+    ...liveTrades.filter(trade => liveOnlyIds.has(trade.id))
+  ];
+  let skipIndex = new Map<string, AccountSignalSkipRow[]>();
+  if (exclusiveCandidates.length > 0) {
+    const timestamps = exclusiveCandidates.map(trade => trade.date.getTime());
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    const start = new Date(minTime - ONE_DAY_MS);
+    const end = new Date(maxTime + ONE_DAY_MS);
+    const skips = await db.accountSignalSkips.getAccountSignalSkipsForStrategyInRange(strategyId, start, end, [
+      'backtest',
+      'plan_operations'
+    ]);
+    skipIndex = buildSignalSkipIndex(skips);
+  }
+
   const sampleTrades = buildExclusiveTradeSamples({
     engineTrades,
     liveTrades,
     engineOnlyIds,
     liveOnlyIds,
     engineBacktest: engineBacktest!,
-    liveBacktest: liveBacktest!
+    liveBacktest: liveBacktest!,
+    skipIndex
   });
   const slippage = computeSlippage(engineAggregation.entriesByKey, liveAggregation.entriesByKey, slippageSetting);
 

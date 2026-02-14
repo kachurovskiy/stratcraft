@@ -160,6 +160,46 @@ impl Database {
         .await
     }
 
+    pub async fn insert_account_signal_skips(
+        &mut self,
+        strategy_id: &str,
+        account_id: Option<&str>,
+        source: &str,
+        skips: &[AccountSignalSkip],
+    ) -> Result<()> {
+        if skips.is_empty() {
+            return Ok(());
+        }
+
+        let created_at = Utc::now();
+        let account_id = account_id.filter(|value| !value.trim().is_empty());
+        let tx = self.client.transaction().await?;
+
+        for skip in skips {
+            let signal_date = skip.signal_date.date_naive();
+            let action = skip.action.as_str();
+            tx.execute(
+                "INSERT INTO account_signal_skips (strategy_id, account_id, ticker, signal_date, action, source, reason, details, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                &[
+                    &strategy_id,
+                    &account_id,
+                    &skip.ticker,
+                    &signal_date,
+                    &action,
+                    &source,
+                    &skip.reason,
+                    &skip.details,
+                    &created_at,
+                ],
+            )
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn persist_strategy_event(
         &self,
         strategy_id: &str,
@@ -442,6 +482,12 @@ impl Database {
 
         tx.execute(
             "DELETE FROM account_operations WHERE strategy_id = $1",
+            &[&strategy_id],
+        )
+        .await?;
+
+        tx.execute(
+            "DELETE FROM account_signal_skips WHERE strategy_id = $1",
             &[&strategy_id],
         )
         .await?;

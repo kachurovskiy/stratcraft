@@ -189,6 +189,23 @@ pub async fn run(app: &AppContext) -> Result<()> {
             &ticker_metadata,
         );
 
+        if !plan.skipped_signals.is_empty() {
+            if let Err(err) = db
+                .insert_account_signal_skips(
+                    &strategy.id,
+                    Some(&account_id),
+                    "plan_operations",
+                    &plan.skipped_signals,
+                )
+                .await
+            {
+                warn!(
+                    "Failed to record signal skip reasons for strategy {}: {}",
+                    strategy.name, err
+                );
+            }
+        }
+
         if plan.operations.is_empty() {
             skipped += 1;
             let metadata = json!({

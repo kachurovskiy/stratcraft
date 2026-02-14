@@ -30,8 +30,16 @@ const SECONDS_PER_YEAR: f64 = 365.0 * 24.0 * 60.0 * 60.0;
 #[derive(Debug, PartialEq, Eq)]
 enum EntrySignalOutcome {
     Executed,
-    Skipped,
-    SkippedInsufficientCash,
+    Skipped {
+        reason: &'static str,
+        details: Option<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SellSignalOutcome {
+    Executed { closed_count: usize },
+    Skipped { reason: &'static str },
 }
 
 struct SignalDecision {
@@ -45,6 +53,7 @@ struct BacktestLoopResult {
     closed_trades: Vec<Trade>,
     daily_snapshots: Vec<BacktestDataPoint>,
     generated_signals: Vec<GeneratedSignal>,
+    signal_skips: Vec<AccountSignalSkip>,
 }
 
 struct BacktestResumeState {
@@ -61,6 +70,7 @@ struct BacktestResumeState {
 pub struct PlannedOperations {
     pub operations: Vec<AccountOperationPlan>,
     pub notes: Vec<String>,
+    pub skipped_signals: Vec<AccountSignalSkip>,
 }
 
 #[derive(Debug, Clone)]
@@ -240,6 +250,7 @@ impl Engine {
                         })
                 },
                 resume_state.take(),
+                true,
             );
 
             (loop_result, start_date, strategy_id.to_string())
@@ -286,6 +297,7 @@ impl Engine {
                     }
                 },
                 resume_state.take(),
+                false,
             );
 
             (
@@ -305,6 +317,7 @@ impl Engine {
             closed_trades,
             daily_snapshots,
             generated_signals: loop_generated_signals,
+            signal_skips,
         } = loop_result;
 
         let mut generated_signals = loop_generated_signals;
@@ -370,6 +383,7 @@ impl Engine {
         Ok(BacktestRun {
             result,
             signals: generated_signals,
+            signal_skips,
         })
     }
 
@@ -382,6 +396,7 @@ impl Engine {
         loop_start_index: usize,
         mut signal_provider: F,
         resume_state: Option<BacktestResumeState>,
+        track_signal_skips: bool,
     ) -> BacktestLoopResult
     where
         F: FnMut(&String, usize, DateTime<Utc>, &Vec<&'a Candle>) -> Option<SignalDecision>,
@@ -390,6 +405,7 @@ impl Engine {
         let mut closed_trades;
         let mut daily_snapshots;
         let mut generated_signals;
+        let mut signal_skips: Vec<AccountSignalSkip> = Vec::new();
         let mut cash;
         let mut max_portfolio_value;
         let mut ticker_cursors: HashMap<&String, usize> =
@@ -474,15 +490,25 @@ impl Engine {
                                             index,
                                             confidence,
                                         );
-                                        if matches!(
-                                            outcome,
-                                            EntrySignalOutcome::SkippedInsufficientCash
-                                        ) {
-                                            missed_trades_due_to_cash_today += 1;
+                                        if let EntrySignalOutcome::Skipped { reason, details } =
+                                            outcome
+                                        {
+                                            if reason == "insufficient_cash" {
+                                                missed_trades_due_to_cash_today += 1;
+                                            }
+                                            if track_signal_skips {
+                                                signal_skips.push(AccountSignalSkip {
+                                                    ticker: ticker.clone(),
+                                                    signal_date: current_date,
+                                                    action: SignalAction::Buy,
+                                                    reason: reason.to_string(),
+                                                    details,
+                                                });
+                                            }
                                         }
                                     }
                                     SignalAction::Sell => {
-                                        self.execute_sell_signal(
+                                        let sell_outcome = self.execute_sell_signal(
                                             &mut active_trades,
                                             &mut closed_trades,
                                             &mut cash,
@@ -490,6 +516,13 @@ impl Engine {
                                             ticker_candles[index],
                                             confidence,
                                         );
+                                        let sell_executed = match &sell_outcome {
+                                            SellSignalOutcome::Executed { closed_count } => {
+                                                *closed_count > 0
+                                            }
+                                            _ => false,
+                                        };
+                                        let mut short_outcome = None;
                                         if self.config.allow_short_selling
                                             && !Self::has_active_long_position(
                                                 &active_trades,
@@ -506,11 +539,43 @@ impl Engine {
                                                 index,
                                                 confidence,
                                             );
-                                            if matches!(
-                                                outcome,
-                                                EntrySignalOutcome::SkippedInsufficientCash
-                                            ) {
-                                                missed_trades_due_to_cash_today += 1;
+                                            if let EntrySignalOutcome::Skipped { reason, .. } =
+                                                &outcome
+                                            {
+                                                if *reason == "insufficient_cash" {
+                                                    missed_trades_due_to_cash_today += 1;
+                                                }
+                                            }
+                                            short_outcome = Some(outcome);
+                                        }
+
+                                        let acted = sell_executed
+                                            || matches!(
+                                                short_outcome.as_ref(),
+                                                Some(EntrySignalOutcome::Executed)
+                                            );
+                                        if !acted && track_signal_skips {
+                                            let reason_details = match short_outcome {
+                                                Some(EntrySignalOutcome::Skipped {
+                                                    reason,
+                                                    details,
+                                                }) => Some((reason, details)),
+                                                _ => match sell_outcome {
+                                                    SellSignalOutcome::Skipped { reason } => {
+                                                        Some((reason, None))
+                                                    }
+                                                    _ => None,
+                                                },
+                                            };
+
+                                            if let Some((reason, details)) = reason_details {
+                                                signal_skips.push(AccountSignalSkip {
+                                                    ticker: ticker.clone(),
+                                                    signal_date: current_date,
+                                                    action: SignalAction::Sell,
+                                                    reason: reason.to_string(),
+                                                    details,
+                                                });
                                             }
                                         }
                                     }
@@ -566,6 +631,7 @@ impl Engine {
             closed_trades,
             daily_snapshots,
             generated_signals,
+            signal_skips,
         }
     }
 
@@ -780,23 +846,41 @@ impl Engine {
     ) -> EntrySignalOutcome {
         let guard_price = match Self::guard_price_from_candle(candle) {
             Some(price) if self.entry_price_supported(price) => price,
-            _ => return EntrySignalOutcome::Skipped,
+            _ => {
+                return EntrySignalOutcome::Skipped {
+                    reason: "price_out_of_range",
+                    details: None,
+                }
+            }
         };
         let Some(next_candle) = next_candle_opt else {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "missing_next_candle",
+                details: None,
+            };
         };
         let Some(next_index) = index.checked_add(1) else {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "missing_next_candle",
+                details: None,
+            };
         };
-        if next_index >= ticker_candles.len()
-            || !has_minimum_dollar_volume(
-                ticker_candles,
-                next_index,
-                self.runtime_settings.minimum_dollar_volume_lookback,
-                self.runtime_settings.minimum_dollar_volume_for_entry,
-            )
-        {
-            return EntrySignalOutcome::Skipped;
+        if next_index >= ticker_candles.len() {
+            return EntrySignalOutcome::Skipped {
+                reason: "missing_next_candle",
+                details: None,
+            };
+        }
+        if !has_minimum_dollar_volume(
+            ticker_candles,
+            next_index,
+            self.runtime_settings.minimum_dollar_volume_lookback,
+            self.runtime_settings.minimum_dollar_volume_for_entry,
+        ) {
+            return EntrySignalOutcome::Skipped {
+                reason: "insufficient_volume",
+                details: None,
+            };
         }
         let mut price = next_candle.open;
         let mut is_limit_entry = false;
@@ -808,7 +892,10 @@ impl Engine {
                 price = next_candle.open.min(discounted_price);
                 is_limit_entry = true;
             } else {
-                return EntrySignalOutcome::Skipped;
+                return EntrySignalOutcome::Skipped {
+                    reason: "discount_not_reached",
+                    details: None,
+                };
             }
         }
         if !is_limit_entry {
@@ -820,7 +907,10 @@ impl Engine {
             .iter()
             .any(|t| t.ticker == ticker && t.date == trade_date)
         {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "trade_already_open",
+                details: None,
+            };
         }
 
         let realized_vol = if (self.config.position_sizing.mode == 2
@@ -847,9 +937,17 @@ impl Engine {
             realized_vol,
         }) {
             PositionSizingOutcome::Sized(allocation) => allocation,
-            PositionSizingOutcome::TooSmall => return EntrySignalOutcome::Skipped,
-            PositionSizingOutcome::InsufficientCash { .. } => {
-                return EntrySignalOutcome::SkippedInsufficientCash
+            PositionSizingOutcome::TooSmall => {
+                return EntrySignalOutcome::Skipped {
+                    reason: "insufficient_size",
+                    details: None,
+                }
+            }
+            PositionSizingOutcome::InsufficientCash { required } => {
+                return EntrySignalOutcome::Skipped {
+                    reason: "insufficient_cash",
+                    details: Some(format!("need {:.2}, have {:.2}", required, *cash)),
+                }
             }
         };
 
@@ -904,26 +1002,47 @@ impl Engine {
     ) -> EntrySignalOutcome {
         let guard_price = match Self::guard_price_from_candle(candle) {
             Some(price) if self.entry_price_supported(price) => price,
-            _ => return EntrySignalOutcome::Skipped,
+            _ => {
+                return EntrySignalOutcome::Skipped {
+                    reason: "price_out_of_range",
+                    details: None,
+                }
+            }
         };
         if !self.config.allow_short_selling {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "short_selling_disabled",
+                details: None,
+            };
         }
         let Some(next_candle) = next_candle_opt else {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "missing_next_candle",
+                details: None,
+            };
         };
         let Some(next_index) = index.checked_add(1) else {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "missing_next_candle",
+                details: None,
+            };
         };
-        if next_index >= ticker_candles.len()
-            || !has_minimum_dollar_volume(
-                ticker_candles,
-                next_index,
-                self.runtime_settings.minimum_dollar_volume_lookback,
-                self.runtime_settings.minimum_dollar_volume_for_entry,
-            )
-        {
-            return EntrySignalOutcome::Skipped;
+        if next_index >= ticker_candles.len() {
+            return EntrySignalOutcome::Skipped {
+                reason: "missing_next_candle",
+                details: None,
+            };
+        }
+        if !has_minimum_dollar_volume(
+            ticker_candles,
+            next_index,
+            self.runtime_settings.minimum_dollar_volume_lookback,
+            self.runtime_settings.minimum_dollar_volume_for_entry,
+        ) {
+            return EntrySignalOutcome::Skipped {
+                reason: "insufficient_volume",
+                details: None,
+            };
         }
         let mut price = next_candle.open;
         let trade_date = next_candle.date;
@@ -931,14 +1050,20 @@ impl Engine {
         if Self::has_active_long_position(active_trades, ticker)
             || Self::has_active_short_position(active_trades, ticker)
         {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "position_exists",
+                details: None,
+            };
         }
 
         if active_trades
             .iter()
             .any(|t| t.ticker == ticker && t.date == trade_date)
         {
-            return EntrySignalOutcome::Skipped;
+            return EntrySignalOutcome::Skipped {
+                reason: "trade_already_open",
+                details: None,
+            };
         }
         price = self.apply_entry_slippage_with_candle(price, true, next_candle);
         debug_assert!(self.entry_price_supported(guard_price));
@@ -967,9 +1092,17 @@ impl Engine {
             realized_vol,
         }) {
             PositionSizingOutcome::Sized(allocation) => allocation,
-            PositionSizingOutcome::TooSmall => return EntrySignalOutcome::Skipped,
-            PositionSizingOutcome::InsufficientCash { .. } => {
-                return EntrySignalOutcome::SkippedInsufficientCash
+            PositionSizingOutcome::TooSmall => {
+                return EntrySignalOutcome::Skipped {
+                    reason: "insufficient_size",
+                    details: None,
+                }
+            }
+            PositionSizingOutcome::InsufficientCash { required } => {
+                return EntrySignalOutcome::Skipped {
+                    reason: "insufficient_cash",
+                    details: Some(format!("need {:.2}, have {:.2}", required, *cash)),
+                }
             }
         };
 
@@ -1019,10 +1152,12 @@ impl Engine {
         ticker: &str,
         candle: &Candle,
         _confidence: f64,
-    ) {
+    ) -> SellSignalOutcome {
         let fraction = coerce_binary_param(self.config.sell_fraction, 1.0);
         if fraction == 0.0 {
-            return;
+            return SellSignalOutcome::Skipped {
+                reason: "sell_fraction_zero",
+            };
         }
 
         let mut to_close = Vec::new();
@@ -1067,6 +1202,16 @@ impl Engine {
         for &i in to_close.iter().rev() {
             let trade = active_trades.remove(i);
             closed_trades.push(trade);
+        }
+
+        if to_close.is_empty() {
+            SellSignalOutcome::Skipped {
+                reason: "sell_no_active_position",
+            }
+        } else {
+            SellSignalOutcome::Executed {
+                closed_count: to_close.len(),
+            }
         }
     }
 
@@ -1591,11 +1736,13 @@ impl Engine {
         ticker_metadata: &HashMap<String, TickerInfo>,
     ) -> PlannedOperations {
         let mut notes = Vec::new();
+        let mut skipped_signals: Vec<AccountSignalSkip> = Vec::new();
         if candles.is_empty() {
             notes.push("no_candles_provided".to_string());
             return PlannedOperations {
                 operations: Vec::new(),
                 notes,
+                skipped_signals,
             };
         }
 
@@ -1607,6 +1754,7 @@ impl Engine {
             return PlannedOperations {
                 operations: Vec::new(),
                 notes,
+                skipped_signals,
             };
         }
 
@@ -1620,6 +1768,16 @@ impl Engine {
         }
 
         let mut operations = Vec::new();
+        let mut record_skip =
+            |ticker: &str, action: SignalAction, reason: &str, details: Option<String>| {
+                skipped_signals.push(AccountSignalSkip {
+                    ticker: ticker.to_string(),
+                    signal_date: target_date,
+                    action,
+                    reason: reason.to_string(),
+                    details,
+                });
+            };
 
         let mut latest_live_trade_dates: HashMap<String, DateTime<Utc>> = HashMap::new();
         for trade in existing_trades
@@ -1669,6 +1827,13 @@ impl Engine {
         let existing_buy_ops = existing_buy_operations_today > 0;
         if existing_buy_ops {
             notes.push("buy_operations_already_planned_for_day".to_string());
+            for (_, ticker, _signal) in actionable_signals {
+                if ticker.is_empty() {
+                    notes.push("signal_missing_ticker".to_string());
+                    continue;
+                }
+                record_skip(&ticker, SignalAction::Buy, "buy_ops_already_planned", None);
+            }
         } else {
             for (_, ticker, signal) in actionable_signals {
                 if ticker.is_empty() {
@@ -1678,30 +1843,35 @@ impl Engine {
 
                 if excluded_tickers.contains(&ticker) {
                     notes.push(format!("signal_{}_excluded", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "signal_excluded", None);
                     continue;
                 }
 
                 if let Some(metadata) = ticker_metadata.get(&ticker) {
                     if !metadata.tradable {
                         notes.push(format!("signal_{}_not_tradable", ticker));
+                        record_skip(&ticker, SignalAction::Buy, "signal_not_tradable", None);
                         continue;
                     }
                 }
 
                 if account_state.open_buy_orders.contains(&ticker) {
                     notes.push(format!("signal_{}_pending_buy_order", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "signal_pending_buy_order", None);
                     continue;
                 }
 
                 if let Some(last_trade_date) = latest_live_trade_dates.get(&ticker) {
                     if *last_trade_date >= target_date {
                         notes.push(format!("signal_{}_already_traded", ticker));
+                        record_skip(&ticker, SignalAction::Buy, "signal_already_traded", None);
                         continue;
                     }
                 }
 
                 let Some(ticker_candles) = candles_by_ticker.get(&ticker) else {
                     notes.push(format!("missing_candles_for_{}", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "missing_candles", None);
                     continue;
                 };
                 let Some((candle_index, current_candle)) = ticker_candles
@@ -1712,11 +1882,13 @@ impl Engine {
                     .map(|(index, candle)| (index, *candle))
                 else {
                     notes.push(format!("no_candle_for_signal_{}_on_date", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "missing_candle_for_date", None);
                     continue;
                 };
                 let planning_close = Self::planning_reference_price(current_candle);
                 if !self.entry_price_supported(planning_close) {
                     notes.push(format!("signal_{}_price_out_of_range", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "price_out_of_range", None);
                     continue;
                 }
 
@@ -1727,6 +1899,7 @@ impl Engine {
                     self.runtime_settings.minimum_dollar_volume_for_entry,
                 ) {
                     notes.push(format!("signal_{}_insufficient_volume", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "insufficient_volume", None);
                     continue;
                 }
 
@@ -1746,6 +1919,7 @@ impl Engine {
 
                 let Some(price) = maybe_price else {
                     notes.push(format!("price_unavailable_for_{}", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "price_unavailable", None);
                     continue;
                 };
 
@@ -1776,6 +1950,7 @@ impl Engine {
                     PositionSizingOutcome::Sized(allocation) => allocation,
                     PositionSizingOutcome::TooSmall => {
                         notes.push(format!("signal_{}_insufficient_size", ticker));
+                        record_skip(&ticker, SignalAction::Buy, "insufficient_size", None);
                         continue;
                     }
                     PositionSizingOutcome::InsufficientCash { required } => {
@@ -1783,6 +1958,12 @@ impl Engine {
                             "insufficient_cash_for_signal_{} (need {:.2}, have {:.2})",
                             ticker, required, available_cash
                         ));
+                        record_skip(
+                            &ticker,
+                            SignalAction::Buy,
+                            "insufficient_cash",
+                            Some(format!("need {:.2}, have {:.2}", required, available_cash)),
+                        );
                         continue;
                     }
                 };
@@ -1839,12 +2020,21 @@ impl Engine {
                 .then_with(|| trade_a.ticker.cmp(&trade_b.ticker))
                 .then_with(|| trade_a.id.cmp(&trade_b.id))
         });
+        let mut pending_sell_signals: HashSet<String> = sell_signals.keys().cloned().collect();
         for (_, trade) in live_trade_refs {
             if trade.date > target_date {
                 notes.push(format!(
                     "trade {} occurs after latest candle {}",
                     trade.id, target_date
                 ));
+                if pending_sell_signals.remove(&trade.ticker) {
+                    record_skip(
+                        &trade.ticker,
+                        SignalAction::Sell,
+                        "sell_trade_after_latest_candle",
+                        None,
+                    );
+                }
                 continue;
             }
 
@@ -1855,11 +2045,27 @@ impl Engine {
                 .unwrap_or(false)
             {
                 notes.push(format!("trade_{}_pending_exit_order", trade.id));
+                if pending_sell_signals.remove(&trade.ticker) {
+                    record_skip(
+                        &trade.ticker,
+                        SignalAction::Sell,
+                        "sell_exit_order_pending",
+                        None,
+                    );
+                }
                 continue;
             }
 
             let Some(ticker_candles) = candles_by_ticker.get(&trade.ticker) else {
                 notes.push(format!("missing_candles_for_{}", trade.ticker));
+                if pending_sell_signals.remove(&trade.ticker) {
+                    record_skip(
+                        &trade.ticker,
+                        SignalAction::Sell,
+                        "sell_missing_candles",
+                        None,
+                    );
+                }
                 continue;
             };
             let Some((candle_index, current_candle)) = ticker_candles
@@ -1870,6 +2076,14 @@ impl Engine {
                 .map(|(index, candle)| (index, *candle))
             else {
                 notes.push(format!("no_candle_for_{}_on_latest_date", trade.ticker));
+                if pending_sell_signals.remove(&trade.ticker) {
+                    record_skip(
+                        &trade.ticker,
+                        SignalAction::Sell,
+                        "sell_missing_candle_for_date",
+                        None,
+                    );
+                }
                 continue;
             };
             let planning_close = Self::planning_reference_price(current_candle);
@@ -1879,6 +2093,14 @@ impl Engine {
                     "latest_candle_for_{} precedes trade {}",
                     trade.ticker, trade.id
                 ));
+                if pending_sell_signals.remove(&trade.ticker) {
+                    record_skip(
+                        &trade.ticker,
+                        SignalAction::Sell,
+                        "sell_latest_candle_precedes_trade",
+                        None,
+                    );
+                }
                 continue;
             }
 
@@ -1902,6 +2124,7 @@ impl Engine {
                     account_cash_at_plan: None,
                     days_held: Some(days_held_i32),
                 });
+                pending_sell_signals.remove(&trade.ticker);
                 continue;
             }
 
@@ -1981,7 +2204,15 @@ impl Engine {
             }
         }
 
-        PlannedOperations { operations, notes }
+        for ticker in pending_sell_signals {
+            record_skip(&ticker, SignalAction::Sell, "sell_no_active_position", None);
+        }
+
+        PlannedOperations {
+            operations,
+            notes,
+            skipped_signals,
+        }
     }
 
     fn ordered_tickers_for_date<'a>(tickers: &'a [String], date: DateTime<Utc>) -> Vec<&'a String> {
@@ -2183,6 +2414,7 @@ mod tests {
             0,
             |_, _, _, _| None,
             Some(resume_state),
+            false,
         );
 
         assert!(result.active_trades.is_empty());
@@ -2448,7 +2680,9 @@ mod tests {
         );
         let strategy = MockStrategy { signals };
 
-        let BacktestRun { result, signals } = engine
+        let BacktestRun {
+            result, signals, ..
+        } = engine
             .backtest(
                 Some(&strategy),
                 strategy.get_template_id(),
@@ -2527,7 +2761,7 @@ mod tests {
             signal_index,
             1.0,
         );
-        assert!(matches!(skipped, EntrySignalOutcome::Skipped));
+        assert!(matches!(skipped, EntrySignalOutcome::Skipped { .. }));
         assert!(active_trades.is_empty());
 
         let liquid = make_candles(vec![required_volume_shares * 2; total_candles]);
@@ -2567,7 +2801,7 @@ mod tests {
             0,
             1.0,
         );
-        assert!(matches!(skipped_high, EntrySignalOutcome::Skipped));
+        assert!(matches!(skipped_high, EntrySignalOutcome::Skipped { .. }));
         assert!(active_trades.is_empty());
 
         let (cheap_candles, _) = generate_candles(&ticker, vec![0.05, 25.0]);
@@ -2584,7 +2818,7 @@ mod tests {
             0,
             1.0,
         );
-        assert!(matches!(skipped_low, EntrySignalOutcome::Skipped));
+        assert!(matches!(skipped_low, EntrySignalOutcome::Skipped { .. }));
         assert!(cheap_trades.is_empty());
     }
 
@@ -3471,7 +3705,7 @@ mod tests {
             0,
             1.0,
         );
-        assert!(matches!(skipped_high, EntrySignalOutcome::Skipped));
+        assert!(matches!(skipped_high, EntrySignalOutcome::Skipped { .. }));
         assert!(active_trades.is_empty());
 
         let (cheap_candles, _) = generate_candles(&ticker, vec![0.05, 50.0]);
@@ -3488,7 +3722,7 @@ mod tests {
             0,
             1.0,
         );
-        assert!(matches!(skipped_low, EntrySignalOutcome::Skipped));
+        assert!(matches!(skipped_low, EntrySignalOutcome::Skipped { .. }));
         assert!(cheap_trades.is_empty());
     }
 

@@ -281,6 +281,8 @@ pub struct BacktestRun {
     pub result: BacktestResult,
     #[allow(dead_code)]
     pub signals: Vec<GeneratedSignal>,
+    #[allow(dead_code)]
+    pub signal_skips: Vec<AccountSignalSkip>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -487,6 +489,15 @@ pub struct GeneratedSignal {
     pub ticker: String,
     pub action: SignalAction,
     pub confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountSignalSkip {
+    pub ticker: String,
+    pub signal_date: DateTime<Utc>,
+    pub action: SignalAction,
+    pub reason: String,
+    pub details: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

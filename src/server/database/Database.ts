@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { DbClient } from './core/DbClient';
 import { AccountsRepo } from './repos/AccountsRepo';
+import { AccountSignalSkipsRepo } from './repos/AccountSignalSkipsRepo';
 import { SettingsRepo } from './repos/SettingsRepo';
 import { SignalsRepo } from './repos/SignalsRepo';
 import { SystemLogsRepo } from './repos/SystemLogsRepo';
@@ -66,6 +67,7 @@ export class Database {
   readonly strategies: StrategiesRepo;
   readonly users: UsersRepo;
   readonly accountOperations: AccountOperationsRepo;
+  readonly accountSignalSkips: AccountSignalSkipsRepo;
   readonly backtestResults: BacktestResultsRepo;
   readonly backtestCache: BacktestCacheRepo;
   readonly remoteOptimizerJobs: RemoteOptimizerJobsRepo;
@@ -95,6 +97,7 @@ export class Database {
     this.accounts = new AccountsRepo(this.core, this.strategies);
     this.users = new UsersRepo(this.core, this.strategies);
     this.accountOperations = new AccountOperationsRepo(this.core, this.trades);
+    this.accountSignalSkips = new AccountSignalSkipsRepo(this.core);
     this.backtestResults = new BacktestResultsRepo(this.core);
     this.backtestCache = new BacktestCacheRepo(this.core);
     this.remoteOptimizerJobs = new RemoteOptimizerJobsRepo(this.core);

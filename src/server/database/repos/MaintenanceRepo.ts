@@ -129,6 +129,7 @@ export class MaintenanceRepo {
     totalRowEstimate: number;
   }> {
     const tablesToTruncate = [
+      'account_signal_skips',
       'account_operations',
       'accounts',
       'backtest_cache',

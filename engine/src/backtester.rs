@@ -2,7 +2,7 @@ use crate::config::EngineRuntimeSettings;
 use crate::data_context::{MarketData, TickerScope};
 use crate::database::Database;
 use crate::engine::Engine;
-use crate::models::{BacktestResult, GeneratedSignal, StrategyConfig};
+use crate::models::{AccountSignalSkip, BacktestResult, GeneratedSignal, StrategyConfig};
 use crate::optimizer_status::OptimizerStatus;
 use crate::retry::retry_db_operation;
 use crate::strategy_utils::calculate_period_days_local;
@@ -31,6 +31,7 @@ struct StrategyBacktestTask {
 
 struct CompletedBacktestPayload {
     result: BacktestResult,
+    signal_skips: Vec<AccountSignalSkip>,
 }
 
 struct StrategyBacktestResultMsg {
@@ -50,6 +51,7 @@ struct StrategyBacktestSuccess {
     run: BacktestResult,
     months_filter: Option<i64>,
     account_id: Option<String>,
+    signal_skips: Vec<AccountSignalSkip>,
 }
 
 #[derive(Clone, Copy)]
@@ -487,7 +489,10 @@ impl<'a> ActiveStrategyBacktester<'a> {
                             existing_backtest.as_ref(),
                         );
                         match result {
-                            Ok(run) => Ok(CompletedBacktestPayload { result: run.result }),
+                            Ok(run) => Ok(CompletedBacktestPayload {
+                                result: run.result,
+                                signal_skips: run.signal_skips,
+                            }),
                             Err(e) => Err(e.to_string()),
                         }
                     };
@@ -562,6 +567,7 @@ impl<'a> ActiveStrategyBacktester<'a> {
                                 run: payload.result,
                                 months_filter: message.months_filter,
                                 account_id: message.account_id.clone(),
+                                signal_skips: payload.signal_skips,
                             };
                             pending_persistence.push(success);
                             self.status.set_progress(
@@ -686,6 +692,7 @@ impl<'a> ActiveStrategyBacktester<'a> {
             mut run,
             months_filter,
             account_id,
+            signal_skips,
         } = success;
 
         run.ticker_scope = Some(self.ticker_scope.result_label().to_string());
@@ -732,6 +739,21 @@ impl<'a> ActiveStrategyBacktester<'a> {
                     "Failed to update backtest duration for strategy {}: {}",
                     id, error
                 );
+            }
+        }
+
+        if let Some(account_id) = account_id.as_deref() {
+            if !signal_skips.is_empty() {
+                if let Err(error) = self
+                    .db
+                    .insert_account_signal_skips(&id, Some(account_id), "backtest", &signal_skips)
+                    .await
+                {
+                    warn!(
+                        "Failed to persist backtest signal skips for strategy {}: {}",
+                        id, error
+                    );
+                }
             }
         }
 

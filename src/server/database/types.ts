@@ -68,6 +68,19 @@ export type SystemLogRow = {
   created_at: Date;
 };
 
+export type AccountSignalSkipRow = {
+  id: number;
+  strategy_id: string;
+  account_id: string | null;
+  ticker: string;
+  signal_date: string;
+  action: string;
+  source: string;
+  reason: string;
+  details: string | null;
+  created_at: Date;
+};
+
 export interface TickerBacktestPerformanceRow {
   strategyId: string;
   strategyName: string;
