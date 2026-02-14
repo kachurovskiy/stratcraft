@@ -276,6 +276,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const zeroCandlesTradableCount = zeroCandleTickers.filter((t: TickerInfo) => t.tradable).length;
     const zeroCandlesNotTradableCount = zeroCandleTickers.filter((t: TickerInfo) => !t.tradable).length;
     const validationTickersCount = tickers.filter((t: TickerInfo) => !t.training).length;
+    const tradableTickersCount = tickers.filter((t: TickerInfo) => t.tradable).length;
     const totalTickers = tickers.length;
     const tickerAnalytics = buildTickerAnalytics(tickers as (TickerInfo & { tradeCount: number })[]);
     const { stats: nameWordStats, totalNamedTickers } = buildNameWordStats(tickers);
@@ -313,6 +314,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       zeroCandlesTradableCount,
       zeroCandlesNotTradableCount,
       validationTickersCount,
+      tradableTickersCount,
       tickerAnalytics,
       nameWordStats,
       nameWordTickerCount: totalNamedTickers,
