@@ -33,14 +33,34 @@ type BacktestComparisonExpenseRatio = {
   liveNotional: number;
 };
 
-type TradeEntryDifferenceDay = {
+type TradeTickerLink = {
+  id: string;
+  ticker: string;
+  tradeUrl: string;
+  badgeClass: string;
+  isExclusive: boolean;
+};
+
+type TradeEntrySampleDay = {
   date: Date;
   engineCount: number;
   liveCount: number;
-  engineOnlyDisplay: string;
-  engineOnlyExtra: number;
-  liveOnlyDisplay: string;
-  liveOnlyExtra: number;
+  engineTrades: TradeTickerLink[];
+  liveTrades: TradeTickerLink[];
+};
+
+type TradeDifferenceSample = {
+  id: string;
+  ticker: string;
+  tradeUrl: string;
+  date: Date;
+  quantity: number;
+  price: number;
+  sideLabel: string;
+  sideBadge: string;
+  reasonLabel: string;
+  reasonDetail: string | null;
+  reasonBadge: string;
 };
 
 export type BacktestComparisonView = {
@@ -52,11 +72,13 @@ export type BacktestComparisonView = {
   live?: BacktestComparisonSummary;
   slippage?: BacktestComparisonSlippage;
   expenseRatio?: BacktestComparisonExpenseRatio;
-  sampleDays: TradeEntryDifferenceDay[];
+  sampleDays: TradeEntrySampleDay[];
+  sampleTrades: TradeDifferenceSample[];
 };
 
 const SLIPPAGE_DEFAULT = 0.003;
 const SAMPLE_DAY_LIMIT = 5;
+const SAMPLE_TRADE_LIMIT = 10;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 
 export const BACKTEST_SCOPE_META: Record<BacktestScope, { label: string; badge: string }> = {
@@ -79,7 +101,6 @@ type EntryAggregate = {
 };
 
 type EntryAggregation = {
-  entriesByDate: Map<string, Set<string>>;
   entriesByKey: Map<string, EntryAggregate>;
 };
 
@@ -119,7 +140,6 @@ const buildSummary = (backtest: BacktestResultRecord, label: string): BacktestCo
 };
 
 const buildEntryAggregation = (trades: Trade[]): EntryAggregation => {
-  const entriesByDate = new Map<string, Set<string>>();
   const entriesByKey = new Map<string, EntryAggregate>();
 
   for (const trade of trades) {
@@ -131,13 +151,6 @@ const buildEntryAggregation = (trades: Trade[]): EntryAggregation => {
       continue;
     }
     const dateKey = toDateKey(trade.date);
-    const dateSet = entriesByDate.get(dateKey);
-    if (dateSet) {
-      dateSet.add(trade.ticker);
-    } else {
-      entriesByDate.set(dateKey, new Set([trade.ticker]));
-    }
-
     const entryKey = `${dateKey}|${trade.ticker}`;
     const aggregate = entriesByKey.get(entryKey) ?? { notional: 0, quantity: 0 };
     aggregate.notional += notional;
@@ -145,45 +158,140 @@ const buildEntryAggregation = (trades: Trade[]): EntryAggregation => {
     entriesByKey.set(entryKey, aggregate);
   }
 
-  return { entriesByDate, entriesByKey };
+  return { entriesByKey };
 };
 
-const buildTickerDisplay = (tickers: string[], limit = 8): { display: string; extra: number } => {
-  if (!tickers.length) {
-    return { display: 'None', extra: 0 };
-  }
-  const sorted = [...tickers].sort((a, b) => a.localeCompare(b));
-  const slice = sorted.slice(0, limit);
-  const extra = Math.max(0, sorted.length - slice.length);
-  return { display: slice.join(', '), extra };
+type TradeBucket = {
+  engine: Trade[];
+  live: Trade[];
 };
+
+type ExclusiveTradeSets = {
+  engineOnlyIds: Set<string>;
+  liveOnlyIds: Set<string>;
+  differenceDates: Set<string>;
+};
+
+type TradeDifferenceReason = {
+  label: string;
+  detail: string | null;
+  badge: string;
+};
+
+const buildTradesByDate = (trades: Trade[]): Map<string, Trade[]> => {
+  const tradesByDate = new Map<string, Trade[]>();
+
+  for (const trade of trades) {
+    const dateKey = toDateKey(trade.date);
+    const entries = tradesByDate.get(dateKey);
+    if (entries) {
+      entries.push(trade);
+    } else {
+      tradesByDate.set(dateKey, [trade]);
+    }
+  }
+
+  return tradesByDate;
+};
+
+const sortTradesForMatch = (a: Trade, b: Trade): number => {
+  const createdDiff = a.createdAt.getTime() - b.createdAt.getTime();
+  if (createdDiff !== 0) {
+    return createdDiff;
+  }
+  return a.id.localeCompare(b.id);
+};
+
+const sortTradesForDisplay = (a: Trade, b: Trade): number => {
+  const tickerDiff = a.ticker.localeCompare(b.ticker);
+  if (tickerDiff !== 0) {
+    return tickerDiff;
+  }
+  return a.id.localeCompare(b.id);
+};
+
+const buildTradeBuckets = (engineTrades: Trade[], liveTrades: Trade[]): Map<string, TradeBucket> => {
+  const buckets = new Map<string, TradeBucket>();
+
+  const addTrade = (trade: Trade, side: 'engine' | 'live') => {
+    const entryKey = `${toDateKey(trade.date)}|${trade.ticker}`;
+    const bucket = buckets.get(entryKey) ?? { engine: [], live: [] };
+    bucket[side].push(trade);
+    buckets.set(entryKey, bucket);
+  };
+
+  engineTrades.forEach(trade => addTrade(trade, 'engine'));
+  liveTrades.forEach(trade => addTrade(trade, 'live'));
+
+  return buckets;
+};
+
+const buildExclusiveTradeSets = (buckets: Map<string, TradeBucket>): ExclusiveTradeSets => {
+  const engineOnlyIds = new Set<string>();
+  const liveOnlyIds = new Set<string>();
+  const differenceDates = new Set<string>();
+
+  for (const [entryKey, bucket] of buckets.entries()) {
+    const engineSorted = [...bucket.engine].sort(sortTradesForMatch);
+    const liveSorted = [...bucket.live].sort(sortTradesForMatch);
+    const matchedCount = Math.min(engineSorted.length, liveSorted.length);
+
+    if (engineSorted.length !== liveSorted.length) {
+      const [dateKey] = entryKey.split('|');
+      differenceDates.add(dateKey);
+    }
+
+    for (const trade of engineSorted.slice(matchedCount)) {
+      engineOnlyIds.add(trade.id);
+    }
+
+    for (const trade of liveSorted.slice(matchedCount)) {
+      liveOnlyIds.add(trade.id);
+    }
+  }
+
+  return { engineOnlyIds, liveOnlyIds, differenceDates };
+};
+
+const buildTradeLink = (trade: Trade, isExclusive: boolean, side: 'engine' | 'live'): TradeTickerLink => ({
+  id: trade.id,
+  ticker: trade.ticker,
+  tradeUrl: `/trades/${trade.id}`,
+  isExclusive,
+  badgeClass: isExclusive
+    ? side === 'engine'
+      ? 'bg-danger'
+      : 'bg-success'
+    : 'bg-light text-dark'
+});
 
 const buildSampleDays = (
-  engineByDate: Map<string, Set<string>>,
-  liveByDate: Map<string, Set<string>>
-): TradeEntryDifferenceDay[] => {
-  const dateKeys = Array.from(new Set([...engineByDate.keys(), ...liveByDate.keys()])).sort();
-  const sampleDays: TradeEntryDifferenceDay[] = [];
+  engineByDate: Map<string, Trade[]>,
+  liveByDate: Map<string, Trade[]>,
+  engineOnlyIds: Set<string>,
+  liveOnlyIds: Set<string>,
+  differenceDates: Set<string>
+): TradeEntrySampleDay[] => {
+  const dateKeys = Array.from(differenceDates).sort();
+  const sampleDays: TradeEntrySampleDay[] = [];
 
   for (const dateKey of dateKeys) {
-    const engineSet = engineByDate.get(dateKey) ?? new Set<string>();
-    const liveSet = liveByDate.get(dateKey) ?? new Set<string>();
-    const engineOnly = Array.from(engineSet).filter((ticker) => !liveSet.has(ticker));
-    const liveOnly = Array.from(liveSet).filter((ticker) => !engineSet.has(ticker));
-    if (!engineOnly.length && !liveOnly.length) {
+    const engineTrades = (engineByDate.get(dateKey) ?? []).sort(sortTradesForDisplay);
+    const liveTrades = (liveByDate.get(dateKey) ?? []).sort(sortTradesForDisplay);
+    if (engineTrades.length === 0 && liveTrades.length === 0) {
       continue;
     }
 
-    const engineDisplay = buildTickerDisplay(engineOnly);
-    const liveDisplay = buildTickerDisplay(liveOnly);
     sampleDays.push({
       date: new Date(`${dateKey}T00:00:00Z`),
-      engineCount: engineSet.size,
-      liveCount: liveSet.size,
-      engineOnlyDisplay: engineDisplay.display,
-      engineOnlyExtra: engineDisplay.extra,
-      liveOnlyDisplay: liveDisplay.display,
-      liveOnlyExtra: liveDisplay.extra
+      engineCount: engineTrades.length,
+      liveCount: liveTrades.length,
+      engineTrades: engineTrades.map(trade =>
+        buildTradeLink(trade, engineOnlyIds.has(trade.id), 'engine')
+      ),
+      liveTrades: liveTrades.map(trade =>
+        buildTradeLink(trade, liveOnlyIds.has(trade.id), 'live')
+      )
     });
 
     if (sampleDays.length >= SAMPLE_DAY_LIMIT) {
@@ -192,6 +300,152 @@ const buildSampleDays = (
   }
 
   return sampleDays;
+};
+
+const buildSnapshotMap = (
+  snapshots: BacktestResultRecord['dailySnapshots']
+): Map<string, BacktestResultRecord['dailySnapshots'][number]> => {
+  const map = new Map<string, BacktestResultRecord['dailySnapshots'][number]>();
+  for (const snapshot of snapshots) {
+    map.set(toDateKey(snapshot.date), snapshot);
+  }
+  return map;
+};
+
+const buildExclusiveTradeReason = ({
+  trade,
+  otherBacktest,
+  otherBacktestLabel,
+  otherScopeLabel,
+  otherTickersInScope,
+  otherTickersTraded,
+  otherSnapshotsByDate
+}: {
+  trade: Trade;
+  otherBacktest: BacktestResultRecord;
+  otherBacktestLabel: string;
+  otherScopeLabel: string;
+  otherTickersInScope: Set<string>;
+  otherTickersTraded: Set<string>;
+  otherSnapshotsByDate: Map<string, BacktestResultRecord['dailySnapshots'][number]>;
+}): TradeDifferenceReason => {
+  const tradeDate = trade.date;
+  const tradeTime = tradeDate.getTime();
+  if (tradeTime < otherBacktest.startDate.getTime() || tradeTime > otherBacktest.endDate.getTime()) {
+    return {
+      label: `Outside ${otherBacktestLabel} range`,
+      detail: `${toDateKey(otherBacktest.startDate)} to ${toDateKey(otherBacktest.endDate)}`,
+      badge: 'bg-warning text-dark'
+    };
+  }
+
+  if (otherTickersInScope.size > 0 && !otherTickersInScope.has(trade.ticker)) {
+    return {
+      label: `Ticker not in ${otherBacktestLabel} scope`,
+      detail: otherScopeLabel,
+      badge: 'bg-info text-dark'
+    };
+  }
+
+  const snapshot = otherSnapshotsByDate.get(toDateKey(tradeDate));
+  if (snapshot && typeof snapshot.missedTradesDueToCash === 'number' && snapshot.missedTradesDueToCash > 0) {
+    const missedTrades = Math.round(snapshot.missedTradesDueToCash);
+    const missedLabel = missedTrades === 1 ? '1 trade missed' : `${missedTrades} trades missed`;
+    return {
+      label: `Cash constrained on ${otherBacktestLabel}`,
+      detail: missedLabel,
+      badge: 'bg-danger'
+    };
+  }
+
+  if (!otherTickersTraded.has(trade.ticker)) {
+    return {
+      label: `Ticker never traded in ${otherBacktestLabel}`,
+      detail: 'No entries recorded',
+      badge: 'bg-secondary'
+    };
+  }
+
+  return {
+    label: 'No obvious driver found',
+    detail: null,
+    badge: 'bg-light text-dark'
+  };
+};
+
+const buildExclusiveTradeSamples = ({
+  engineTrades,
+  liveTrades,
+  engineOnlyIds,
+  liveOnlyIds,
+  engineBacktest,
+  liveBacktest
+}: {
+  engineTrades: Trade[];
+  liveTrades: Trade[];
+  engineOnlyIds: Set<string>;
+  liveOnlyIds: Set<string>;
+  engineBacktest: BacktestResultRecord;
+  liveBacktest: BacktestResultRecord;
+}): TradeDifferenceSample[] => {
+  const engineScopeLabel = BACKTEST_SCOPE_META[normalizeBacktestScope(engineBacktest.tickerScope)].label;
+  const liveScopeLabel = BACKTEST_SCOPE_META[normalizeBacktestScope(liveBacktest.tickerScope)].label;
+  const engineTickersInScope = new Set(engineBacktest.tickers);
+  const liveTickersInScope = new Set(liveBacktest.tickers);
+  const engineTickersTraded = new Set(engineTrades.map(trade => trade.ticker));
+  const liveTickersTraded = new Set(liveTrades.map(trade => trade.ticker));
+  const engineSnapshotsByDate = buildSnapshotMap(engineBacktest.dailySnapshots);
+  const liveSnapshotsByDate = buildSnapshotMap(liveBacktest.dailySnapshots);
+
+  const candidates: Array<{ trade: Trade; side: 'engine' | 'live' }> = [
+    ...engineTrades.filter(trade => engineOnlyIds.has(trade.id)).map(trade => ({ trade, side: 'engine' })),
+    ...liveTrades.filter(trade => liveOnlyIds.has(trade.id)).map(trade => ({ trade, side: 'live' }))
+  ];
+
+  const sortedCandidates = candidates.sort((a, b) => {
+    const dateDiff = b.trade.date.getTime() - a.trade.date.getTime();
+    if (dateDiff !== 0) {
+      return dateDiff;
+    }
+    const tickerDiff = a.trade.ticker.localeCompare(b.trade.ticker);
+    if (tickerDiff !== 0) {
+      return tickerDiff;
+    }
+    return a.trade.id.localeCompare(b.trade.id);
+  });
+
+  return sortedCandidates.slice(0, SAMPLE_TRADE_LIMIT).map(({ trade, side }) => {
+    const isEngine = side === 'engine';
+    const otherBacktest = isEngine ? liveBacktest : engineBacktest;
+    const otherBacktestLabel = isEngine ? 'live trades backtest' : 'engine backtest';
+    const otherScopeLabel = isEngine ? liveScopeLabel : engineScopeLabel;
+    const otherTickersInScope = isEngine ? liveTickersInScope : engineTickersInScope;
+    const otherTickersTraded = isEngine ? liveTickersTraded : engineTickersTraded;
+    const otherSnapshotsByDate = isEngine ? liveSnapshotsByDate : engineSnapshotsByDate;
+    const reason = buildExclusiveTradeReason({
+      trade,
+      otherBacktest,
+      otherBacktestLabel,
+      otherScopeLabel,
+      otherTickersInScope,
+      otherTickersTraded,
+      otherSnapshotsByDate
+    });
+
+    return {
+      id: trade.id,
+      ticker: trade.ticker,
+      tradeUrl: `/trades/${trade.id}`,
+      date: trade.date,
+      quantity: trade.quantity,
+      price: trade.price,
+      sideLabel: isEngine ? 'Engine only' : 'Live only',
+      sideBadge: isEngine ? 'bg-danger' : 'bg-success',
+      reasonLabel: reason.label,
+      reasonDetail: reason.detail,
+      reasonBadge: reason.badge
+    };
+  });
 };
 
 const computeSlippage = (
@@ -335,7 +589,8 @@ export const buildBacktestComparisonView = async ({
       isEligible: false,
       hasEngine: false,
       hasLive: false,
-      sampleDays: []
+      sampleDays: [],
+      sampleTrades: []
     };
   }
 
@@ -355,7 +610,8 @@ export const buildBacktestComparisonView = async ({
       notice: missing.length > 0
         ? `Need ${missing.join(' and ')} results to compare entries.`
         : 'Need live and engine backtests to compare entries.',
-      sampleDays: []
+      sampleDays: [],
+      sampleTrades: []
     };
   }
 
@@ -371,7 +627,25 @@ export const buildBacktestComparisonView = async ({
 
   const engineAggregation = buildEntryAggregation(engineTrades);
   const liveAggregation = buildEntryAggregation(liveTrades);
-  const sampleDays = buildSampleDays(engineAggregation.entriesByDate, liveAggregation.entriesByDate);
+  const tradeBuckets = buildTradeBuckets(engineTrades, liveTrades);
+  const { engineOnlyIds, liveOnlyIds, differenceDates } = buildExclusiveTradeSets(tradeBuckets);
+  const engineTradesByDate = buildTradesByDate(engineTrades);
+  const liveTradesByDate = buildTradesByDate(liveTrades);
+  const sampleDays = buildSampleDays(
+    engineTradesByDate,
+    liveTradesByDate,
+    engineOnlyIds,
+    liveOnlyIds,
+    differenceDates
+  );
+  const sampleTrades = buildExclusiveTradeSamples({
+    engineTrades,
+    liveTrades,
+    engineOnlyIds,
+    liveOnlyIds,
+    engineBacktest: engineBacktest!,
+    liveBacktest: liveBacktest!
+  });
   const slippage = computeSlippage(engineAggregation.entriesByKey, liveAggregation.entriesByKey, slippageSetting);
 
   const tickers = [
@@ -407,6 +681,7 @@ export const buildBacktestComparisonView = async ({
       engineNotional: engineExpense.notional,
       liveNotional: liveExpense.notional
     },
-    sampleDays
+    sampleDays,
+    sampleTrades
   };
 };

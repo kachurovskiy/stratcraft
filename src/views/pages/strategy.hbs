@@ -275,17 +275,18 @@
                     </div>
                     <div class="border-top px-3 py-3">
                         <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="fw-bold mb-0">Entry Differences (Sample Days)</h6>
+                            <h6 class="fw-bold mb-0">Entry Samples (5 Days)</h6>
                             <span class="text-muted small">Up to 5 days</span>
                         </div>
+                        <div class="text-muted small mt-1">Exclusive tickers are highlighted for each backtest.</div>
                         {{#if backtestComparison.sampleDays.length}}
                         <div class="table-responsive mt-2">
                             <table class="table table-sm align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th scope="col" class="ps-3">Date</th>
-                                        <th scope="col">Engine-only entries</th>
-                                        <th scope="col">Live-only entries</th>
+                                        <th scope="col">Engine entries</th>
+                                        <th scope="col">Live entries</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -298,15 +299,25 @@
                                             </div>
                                         </td>
                                         <td>
-                                            <span class="text-danger">{{engineOnlyDisplay}}</span>
-                                            {{#if engineOnlyExtra}}
-                                            <span class="text-muted small">+{{engineOnlyExtra}} more</span>
+                                            {{#if engineTrades.length}}
+                                            <div class="d-flex flex-wrap gap-1">
+                                                {{#each engineTrades}}
+                                                <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">{{ticker}}</a>
+                                                {{/each}}
+                                            </div>
+                                            {{else}}
+                                            <span class="text-muted small">None</span>
                                             {{/if}}
                                         </td>
                                         <td>
-                                            <span class="text-success">{{liveOnlyDisplay}}</span>
-                                            {{#if liveOnlyExtra}}
-                                            <span class="text-muted small">+{{liveOnlyExtra}} more</span>
+                                            {{#if liveTrades.length}}
+                                            <div class="d-flex flex-wrap gap-1">
+                                                {{#each liveTrades}}
+                                                <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">{{ticker}}</a>
+                                                {{/each}}
+                                            </div>
+                                            {{else}}
+                                            <span class="text-muted small">None</span>
                                             {{/if}}
                                         </td>
                                     </tr>
@@ -317,6 +328,54 @@
                         <div class="text-muted small mt-2">Showing the first {{backtestComparison.sampleDays.length}} day{{#if (ne backtestComparison.sampleDays.length 1)}}s{{/if}} with entry differences.</div>
                         {{else}}
                         <div class="text-muted small mt-2">No entry differences found yet.</div>
+                        {{/if}}
+                    </div>
+                    <div class="border-top px-3 py-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="fw-bold mb-0">Exclusive Trades (Sample)</h6>
+                            <span class="text-muted small">Up to 10 trades</span>
+                        </div>
+                        {{#if backtestComparison.sampleTrades.length}}
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="ps-3">Ticker</th>
+                                        <th scope="col">Side</th>
+                                        <th scope="col">Date</th>
+                                        <th scope="col" class="text-end">Qty</th>
+                                        <th scope="col" class="text-end">Entry</th>
+                                        <th scope="col">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each backtestComparison.sampleTrades}}
+                                    <tr>
+                                        <td class="fw-semibold ps-3">
+                                            <a href="{{tradeUrl}}" class="text-decoration-none">{{ticker}}</a>
+                                        </td>
+                                        <td>
+                                            <span class="badge {{sideBadge}}">{{sideLabel}}</span>
+                                        </td>
+                                        <td class="small">{{formatDate date}}</td>
+                                        <td class="text-end small">{{quantity}}</td>
+                                        <td class="text-end small">${{formatPrice price}}</td>
+                                        <td>
+                                            <span class="badge {{reasonBadge}}">{{reasonLabel}}</span>
+                                            {{#if reasonDetail}}
+                                            <div class="text-muted small">{{reasonDetail}}</div>
+                                            {{/if}}
+                                        </td>
+                                    </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-muted small mt-2">
+                            Showing the first {{backtestComparison.sampleTrades.length}} trade{{#if (ne backtestComparison.sampleTrades.length 1)}}s{{/if}} unique to one backtest.
+                        </div>
+                        {{else}}
+                        <div class="text-muted small mt-2">No exclusive trades found yet.</div>
                         {{/if}}
                     </div>
                     {{else}}
