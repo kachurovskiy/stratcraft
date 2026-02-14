@@ -5,12 +5,16 @@ import {
   StrategyParameter,
   Candle,
   AccountOperationStatus,
-  AccountOperationType,
-  BacktestScope
+  AccountOperationType
 } from '../../shared/types/StrategyTemplate';
 import { AccountSnapshot } from '../../shared/types/Account';
 import { LogEntry, LogLevel } from '../services/LoggingService';
 import type { TradeTickerStats } from '../database/types';
+import {
+  BACKTEST_SCOPE_META,
+  buildBacktestComparisonView,
+  normalizeBacktestScope
+} from '../scoring/backtestComparison';
 import {
   buildBenchmarkDataFromSnapshots,
   buildCashPercentageDataFromSnapshots,
@@ -48,20 +52,6 @@ const ACCOUNT_OPERATION_STATUS_META: Record<AccountOperationStatus, { label: str
   sent: { label: 'Sent', badge: 'success' },
   skipped: { label: 'Skipped', badge: 'secondary' },
   failed: { label: 'Failed', badge: 'danger' }
-};
-
-const BACKTEST_SCOPE_META: Record<BacktestScope, { label: string; badge: string }> = {
-  validation: { label: 'Validation tickers', badge: 'bg-warning text-dark' },
-  training: { label: 'Training tickers', badge: 'bg-secondary' },
-  all: { label: 'All tickers', badge: 'bg-info text-dark' },
-  live: { label: 'Live backtest', badge: 'bg-success' }
-};
-
-const normalizeBacktestScope = (value: unknown): BacktestScope => {
-  if (value === 'validation' || value === 'training' || value === 'all' || value === 'live') {
-    return value;
-  }
-  return 'training';
 };
 
 const loadStrategyOrRenderNotFound = async (req: Request, res: Response, strategyId: string) => {
@@ -1198,6 +1188,14 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       ? 'Are you sure you want to clear backtest data and simulated trades for this strategy? Trades executed on the linked account will be preserved.'
       : 'Are you sure you want to clear all backtest data for this strategy? This will remove all trades and performance metrics.';
 
+    const backtestComparison = await buildBacktestComparisonView({
+      db: req.db,
+      strategyId,
+      userId,
+      backtests: backtestResults,
+      isEligible: Boolean(strategy.accountId)
+    });
+
     res.render('pages/strategy', {
       title: `${strategy.name} - Strategy Overview`,
       page: 'dashboard',
@@ -1227,6 +1225,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       strategyAccount,
       strategyAccountWarning,
       clearBacktestConfirmMessage,
+      backtestComparison,
       metadataColumns,
       strategyLogs: strategyLogViews,
       hasStrategyLogs: strategyLogViews.length > 0,

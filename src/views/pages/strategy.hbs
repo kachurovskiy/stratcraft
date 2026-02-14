@@ -158,6 +158,180 @@
             </div>
         </div>
 
+        {{#if backtestComparison.isEligible}}
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-balance-scale me-2"></i>
+                        Live vs Engine Backtest
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {{#if (and backtestComparison.hasEngine backtestComparison.hasLive)}}
+                    <div class="p-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <div class="fw-semibold">{{backtestComparison.engine.label}}</div>
+                                        <span class="badge {{backtestComparison.engine.scopeBadge}}">{{backtestComparison.engine.scopeLabel}}</span>
+                                    </div>
+                                    <div class="text-muted small">
+                                        {{backtestComparison.engine.periodLabel}} &bull;
+                                        {{formatDate backtestComparison.engine.startDate}} &ndash;
+                                        {{formatDate backtestComparison.engine.endDate}}
+                                    </div>
+                                    <div class="text-muted small">Run {{formatDate backtestComparison.engine.createdAt}}</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <div class="fw-semibold">{{backtestComparison.live.label}}</div>
+                                        <span class="badge {{backtestComparison.live.scopeBadge}}">{{backtestComparison.live.scopeLabel}}</span>
+                                    </div>
+                                    <div class="text-muted small">
+                                        {{backtestComparison.live.periodLabel}} &bull;
+                                        {{formatDate backtestComparison.live.startDate}} &ndash;
+                                        {{formatDate backtestComparison.live.endDate}}
+                                    </div>
+                                    <div class="text-muted small">Run {{formatDate backtestComparison.live.createdAt}}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border-top px-3 py-3">
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="fw-semibold">Slippage</div>
+                                    {{#if backtestComparison.slippage.hasData}}
+                                    <div class="display-6">
+                                        {{formatRateAsPercent backtestComparison.slippage.impliedAvgAbs}}
+                                    </div>
+                                    <div class="text-muted small">
+                                        Avg abs gap across {{backtestComparison.slippage.matchedEntries}} matched entries.
+                                    </div>
+                                    <div class="text-muted small">
+                                        Signed avg:
+                                        {{formatRateAsPercent backtestComparison.slippage.impliedAvg}}
+                                    </div>
+                                    {{else}}
+                                    <div class="text-muted small">Not enough matched entries to estimate slippage.</div>
+                                    {{/if}}
+                                    <div class="text-muted small mt-2">
+                                        Setting:
+                                        {{formatRateAsPercent backtestComparison.slippage.setting}}
+                                        {{#if (and (defined backtestComparison.slippage.gap) (ne backtestComparison.slippage.gap null))}}
+                                        <span class="{{backtestComparison.slippage.gapClass}}">
+                                            ({{formatRateAsPercent backtestComparison.slippage.gap}})
+                                        </span>
+                                        {{/if}}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="fw-semibold">Expense Ratios</div>
+                                    {{#if backtestComparison.expenseRatio.hasData}}
+                                    <div class="d-flex justify-content-between mt-2">
+                                        <div class="text-muted small">Engine avg</div>
+                                        <div class="fw-semibold">
+                                            {{#if (and (defined backtestComparison.expenseRatio.engineAvg) (ne backtestComparison.expenseRatio.engineAvg null))}}
+                                            {{formatRateAsPercent backtestComparison.expenseRatio.engineAvg}}
+                                            {{else}}
+                                            N/A
+                                            {{/if}}
+                                        </div>
+                                    </div>
+                                    <div class="d-flex justify-content-between mt-1">
+                                        <div class="text-muted small">Live avg</div>
+                                        <div class="fw-semibold">
+                                            {{#if (and (defined backtestComparison.expenseRatio.liveAvg) (ne backtestComparison.expenseRatio.liveAvg null))}}
+                                            {{formatRateAsPercent backtestComparison.expenseRatio.liveAvg}}
+                                            {{else}}
+                                            N/A
+                                            {{/if}}
+                                        </div>
+                                    </div>
+                                    <div class="text-muted small mt-2">
+                                        Gap:
+                                        {{#if (and (defined backtestComparison.expenseRatio.gap) (ne backtestComparison.expenseRatio.gap null))}}
+                                        <span class="{{backtestComparison.expenseRatio.gapClass}}">
+                                            {{formatRateAsPercent backtestComparison.expenseRatio.gap}}
+                                        </span>
+                                        {{else}}
+                                        N/A
+                                        {{/if}}
+                                    </div>
+                                    <div class="text-muted small">Weighted by notional across entries.</div>
+                                    {{else}}
+                                    <div class="text-muted small">No entries available to estimate expense ratios.</div>
+                                    {{/if}}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="border-top px-3 py-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="fw-bold mb-0">Entry Differences (Sample Days)</h6>
+                            <span class="text-muted small">Up to 5 days</span>
+                        </div>
+                        {{#if backtestComparison.sampleDays.length}}
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="ps-3">Date</th>
+                                        <th scope="col">Engine-only entries</th>
+                                        <th scope="col">Live-only entries</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each backtestComparison.sampleDays}}
+                                    <tr>
+                                        <td class="fw-semibold ps-3">
+                                            {{formatDate date}}
+                                            <div class="text-muted small">
+                                                {{engineCount}} engine &bull; {{liveCount}} live
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="text-danger">{{engineOnlyDisplay}}</span>
+                                            {{#if engineOnlyExtra}}
+                                            <span class="text-muted small">+{{engineOnlyExtra}} more</span>
+                                            {{/if}}
+                                        </td>
+                                        <td>
+                                            <span class="text-success">{{liveOnlyDisplay}}</span>
+                                            {{#if liveOnlyExtra}}
+                                            <span class="text-muted small">+{{liveOnlyExtra}} more</span>
+                                            {{/if}}
+                                        </td>
+                                    </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-muted small mt-2">Showing the first {{backtestComparison.sampleDays.length}} day{{#if (ne backtestComparison.sampleDays.length 1)}}s{{/if}} with entry differences.</div>
+                        {{else}}
+                        <div class="text-muted small mt-2">No entry differences found yet.</div>
+                        {{/if}}
+                    </div>
+                    {{else}}
+                    <div class="p-3">
+                        <div class="alert alert-info mb-0" role="alert">
+                            <i class="fas fa-info-circle me-2"></i>
+                            {{backtestComparison.notice}}
+                        </div>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+        {{/if}}
+
         <!-- Strategy Summary -->
         <div class="col-xl-4 col-lg-4">
             <div class="card h-100">
