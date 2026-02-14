@@ -398,8 +398,12 @@ const buildExclusiveTradeSamples = ({
   const liveSnapshotsByDate = buildSnapshotMap(liveBacktest.dailySnapshots);
 
   const candidates: Array<{ trade: Trade; side: 'engine' | 'live' }> = [
-    ...engineTrades.filter(trade => engineOnlyIds.has(trade.id)).map(trade => ({ trade, side: 'engine' })),
-    ...liveTrades.filter(trade => liveOnlyIds.has(trade.id)).map(trade => ({ trade, side: 'live' }))
+    ...engineTrades
+      .filter(trade => engineOnlyIds.has(trade.id))
+      .map(trade => ({ trade, side: 'engine' as const })),
+    ...liveTrades
+      .filter(trade => liveOnlyIds.has(trade.id))
+      .map(trade => ({ trade, side: 'live' as const }))
   ];
 
   const sortedCandidates = candidates.sort((a, b) => {

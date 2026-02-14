@@ -866,8 +866,8 @@
 
                     if (!aCell || !bCell) return 0;
 
-                    aValue = parseFloat(aCell.textContent.replace(/[$,%]/g, '')) || 0;
-                    bValue = parseFloat(bCell.textContent.replace(/[$,%]/g, '')) || 0;
+                    aValue = parseFloat(aCell.textContent.replace(/[^\d.-]/g, '')) || 0;
+                    bValue = parseFloat(bCell.textContent.replace(/[^\d.-]/g, '')) || 0;
                     return currentSort.direction === 'asc' ? aValue - bValue : bValue - aValue;
 
                 default:
@@ -883,16 +883,16 @@
         const columnMap = {
             'name': 1,
             'status': 2,
-            'cagr': 4,
-            'winRate': 5,
-            'totalTrades': 6,
-            'totalReturn': 7,
-            'sharpeRatio': 8,
-            'calmarRatio': 9,
-            'medianCalmar': 10,
-            'medianSharpe': 11,
-            'maxDrawdown': 12,
-            'totalTickers': 13
+            'cagr': 3,
+            'winRate': 4,
+            'totalTrades': 5,
+            'totalReturn': 6,
+            'sharpeRatio': 7,
+            'calmarRatio': 8,
+            'medianCalmar': 9,
+            'medianSharpe': 10,
+            'maxDrawdown': 11,
+            'totalTickers': 12
         };
         return columnMap[column] || 1;
     }
