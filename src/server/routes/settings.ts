@@ -60,6 +60,11 @@ const SETTING_GROUPS = [
     description: 'Optimizer versioning and training windows.'
   },
   {
+    key: 'template-scoring',
+    label: 'Template Scoring',
+    description: 'Tune how template scores are computed for the gallery.'
+  },
+  {
     key: 'user-access',
     label: 'User Access',
     description: 'Invitation settings for user access.'
@@ -580,6 +585,123 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     description: 'Shared secret required for /api/backtest/* endpoints (remote optimizer cache).',
     placeholder: 'Auto-generated on server start',
     inputType: 'password'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE,
+    group: 'template-scoring',
+    label: 'Template Return Scale',
+    description: 'Scale for converting validation CAGR into return score. Increase to make returns saturate slower; decrease to make high CAGRs reach top scores sooner.',
+    placeholder: '0.20',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH,
+    group: 'template-scoring',
+    label: 'Negative Validation CAGR Penalty Strength',
+    description: 'Penalty strength for negative validation CAGR. Increase to punish negative CAGR more; decrease to soften the penalty.',
+    placeholder: '2.0',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA,
+    group: 'template-scoring',
+    label: 'Drawdown Penalty Lambda',
+    description: 'Lambda for drawdown penalty in the risk score. Increase to penalize drawdowns more; decrease to be more forgiving.',
+    placeholder: '2.5',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET,
+    group: 'template-scoring',
+    label: 'Trades Per Year Target',
+    description: 'Trades-per-year target used to reach full liquidity confidence. Increase to require more trading for full credit; decrease to grant credit with fewer trades.',
+    placeholder: '200',
+    inputType: 'number',
+    min: '1'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT,
+    group: 'template-scoring',
+    label: 'Liquidity Weight',
+    description: 'Weight of liquidity confidence in period scoring (0-1). Increase to make trade activity matter more; decrease to de-emphasize liquidity.',
+    placeholder: '0.25',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS,
+    group: 'template-scoring',
+    label: 'Recency Half-Life (Days)',
+    description: 'Half-life in days for recency weighting. Increase to reduce recency bias; decrease to favor newer backtests more.',
+    placeholder: '365',
+    inputType: 'number',
+    min: '1'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE,
+    group: 'template-scoring',
+    label: 'Verify Sharpe Scale',
+    description: 'Scale for verification Sharpe normalization. Increase to dampen Sharpe boosts; decrease to reward Sharpe more quickly.',
+    placeholder: '2',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE,
+    group: 'template-scoring',
+    label: 'Verify Calmar Scale',
+    description: 'Scale for verification Calmar normalization. Increase to dampen Calmar boosts; decrease to reward Calmar more quickly.',
+    placeholder: '2',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE,
+    group: 'template-scoring',
+    label: 'Verify CAGR Positive Scale',
+    description: 'Scale for positive verification CAGR normalization. Increase to slow positive boosts; decrease to reward positive CAGR faster.',
+    placeholder: '0.25',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE,
+    group: 'template-scoring',
+    label: 'Verify CAGR Negative Scale',
+    description: 'Scale for negative verification CAGR penalty. Increase to soften negative penalties; decrease to punish negative CAGR faster.',
+    placeholder: '0.10',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA,
+    group: 'template-scoring',
+    label: 'Verify Drawdown Lambda',
+    description: 'Lambda for verification drawdown penalty. Increase to penalize verify drawdowns more; decrease to be more forgiving.',
+    placeholder: '2.5',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER,
+    group: 'template-scoring',
+    label: 'Verify Min Multiplier',
+    description: 'Minimum multiplier when verification score is weak. Increase to raise the floor; decrease to allow harsher penalties.',
+    placeholder: '0.8',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER,
+    group: 'template-scoring',
+    label: 'Verify Max Multiplier',
+    description: 'Maximum multiplier when verification score is strong. Increase to allow bigger boosts; decrease to cap the upside.',
+    placeholder: '1.2',
+    inputType: 'number',
+    min: '0'
   },
   {
     key: SETTING_KEYS.INVITE_LINK_VALID_DAYS,

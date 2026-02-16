@@ -102,9 +102,9 @@ describe('template scoring', () => {
     dateNowSpy.mockRestore();
   });
 
-  it('increases period score as trades per year increase', () => {
-    const lowTradeResults = computeTemplateScoreResults(buildSnapshots({ totalTrades: 25 }), {});
-    const highTradeResults = computeTemplateScoreResults(buildSnapshots({ totalTrades: 200 }), {});
+  it('increases period score as trades per year increase', async () => {
+    const lowTradeResults = await computeTemplateScoreResults(buildSnapshots({ totalTrades: 25 }), {});
+    const highTradeResults = await computeTemplateScoreResults(buildSnapshots({ totalTrades: 200 }), {});
 
     const lowPeriod = lowTradeResults.breakdowns.get(templateId)?.periods[0];
     const highPeriod = highTradeResults.breakdowns.get(templateId)?.periods[0];
@@ -119,12 +119,12 @@ describe('template scoring', () => {
     expect(highPeriod.periodScore01).toBeGreaterThan(lowPeriod.periodScore01);
   });
 
-  it('penalizes negative verify CAGR more than neutral', () => {
+  it('penalizes negative verify CAGR more than neutral', async () => {
     const snapshots = buildSnapshots();
-    const negativeResults = computeTemplateScoreResults(snapshots, {
+    const negativeResults = await computeTemplateScoreResults(snapshots, {
       verificationByTemplate: new Map([[templateId, { verifyCagr: -0.2 }]])
     });
-    const neutralResults = computeTemplateScoreResults(snapshots, {
+    const neutralResults = await computeTemplateScoreResults(snapshots, {
       verificationByTemplate: new Map([[templateId, { verifyCagr: 0 }]])
     });
 
@@ -142,12 +142,12 @@ describe('template scoring', () => {
     expect(Math.abs(negativeMultiplier - 0.8)).toBeLessThan(Math.abs(neutralMultiplier - 0.8));
   });
 
-  it('rewards positive verify CAGR above neutral', () => {
+  it('rewards positive verify CAGR above neutral', async () => {
     const snapshots = buildSnapshots();
-    const positiveResults = computeTemplateScoreResults(snapshots, {
+    const positiveResults = await computeTemplateScoreResults(snapshots, {
       verificationByTemplate: new Map([[templateId, { verifyCagr: 0.2 }]])
     });
-    const neutralResults = computeTemplateScoreResults(snapshots, {
+    const neutralResults = await computeTemplateScoreResults(snapshots, {
       verificationByTemplate: new Map([[templateId, { verifyCagr: 0 }]])
     });
 
@@ -163,9 +163,9 @@ describe('template scoring', () => {
     expect(positiveMultiplier).toBeGreaterThan(neutralMultiplier);
   });
 
-  it('reduces risk score and period score with larger drawdowns', () => {
-    const lowDrawdownResults = computeTemplateScoreResults(buildSnapshots({ validationDrawdownPercent: 5 }), {});
-    const highDrawdownResults = computeTemplateScoreResults(buildSnapshots({ validationDrawdownPercent: 35 }), {});
+  it('reduces risk score and period score with larger drawdowns', async () => {
+    const lowDrawdownResults = await computeTemplateScoreResults(buildSnapshots({ validationDrawdownPercent: 5 }), {});
+    const highDrawdownResults = await computeTemplateScoreResults(buildSnapshots({ validationDrawdownPercent: 35 }), {});
 
     const lowPeriod = lowDrawdownResults.breakdowns.get(templateId)?.periods[0];
     const highPeriod = highDrawdownResults.breakdowns.get(templateId)?.periods[0];
@@ -180,8 +180,8 @@ describe('template scoring', () => {
     expect(lowPeriod.periodScore01).toBeGreaterThan(highPeriod.periodScore01);
   });
 
-  it('keeps component averages and scores in UI bounds', () => {
-    const results = computeTemplateScoreResults(buildSnapshots(), {});
+  it('keeps component averages and scores in UI bounds', async () => {
+    const results = await computeTemplateScoreResults(buildSnapshots(), {});
     const breakdown = results.breakdowns.get(templateId);
 
     expect(breakdown).toBeDefined();

@@ -1,4 +1,5 @@
 import type { BacktestScope, StrategyPerformance } from '../../shared/types/StrategyTemplate';
+import { SETTING_KEYS, type SettingKey } from '../constants';
 
 export type TemplateScoreSnapshot = {
   templateId: string;
@@ -17,8 +18,30 @@ export type TemplateVerificationMetrics = {
   verifyMaxDrawdownRatio?: number | null;
 };
 
+export type TemplateScoreSettings = {
+  returnScale: number;
+  validationNegativePenaltyStrength: number;
+  drawdownLambda: number;
+  tradeTarget: number;
+  tradeWeight: number;
+  recencyHalfLifeDays: number;
+  verifySharpeScale: number;
+  verifyCalmarScale: number;
+  verifyCagrScale: number;
+  verifyCagrNegScale: number;
+  verifyDrawdownLambda: number;
+  verifyMinMultiplier: number;
+  verifyMaxMultiplier: number;
+};
+
+type TemplateScoreSettingsRepo = {
+  getSettingsByKeys: (settingKeys: SettingKey[]) => Promise<Record<string, string | null>>;
+};
+
 export type TemplateScoreOptions = {
   verificationByTemplate?: Map<string, TemplateVerificationMetrics>;
+  templateScoreSettings?: Partial<TemplateScoreSettings>;
+  settingsRepo?: TemplateScoreSettingsRepo;
 };
 
 export type TemplateScoreBreakdown = {
@@ -55,19 +78,224 @@ export type TemplateScoreResults = {
   breakdowns: Map<string, TemplateScoreBreakdown>;
 };
 
-const RETURN_SCALE = 0.20;
-const VALIDATION_NEGATIVE_PENALTY_STRENGTH = 2.0;
-const TEMPLATE_SCORE_DRAWDOWN_LAMBDA = 2.5;
-const TEMPLATE_SCORE_TRADE_TARGET = 200;
-const TEMPLATE_SCORE_TRADE_WEIGHT = 0.25;
-const TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS = 365;
-const TEMPLATE_SCORE_VERIFY_SHARPE_SCALE = 2;
-const TEMPLATE_SCORE_VERIFY_CALMAR_SCALE = 2;
-const TEMPLATE_SCORE_VERIFY_CAGR_SCALE = 0.25;
-const TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE = 0.10;
-const TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA = 2.5;
-const TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER = 0.8;
-const TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER = 1.2;
+export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoreSettings = {
+  returnScale: 0.20,
+  validationNegativePenaltyStrength: 2.0,
+  drawdownLambda: 2.5,
+  tradeTarget: 200,
+  tradeWeight: 0.25,
+  recencyHalfLifeDays: 365,
+  verifySharpeScale: 2,
+  verifyCalmarScale: 2,
+  verifyCagrScale: 0.25,
+  verifyCagrNegScale: 0.10,
+  verifyDrawdownLambda: 2.5,
+  verifyMinMultiplier: 0.8,
+  verifyMaxMultiplier: 1.2
+};
+
+const TEMPLATE_SCORE_SETTING_KEYS: SettingKey[] = [
+  SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE,
+  SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH,
+  SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA,
+  SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET,
+  SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT,
+  SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER,
+  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER
+];
+
+const parseOptionalNumberSetting = (rawValue: string | null): number | null => {
+  if (typeof rawValue !== 'string') {
+    return null;
+  }
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildTemplateScoreSettings = (
+  settingsMap: Record<string, string | null>
+): Partial<TemplateScoreSettings> => {
+  const overrides: Partial<TemplateScoreSettings> = {};
+  const assignIfNumber = <K extends keyof TemplateScoreSettings>(key: K, value: number | null): void => {
+    if (value === null) {
+      return;
+    }
+    overrides[key] = value;
+  };
+
+  assignIfNumber('returnScale', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE]));
+  assignIfNumber(
+    'validationNegativePenaltyStrength',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH])
+  );
+  assignIfNumber('drawdownLambda', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA]));
+  assignIfNumber('tradeTarget', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET]));
+  assignIfNumber('tradeWeight', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT]));
+  assignIfNumber(
+    'recencyHalfLifeDays',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS])
+  );
+  assignIfNumber(
+    'verifySharpeScale',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE])
+  );
+  assignIfNumber(
+    'verifyCalmarScale',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE])
+  );
+  assignIfNumber(
+    'verifyCagrScale',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE])
+  );
+  assignIfNumber(
+    'verifyCagrNegScale',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE])
+  );
+  assignIfNumber(
+    'verifyDrawdownLambda',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA])
+  );
+  assignIfNumber(
+    'verifyMinMultiplier',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER])
+  );
+  assignIfNumber(
+    'verifyMaxMultiplier',
+    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER])
+  );
+
+  return overrides;
+};
+
+const resolveTemplateScoreSettings = (
+  overrides?: Partial<TemplateScoreSettings>
+): TemplateScoreSettings => {
+  const merged: TemplateScoreSettings = {
+    ...DEFAULT_TEMPLATE_SCORE_SETTINGS,
+    ...(overrides ?? {})
+  };
+
+  const normalize = (
+    value: number,
+    fallback: number,
+    options: { min?: number; max?: number } = {}
+  ): number => {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    if (options.min !== undefined && value < options.min) {
+      return fallback;
+    }
+    if (options.max !== undefined && value > options.max) {
+      return fallback;
+    }
+    return value;
+  };
+
+  const verifyMinMultiplier = normalize(
+    merged.verifyMinMultiplier,
+    DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyMinMultiplier,
+    { min: 0 }
+  );
+  const verifyMaxMultiplier = Math.max(
+    verifyMinMultiplier,
+    normalize(
+      merged.verifyMaxMultiplier,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyMaxMultiplier,
+      { min: 0 }
+    )
+  );
+
+  return {
+    returnScale: normalize(
+      merged.returnScale,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.returnScale,
+      { min: 1e-6 }
+    ),
+    validationNegativePenaltyStrength: normalize(
+      merged.validationNegativePenaltyStrength,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.validationNegativePenaltyStrength,
+      { min: 0 }
+    ),
+    drawdownLambda: normalize(
+      merged.drawdownLambda,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.drawdownLambda,
+      { min: 0 }
+    ),
+    tradeTarget: normalize(
+      merged.tradeTarget,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.tradeTarget,
+      { min: 1e-6 }
+    ),
+    tradeWeight: normalize(
+      merged.tradeWeight,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.tradeWeight,
+      { min: 0, max: 1 }
+    ),
+    recencyHalfLifeDays: normalize(
+      merged.recencyHalfLifeDays,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.recencyHalfLifeDays,
+      { min: 1e-6 }
+    ),
+    verifySharpeScale: normalize(
+      merged.verifySharpeScale,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifySharpeScale,
+      { min: 1e-6 }
+    ),
+    verifyCalmarScale: normalize(
+      merged.verifyCalmarScale,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCalmarScale,
+      { min: 1e-6 }
+    ),
+    verifyCagrScale: normalize(
+      merged.verifyCagrScale,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrScale,
+      { min: 1e-6 }
+    ),
+    verifyCagrNegScale: normalize(
+      merged.verifyCagrNegScale,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrNegScale,
+      { min: 1e-6 }
+    ),
+    verifyDrawdownLambda: normalize(
+      merged.verifyDrawdownLambda,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyDrawdownLambda,
+      { min: 0 }
+    ),
+    verifyMinMultiplier,
+    verifyMaxMultiplier
+  };
+};
+
+const loadTemplateScoreSettings = async (
+  settingsRepo?: TemplateScoreSettingsRepo
+): Promise<Partial<TemplateScoreSettings>> => {
+  if (!settingsRepo) {
+    return {};
+  }
+  const settingsMap = await settingsRepo.getSettingsByKeys(TEMPLATE_SCORE_SETTING_KEYS);
+  return buildTemplateScoreSettings(settingsMap);
+};
+
+const resolveTemplateScoreSettingsFromOptions = async (
+  options: TemplateScoreOptions
+): Promise<TemplateScoreSettings> => {
+  const settingsOverrides = await loadTemplateScoreSettings(options.settingsRepo);
+  return resolveTemplateScoreSettings({
+    ...settingsOverrides,
+    ...(options.templateScoreSettings ?? {})
+  });
+};
 
 const clampNumber = (value: number, minValue: number, maxValue: number): number => {
   if (!Number.isFinite(value)) {
@@ -106,46 +334,46 @@ const computeTradesPerYear = (
   return totalTrades / years;
 };
 
-const computeRecencyWeight = (createdAt: Date | null): number => {
+const computeRecencyWeight = (createdAt: Date | null, settings: TemplateScoreSettings): number => {
   if (!(createdAt instanceof Date) || Number.isNaN(createdAt.getTime())) {
     return 1;
   }
   const ageMs = Date.now() - createdAt.getTime();
   const ageDays = Math.max(0, ageMs / (1000 * 60 * 60 * 24));
-  const halfLifeDays = Math.max(1e-6, TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS);
+  const halfLifeDays = Math.max(1e-6, settings.recencyHalfLifeDays);
   const decay = Math.exp(-Math.LN2 * ageDays / halfLifeDays);
   return 0.6 + 0.4 * decay;
 };
 
-const scoreReturn = (validationCagr: number): number => {
+const scoreReturn = (validationCagr: number, settings: TemplateScoreSettings): number => {
   if (!Number.isFinite(validationCagr)) {
     return 0;
   }
   if (validationCagr < 0) {
     return 0;
   }
-  return 1 - Math.exp(-validationCagr / Math.max(RETURN_SCALE, 1e-6));
+  return 1 - Math.exp(-validationCagr / Math.max(settings.returnScale, 1e-6));
 };
 
 const scoreConsistency = (trainingCagr: number, validationCagr: number): number => {
   return clamp01(computeConsistencyScore(trainingCagr, validationCagr));
 };
 
-const scoreRisk = (validationDrawdown: number): number => {
-  return Math.exp(-TEMPLATE_SCORE_DRAWDOWN_LAMBDA * Math.max(0, validationDrawdown));
+const scoreRisk = (validationDrawdown: number, settings: TemplateScoreSettings): number => {
+  return Math.exp(-settings.drawdownLambda * Math.max(0, validationDrawdown));
 };
 
-const scoreLiquidity = (tradesPerYear: number): number => {
-  const target = Math.max(1e-6, TEMPLATE_SCORE_TRADE_TARGET);
+const scoreLiquidity = (tradesPerYear: number, settings: TemplateScoreSettings): number => {
+  const target = Math.max(1e-6, settings.tradeTarget);
   const confidence = 1 - Math.exp(-tradesPerYear / target);
-  return (1 - TEMPLATE_SCORE_TRADE_WEIGHT) + TEMPLATE_SCORE_TRADE_WEIGHT * confidence;
+  return (1 - settings.tradeWeight) + settings.tradeWeight * confidence;
 };
 
-const negativeValidationPenalty = (validationCagr: number): number => {
+const negativeValidationPenalty = (validationCagr: number, settings: TemplateScoreSettings): number => {
   if (!Number.isFinite(validationCagr) || validationCagr >= 0) {
     return 1;
   }
-  return Math.exp(-VALIDATION_NEGATIVE_PENALTY_STRENGTH * Math.abs(validationCagr));
+  return Math.exp(-settings.validationNegativePenaltyStrength * Math.abs(validationCagr));
 };
 
 const scorePositiveMetric = (value: number | null, scale: number): number | null => {
@@ -171,7 +399,10 @@ const scoreSignedMetric = (value: number | null, posScale: number, negScale: num
   return 0.5 - 0.5 * score;
 };
 
-const computeVerificationMultiplier = (metrics: TemplateVerificationMetrics | undefined): number | null => {
+const computeVerificationMultiplier = (
+  metrics: TemplateVerificationMetrics | undefined,
+  settings: TemplateScoreSettings
+): number | null => {
   if (!metrics) {
     return null;
   }
@@ -184,27 +415,27 @@ const computeVerificationMultiplier = (metrics: TemplateVerificationMetrics | un
     : null;
   const components: number[] = [];
 
-  const sharpeScore = scorePositiveMetric(metrics.verifySharpeRatio ?? null, TEMPLATE_SCORE_VERIFY_SHARPE_SCALE);
+  const sharpeScore = scorePositiveMetric(metrics.verifySharpeRatio ?? null, settings.verifySharpeScale);
   if (sharpeScore !== null) {
     components.push(sharpeScore);
   }
 
-  const calmarScore = scorePositiveMetric(metrics.verifyCalmarRatio ?? null, TEMPLATE_SCORE_VERIFY_CALMAR_SCALE);
+  const calmarScore = scorePositiveMetric(metrics.verifyCalmarRatio ?? null, settings.verifyCalmarScale);
   if (calmarScore !== null) {
     components.push(calmarScore);
   }
 
   const cagrScore = scoreSignedMetric(
     verifyCagr,
-    TEMPLATE_SCORE_VERIFY_CAGR_SCALE,
-    TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE
+    settings.verifyCagrScale,
+    settings.verifyCagrNegScale
   );
   if (cagrScore !== null) {
     components.push(cagrScore);
   }
 
   if (typeof verifyDrawdown === 'number' && Number.isFinite(verifyDrawdown)) {
-    const drawdownScore = Math.exp(-TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA * Math.max(0, verifyDrawdown));
+    const drawdownScore = Math.exp(-settings.verifyDrawdownLambda * Math.max(0, verifyDrawdown));
     components.push(drawdownScore);
   }
 
@@ -218,15 +449,16 @@ const computeVerificationMultiplier = (metrics: TemplateVerificationMetrics | un
     return null;
   }
 
-  return TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER +
-    (TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER - TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER) * verificationScore;
+  return settings.verifyMinMultiplier +
+    (settings.verifyMaxMultiplier - settings.verifyMinMultiplier) * verificationScore;
 };
 
-export const computeTemplateScores = (
+export const computeTemplateScores = async (
   snapshots: TemplateScoreSnapshot[],
   options: TemplateScoreOptions = {}
-): Map<string, number> => {
-  return computeTemplateScoreResults(snapshots, options).scores;
+): Promise<Map<string, number>> => {
+  const results = await computeTemplateScoreResults(snapshots, options);
+  return results.scores;
 };
 
 type TemplateScorePeriodBreakdown = {
@@ -247,10 +479,11 @@ type TemplateScorePeriodBreakdown = {
   weight: number;
 };
 
-export const computeTemplateScoreResults = (
+export const computeTemplateScoreResults = async (
   snapshots: TemplateScoreSnapshot[],
   options: TemplateScoreOptions = {}
-): TemplateScoreResults => {
+): Promise<TemplateScoreResults> => {
+  const templateScoreSettings = await resolveTemplateScoreSettingsFromOptions(options);
   const strategyMap = new Map<string, {
     templateId: string;
     periods: Map<number, {
@@ -323,19 +556,19 @@ export const computeTemplateScoreResults = (
         return;
       }
 
-      const returnScore = scoreReturn(validationCagr);
+      const returnScore = scoreReturn(validationCagr, templateScoreSettings);
       const consistencyScore = scoreConsistency(trainingCagr, validationCagr);
-      const riskScore = scoreRisk(validationDrawdown);
-      const liquidityScore = scoreLiquidity(tradesPerYear);
+      const riskScore = scoreRisk(validationDrawdown, templateScoreSettings);
+      const liquidityScore = scoreLiquidity(tradesPerYear, templateScoreSettings);
       let periodScore01 = returnScore * consistencyScore * riskScore * liquidityScore;
-      periodScore01 *= negativeValidationPenalty(validationCagr);
+      periodScore01 *= negativeValidationPenalty(validationCagr, templateScoreSettings);
       if (!Number.isFinite(periodScore01)) {
         return;
       }
       periodScore01 = clamp01(periodScore01);
 
       const lengthWeight = Math.sqrt(Math.max(1, periodMonths));
-      const recencyWeight = computeRecencyWeight(periodEntry.validation?.createdAt ?? null);
+      const recencyWeight = computeRecencyWeight(periodEntry.validation?.createdAt ?? null, templateScoreSettings);
       const weight = lengthWeight * recencyWeight;
       periodScores.push({
         periodMonths,
@@ -412,7 +645,7 @@ export const computeTemplateScoreResults = (
   if (options.verificationByTemplate && options.verificationByTemplate.size > 0) {
     templateScoreById.forEach((score, templateId) => {
       const metrics = options.verificationByTemplate?.get(templateId);
-      const multiplier = computeVerificationMultiplier(metrics);
+      const multiplier = computeVerificationMultiplier(metrics, templateScoreSettings);
       if (multiplier !== null) {
         const finalScore01 = score * multiplier;
         templateScoreById.set(templateId, finalScore01);
