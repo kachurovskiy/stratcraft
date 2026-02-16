@@ -60,6 +60,11 @@ const SETTING_GROUPS = [
     description: 'Optimizer versioning and training windows.'
   },
   {
+    key: 'param-scoring',
+    label: 'Param Scoring',
+    description: 'Tune parameter scoring thresholds for optimization results.'
+  },
+  {
     key: 'template-scoring',
     label: 'Template Scoring',
     description: 'Tune how template scores are computed for the gallery.'
@@ -585,6 +590,51 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     description: 'Shared secret required for /api/backtest/* endpoints (remote optimizer cache).',
     placeholder: 'Auto-generated on server start',
     inputType: 'password'
+  },
+  {
+    key: SETTING_KEYS.PARAM_SCORE_MIN_TRADES,
+    group: 'param-scoring',
+    label: 'Param Score Min Trades',
+    description: 'Minimum total trades required for parameter scoring. Increase to filter low-trade runs; decrease to allow fewer trades.',
+    placeholder: '20',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.PARAM_SCORE_DRAWDOWN_LAMBDA,
+    group: 'param-scoring',
+    label: 'Param Score Drawdown Lambda',
+    description: 'Lambda for drawdown penalty in parameter scoring. Increase to penalize drawdowns more; decrease to be more forgiving.',
+    placeholder: '3.5',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.PARAM_SCORE_NEIGHBOR_THRESHOLD,
+    group: 'param-scoring',
+    label: 'Param Score Neighbor Threshold',
+    description: 'Distance threshold for neighbor matching in stability scoring. Increase to count more neighbors; decrease to be stricter.',
+    placeholder: '0.15',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE,
+    group: 'param-scoring',
+    label: 'Param Score Core Quantile',
+    description: 'Quantile (0-1) used as the core-score cutoff for good neighbors. Increase to require higher core scores; decrease to be more lenient.',
+    placeholder: '0.6',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT,
+    group: 'param-scoring',
+    label: 'Param Score Pairwise Neighbor Limit',
+    description: 'Maximum candidate count for pairwise neighbor scoring. Increase to keep exact scoring on larger sets; decrease to switch to bucketed sooner.',
+    placeholder: '1500',
+    inputType: 'number',
+    min: '1'
   },
   {
     key: SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE,

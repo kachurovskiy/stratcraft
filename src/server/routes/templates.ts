@@ -424,8 +424,9 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
 
     const backtestCacheRaw: TemplateBacktestCacheRow[] = await req.db.backtestCache.getBacktestCacheResultsForTemplate(templateId);
 
-    const scoredCacheSummary = scoreBacktestParameters(
-      backtestCacheRaw as BacktestCacheRow[]
+    const scoredCacheSummary = await scoreBacktestParameters(
+      backtestCacheRaw as BacktestCacheRow[],
+      { settingsRepo: req.db.settings }
     );
     const scoredCacheResults = scoredCacheSummary.scored;
     const bestCacheEntryId = (() => {

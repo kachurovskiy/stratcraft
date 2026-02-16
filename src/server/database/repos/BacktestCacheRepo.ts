@@ -8,6 +8,7 @@ import type {
 import { scoreBacktestParameters, type BacktestCacheRow, type BestBacktestParamsResult } from '../../scoring/paramScore';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toInteger, toIsoString, toNullableInteger, toNullableNumber, toNumber } from '../core/valueParsers';
+import { SettingsRepo } from './SettingsRepo';
 
 type BacktestCacheDbRow = QueryResultRow & {
   id: string;
@@ -90,7 +91,10 @@ type TemplateMaxRow = QueryResultRow & { template_id: string; value: number | nu
 type BestTemplateRow = QueryResultRow & { template_id: string; sharpe_ratio: number | null };
 
 export class BacktestCacheRepo {
-  constructor(private readonly db: DbClient) {}
+  constructor(
+    private readonly db: DbClient,
+    private readonly settings: SettingsRepo
+  ) {}
 
   private serializeJsonConsistently(obj: Record<string, unknown>): string {
     return JSON.stringify(obj, Object.keys(obj).sort());
@@ -215,7 +219,7 @@ export class BacktestCacheRepo {
       }
 
       const normalizedRows = rows.map((row) => this.mapBacktestCacheRow(row));
-      const scored = scoreBacktestParameters(normalizedRows);
+      const scored = await scoreBacktestParameters(normalizedRows, { settingsRepo: this.settings });
       return scored.scored[0] ?? null;
     } catch (error) {
       console.error(`Error getting best params for template ${templateId}:`, error);
@@ -249,16 +253,16 @@ export class BacktestCacheRepo {
       });
 
       const results: Record<string, BestBacktestParamsResult> = {};
-      rowsByTemplate.forEach((templateRows, templateId) => {
+      for (const [templateId, templateRows] of rowsByTemplate.entries()) {
         if (!templateRows.length) {
-          return;
+          continue;
         }
-        const scored = scoreBacktestParameters(templateRows);
+        const scored = await scoreBacktestParameters(templateRows, { settingsRepo: this.settings });
         const best = scored.scored[0] ?? null;
         if (best) {
           results[templateId] = best;
         }
-      });
+      }
 
       return results;
     } catch (error) {

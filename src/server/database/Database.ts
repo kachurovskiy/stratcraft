@@ -99,7 +99,7 @@ export class Database {
     this.accountOperations = new AccountOperationsRepo(this.core, this.trades);
     this.accountSignalSkips = new AccountSignalSkipsRepo(this.core);
     this.backtestResults = new BacktestResultsRepo(this.core);
-    this.backtestCache = new BacktestCacheRepo(this.core);
+    this.backtestCache = new BacktestCacheRepo(this.core, this.settings);
     this.remoteOptimizerJobs = new RemoteOptimizerJobsRepo(this.core);
     this.lightgbmModels = new LightgbmModelsRepo(this.core);
 

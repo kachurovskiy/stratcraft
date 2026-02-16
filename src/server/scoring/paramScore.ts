@@ -1,5 +1,7 @@
 
 import type { QueryResultRow } from 'pg';
+import { SETTING_KEYS, type SettingKey } from '../constants';
+import { loadNumberSettingOverrides, normalizeNumber, type SettingsRepo } from '../utils/settings';
 
 export type BacktestCacheRow = QueryResultRow & {
   parameters: Record<string, unknown>;
@@ -73,23 +75,105 @@ export type ScoreBacktestParametersSummary = {
 
 type ParameterScaleMap = Map<string, number>;
 
+export type ParamScoreSettings = {
+  minTrades: number;
+  drawdownLambda: number;
+  neighborThreshold: number;
+  coreScoreQuantile: number;
+  pairwiseNeighborLimit: number;
+};
+
+export type ParamScoreOptions = {
+  settingsRepo?: SettingsRepo;
+  paramScoreSettings?: Partial<ParamScoreSettings>;
+};
+
 const PERCENTILE_TOLERANCE = 1e-12;
 const CORE_SCORE_EPSILON = 1e-9;
-const MIN_TRADES = 20;
-const DRAWDOWN_LAMBDA = 3.5;
-const NEIGHBOR_THRESHOLD = 0.15;
-const CORE_SCORE_QUANTILE = 0.6;
-const PAIRWISE_NEIGHBOR_LIMIT = 1500;
+export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoreSettings = {
+  minTrades: 20,
+  drawdownLambda: 3.5,
+  neighborThreshold: 0.15,
+  coreScoreQuantile: 0.6,
+  pairwiseNeighborLimit: 1500
+};
+
+const PARAM_SCORE_SETTING_KEYS: SettingKey[] = [
+  SETTING_KEYS.PARAM_SCORE_MIN_TRADES,
+  SETTING_KEYS.PARAM_SCORE_DRAWDOWN_LAMBDA,
+  SETTING_KEYS.PARAM_SCORE_NEIGHBOR_THRESHOLD,
+  SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE,
+  SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT
+];
+
+const PARAM_SCORE_SETTING_MAPPING: Array<{
+  settingKey: SettingKey;
+  field: keyof ParamScoreSettings;
+}> = [
+  { settingKey: SETTING_KEYS.PARAM_SCORE_MIN_TRADES, field: 'minTrades' },
+  { settingKey: SETTING_KEYS.PARAM_SCORE_DRAWDOWN_LAMBDA, field: 'drawdownLambda' },
+  { settingKey: SETTING_KEYS.PARAM_SCORE_NEIGHBOR_THRESHOLD, field: 'neighborThreshold' },
+  { settingKey: SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE, field: 'coreScoreQuantile' },
+  { settingKey: SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT, field: 'pairwiseNeighborLimit' }
+];
+
+const resolveParamScoreSettings = (
+  overrides?: Partial<ParamScoreSettings>
+): ParamScoreSettings => {
+  const merged: ParamScoreSettings = {
+    ...DEFAULT_PARAM_SCORE_SETTINGS,
+    ...(overrides ?? {})
+  };
+
+  return {
+    minTrades: normalizeNumber(merged.minTrades, DEFAULT_PARAM_SCORE_SETTINGS.minTrades, { min: 0, integer: true }),
+    drawdownLambda: normalizeNumber(merged.drawdownLambda, DEFAULT_PARAM_SCORE_SETTINGS.drawdownLambda, { min: 0 }),
+    neighborThreshold: normalizeNumber(
+      merged.neighborThreshold,
+      DEFAULT_PARAM_SCORE_SETTINGS.neighborThreshold,
+      { min: 0 }
+    ),
+    coreScoreQuantile: normalizeNumber(
+      merged.coreScoreQuantile,
+      DEFAULT_PARAM_SCORE_SETTINGS.coreScoreQuantile,
+      { min: 0, max: 1 }
+    ),
+    pairwiseNeighborLimit: normalizeNumber(
+      merged.pairwiseNeighborLimit,
+      DEFAULT_PARAM_SCORE_SETTINGS.pairwiseNeighborLimit,
+      { min: 1, integer: true }
+    )
+  };
+};
+
+const loadParamScoreSettings = async (
+  settingsRepo?: SettingsRepo
+): Promise<Partial<ParamScoreSettings>> => {
+  return loadNumberSettingOverrides(settingsRepo, PARAM_SCORE_SETTING_KEYS, PARAM_SCORE_SETTING_MAPPING);
+};
+
+const resolveParamScoreSettingsFromOptions = async (
+  options: ParamScoreOptions
+): Promise<ParamScoreSettings> => {
+  const settingsOverrides = await loadParamScoreSettings(options.settingsRepo);
+  return resolveParamScoreSettings({
+    ...settingsOverrides,
+    ...(options.paramScoreSettings ?? {})
+  });
+};
+
 const STABILITY_IGNORED_PARAMS = new Set(['initialCapital']);
 
-export const scoreBacktestParameters = (
-  rows: BacktestCacheRow[]
-): ScoreBacktestParametersSummary => {
+export const scoreBacktestParameters = async (
+  rows: BacktestCacheRow[],
+  options: ParamScoreOptions = {}
+): Promise<ScoreBacktestParametersSummary> => {
+  const scoreSettings = await resolveParamScoreSettingsFromOptions(options);
   const availabilityById = new Map<string, ScoreAvailabilityResult>();
   const availabilityByRow = new Map<BacktestCacheRow, ScoreAvailabilityResult>();
   const candidates: NormalizedCandidate[] = [];
   rows.forEach((row) => {
-    const evaluation = evaluateCandidateRow(row);
+    const evaluation = evaluateCandidateRow(row, scoreSettings);
     recordAvailability(row, evaluation.availability, availabilityByRow, availabilityById);
     if (evaluation.candidate) {
       candidates.push(evaluation.candidate);
@@ -114,7 +198,7 @@ export const scoreBacktestParameters = (
       (calmarPercentiles[i] + CORE_SCORE_EPSILON) *
       (returnPercentiles[i] + CORE_SCORE_EPSILON)
     );
-    const ddPenalty = Math.exp(-DRAWDOWN_LAMBDA * Math.max(0, candidate.maxDrawdownRatio));
+    const ddPenalty = Math.exp(-scoreSettings.drawdownLambda * Math.max(0, candidate.maxDrawdownRatio));
 
     return {
       ...candidate,
@@ -125,7 +209,7 @@ export const scoreBacktestParameters = (
     };
   });
 
-  applyStabilityScores(scoredCandidates);
+  applyStabilityScores(scoredCandidates, scoreSettings);
 
   const sorted = scoredCandidates
     .map((candidate) => {
@@ -164,7 +248,8 @@ type CandidateEvaluationResult = {
 };
 
 const evaluateCandidateRow = (
-  row: BacktestCacheRow
+  row: BacktestCacheRow,
+  scoreSettings: ParamScoreSettings
 ): CandidateEvaluationResult => {
   const fail = (reasonCode: ScoreAvailabilityReasonCode, reason: string): CandidateEvaluationResult => ({
     candidate: null,
@@ -191,8 +276,11 @@ const evaluateCandidateRow = (
     return fail('missing_trades', 'Total trade count is missing.');
   }
   const totalTrades = Math.max(0, Math.round(totalTradesValue));
-  if (MIN_TRADES > 0 && totalTrades < MIN_TRADES) {
-    return fail('insufficient_trades', `Requires at least ${MIN_TRADES} trades (only ${totalTrades} recorded).`);
+  if (scoreSettings.minTrades > 0 && totalTrades < scoreSettings.minTrades) {
+    return fail(
+      'insufficient_trades',
+      `Requires at least ${scoreSettings.minTrades} trades (only ${totalTrades} recorded).`
+    );
   }
   const candidate: NormalizedCandidate = {
     parameters,
@@ -268,7 +356,8 @@ const computePercentileRanks = (values: number[]): number[] => {
 };
 
 const applyStabilityScores = (
-  candidates: ScoredCandidate[]
+  candidates: ScoredCandidate[],
+  scoreSettings: ParamScoreSettings
 ): void => {
   const scaleMap = computeParameterScales(candidates);
   const sortedCore = candidates.map(candidate => candidate.coreScore).sort((a, b) => a - b);
@@ -276,16 +365,16 @@ const applyStabilityScores = (
     ? 0
     : Math.min(
         sortedCore.length - 1,
-        Math.max(0, Math.floor(clampNumber(CORE_SCORE_QUANTILE, 0, 1) * (sortedCore.length - 1)))
+        Math.max(0, Math.floor(clampNumber(scoreSettings.coreScoreQuantile, 0, 1) * (sortedCore.length - 1)))
       );
   const coreScoreCutoff = sortedCore[quantileIndex];
 
-  if (candidates.length <= PAIRWISE_NEIGHBOR_LIMIT) {
-    applyPairwiseStabilityScores(candidates, coreScoreCutoff, NEIGHBOR_THRESHOLD, scaleMap);
+  if (candidates.length <= scoreSettings.pairwiseNeighborLimit) {
+    applyPairwiseStabilityScores(candidates, coreScoreCutoff, scoreSettings.neighborThreshold, scaleMap);
     return;
   }
 
-  applyBucketedStabilityScores(candidates, coreScoreCutoff, NEIGHBOR_THRESHOLD, scaleMap);
+  applyBucketedStabilityScores(candidates, coreScoreCutoff, scoreSettings.neighborThreshold, scaleMap);
 };
 
 const applyPairwiseStabilityScores = (

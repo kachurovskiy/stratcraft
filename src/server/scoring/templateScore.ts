@@ -1,5 +1,6 @@
 import type { BacktestScope, StrategyPerformance } from '../../shared/types/StrategyTemplate';
 import { SETTING_KEYS, type SettingKey } from '../constants';
+import { loadNumberSettingOverrides, normalizeNumber, type SettingsRepo } from '../utils/settings';
 
 export type TemplateScoreSnapshot = {
   templateId: string;
@@ -34,14 +35,10 @@ export type TemplateScoreSettings = {
   verifyMaxMultiplier: number;
 };
 
-type TemplateScoreSettingsRepo = {
-  getSettingsByKeys: (settingKeys: SettingKey[]) => Promise<Record<string, string | null>>;
-};
-
 export type TemplateScoreOptions = {
   verificationByTemplate?: Map<string, TemplateVerificationMetrics>;
   templateScoreSettings?: Partial<TemplateScoreSettings>;
-  settingsRepo?: TemplateScoreSettingsRepo;
+  settingsRepo?: SettingsRepo;
 };
 
 export type TemplateScoreBreakdown = {
@@ -110,72 +107,27 @@ const TEMPLATE_SCORE_SETTING_KEYS: SettingKey[] = [
   SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER
 ];
 
-const parseOptionalNumberSetting = (rawValue: string | null): number | null => {
-  if (typeof rawValue !== 'string') {
-    return null;
-  }
-  const trimmed = rawValue.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const buildTemplateScoreSettings = (
-  settingsMap: Record<string, string | null>
-): Partial<TemplateScoreSettings> => {
-  const overrides: Partial<TemplateScoreSettings> = {};
-  const assignIfNumber = <K extends keyof TemplateScoreSettings>(key: K, value: number | null): void => {
-    if (value === null) {
-      return;
-    }
-    overrides[key] = value;
-  };
-
-  assignIfNumber('returnScale', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE]));
-  assignIfNumber(
-    'validationNegativePenaltyStrength',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH])
-  );
-  assignIfNumber('drawdownLambda', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA]));
-  assignIfNumber('tradeTarget', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET]));
-  assignIfNumber('tradeWeight', parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT]));
-  assignIfNumber(
-    'recencyHalfLifeDays',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS])
-  );
-  assignIfNumber(
-    'verifySharpeScale',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE])
-  );
-  assignIfNumber(
-    'verifyCalmarScale',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE])
-  );
-  assignIfNumber(
-    'verifyCagrScale',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE])
-  );
-  assignIfNumber(
-    'verifyCagrNegScale',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE])
-  );
-  assignIfNumber(
-    'verifyDrawdownLambda',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA])
-  );
-  assignIfNumber(
-    'verifyMinMultiplier',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER])
-  );
-  assignIfNumber(
-    'verifyMaxMultiplier',
-    parseOptionalNumberSetting(settingsMap[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER])
-  );
-
-  return overrides;
-};
+const TEMPLATE_SCORE_SETTING_MAPPING: Array<{
+  settingKey: SettingKey;
+  field: keyof TemplateScoreSettings;
+}> = [
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE, field: 'returnScale' },
+  {
+    settingKey: SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH,
+    field: 'validationNegativePenaltyStrength'
+  },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA, field: 'drawdownLambda' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET, field: 'tradeTarget' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT, field: 'tradeWeight' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS, field: 'recencyHalfLifeDays' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE, field: 'verifySharpeScale' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE, field: 'verifyCalmarScale' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE, field: 'verifyCagrScale' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE, field: 'verifyCagrNegScale' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA, field: 'verifyDrawdownLambda' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER, field: 'verifyMinMultiplier' },
+  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER, field: 'verifyMaxMultiplier' }
+];
 
 const resolveTemplateScoreSettings = (
   overrides?: Partial<TemplateScoreSettings>
@@ -185,31 +137,14 @@ const resolveTemplateScoreSettings = (
     ...(overrides ?? {})
   };
 
-  const normalize = (
-    value: number,
-    fallback: number,
-    options: { min?: number; max?: number } = {}
-  ): number => {
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    if (options.min !== undefined && value < options.min) {
-      return fallback;
-    }
-    if (options.max !== undefined && value > options.max) {
-      return fallback;
-    }
-    return value;
-  };
-
-  const verifyMinMultiplier = normalize(
+  const verifyMinMultiplier = normalizeNumber(
     merged.verifyMinMultiplier,
     DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyMinMultiplier,
     { min: 0 }
   );
   const verifyMaxMultiplier = Math.max(
     verifyMinMultiplier,
-    normalize(
+    normalizeNumber(
       merged.verifyMaxMultiplier,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyMaxMultiplier,
       { min: 0 }
@@ -217,57 +152,57 @@ const resolveTemplateScoreSettings = (
   );
 
   return {
-    returnScale: normalize(
+    returnScale: normalizeNumber(
       merged.returnScale,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.returnScale,
       { min: 1e-6 }
     ),
-    validationNegativePenaltyStrength: normalize(
+    validationNegativePenaltyStrength: normalizeNumber(
       merged.validationNegativePenaltyStrength,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.validationNegativePenaltyStrength,
       { min: 0 }
     ),
-    drawdownLambda: normalize(
+    drawdownLambda: normalizeNumber(
       merged.drawdownLambda,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.drawdownLambda,
       { min: 0 }
     ),
-    tradeTarget: normalize(
+    tradeTarget: normalizeNumber(
       merged.tradeTarget,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.tradeTarget,
       { min: 1e-6 }
     ),
-    tradeWeight: normalize(
+    tradeWeight: normalizeNumber(
       merged.tradeWeight,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.tradeWeight,
       { min: 0, max: 1 }
     ),
-    recencyHalfLifeDays: normalize(
+    recencyHalfLifeDays: normalizeNumber(
       merged.recencyHalfLifeDays,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.recencyHalfLifeDays,
       { min: 1e-6 }
     ),
-    verifySharpeScale: normalize(
+    verifySharpeScale: normalizeNumber(
       merged.verifySharpeScale,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifySharpeScale,
       { min: 1e-6 }
     ),
-    verifyCalmarScale: normalize(
+    verifyCalmarScale: normalizeNumber(
       merged.verifyCalmarScale,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCalmarScale,
       { min: 1e-6 }
     ),
-    verifyCagrScale: normalize(
+    verifyCagrScale: normalizeNumber(
       merged.verifyCagrScale,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrScale,
       { min: 1e-6 }
     ),
-    verifyCagrNegScale: normalize(
+    verifyCagrNegScale: normalizeNumber(
       merged.verifyCagrNegScale,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrNegScale,
       { min: 1e-6 }
     ),
-    verifyDrawdownLambda: normalize(
+    verifyDrawdownLambda: normalizeNumber(
       merged.verifyDrawdownLambda,
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyDrawdownLambda,
       { min: 0 }
@@ -278,13 +213,9 @@ const resolveTemplateScoreSettings = (
 };
 
 const loadTemplateScoreSettings = async (
-  settingsRepo?: TemplateScoreSettingsRepo
+  settingsRepo?: SettingsRepo
 ): Promise<Partial<TemplateScoreSettings>> => {
-  if (!settingsRepo) {
-    return {};
-  }
-  const settingsMap = await settingsRepo.getSettingsByKeys(TEMPLATE_SCORE_SETTING_KEYS);
-  return buildTemplateScoreSettings(settingsMap);
+  return loadNumberSettingOverrides(settingsRepo, TEMPLATE_SCORE_SETTING_KEYS, TEMPLATE_SCORE_SETTING_MAPPING);
 };
 
 const resolveTemplateScoreSettingsFromOptions = async (
