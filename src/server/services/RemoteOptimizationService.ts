@@ -51,6 +51,8 @@ const REMOTE_JOB_RUNNING_STALE_AFTER_MS = 15 * 60 * 1000;
 const REMOTE_JOB_QUEUED_STALE_AFTER_MS = 5 * 60 * 1000;
 const MARKET_DATA_WAIT_INTERVAL_MS = 2000;
 const MARKET_DATA_WAIT_LOG_INTERVAL_MS = 30_000;
+const DEFAULT_HETZNER_SERVER_TYPE = 'cpx62';
+const DEFAULT_HETZNER_SERVER_LOCATION = 'hel1';
 
 interface RemoteOptimizationJobRecord extends RemoteOptimizationJobSnapshot {
   logBuffer: string[];
@@ -96,8 +98,6 @@ export class RemoteOptimizationService {
   private readonly jobScheduler: JobScheduler;
   private readonly mtlsLockdownService: MtlsLockdownService;
   private hetznerToken: string | null;
-  private readonly serverType: string;
-  private readonly serverLocation: string;
   private readonly serverImage: string;
   private readonly repoRoot: string;
   private readonly httpClient: AxiosInstance;
@@ -119,8 +119,6 @@ export class RemoteOptimizationService {
     this.jobScheduler = jobScheduler;
     this.mtlsLockdownService = mtlsLockdownService;
     this.hetznerToken = null;
-    this.serverType = 'cpx62';
-    this.serverLocation = 'hel1';
     this.serverImage = 'ubuntu-24.04';
     this.repoRoot = path.resolve(__dirname, '../../..');
     this.httpClient = axios.create({
@@ -470,17 +468,34 @@ export class RemoteOptimizationService {
     });
   }
 
+  private async resolveHetznerServerConfig(): Promise<{ serverType: string; serverLocation: string }> {
+    const [rawType, rawLocation] = await Promise.all([
+      this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SERVER_TYPE),
+      this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SERVER_LOCATION)
+    ]);
+    const serverType =
+      typeof rawType === 'string' && rawType.trim().length > 0
+        ? rawType.trim()
+        : DEFAULT_HETZNER_SERVER_TYPE;
+    const serverLocation =
+      typeof rawLocation === 'string' && rawLocation.trim().length > 0
+        ? rawLocation.trim()
+        : DEFAULT_HETZNER_SERVER_LOCATION;
+    return { serverType, serverLocation };
+  }
+
   private async createHetznerServer(job: RemoteOptimizationJobRecord): Promise<HetznerServer> {
     const name = this.buildServerName(job);
     this.enterStage(job, 'provisioning-server', `Provisioning Hetzner server ${name}`);
     const userData = this.buildCloudInitUserData();
     const sshKeyName = await this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SSH_KEY_NAME);
+    const { serverType, serverLocation } = await this.resolveHetznerServerConfig();
     try {
       const response = await this.httpClient.post<HetznerServerCreateResponse>('/servers', {
         name,
-        server_type: this.serverType,
+        server_type: serverType,
         image: this.serverImage,
-        location: this.serverLocation,
+        location: serverLocation,
         user_data: userData,
         ssh_keys: sshKeyName ? [sshKeyName] : undefined,
         labels: {

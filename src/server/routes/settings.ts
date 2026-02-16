@@ -514,6 +514,22 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'password'
   },
   {
+    key: SETTING_KEYS.HETZNER_SERVER_TYPE,
+    group: 'optimizer',
+    label: 'Hetzner Server Type',
+    description: 'Hetzner Cloud server type for remote optimizers (e.g. cpx62).',
+    placeholder: 'cpx62',
+    inputType: 'text'
+  },
+  {
+    key: SETTING_KEYS.HETZNER_SERVER_LOCATION,
+    group: 'optimizer',
+    label: 'Hetzner Server Location',
+    description: 'Hetzner Cloud location code for remote optimizers (e.g. hel1).',
+    placeholder: 'hel1',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.HETZNER_SSH_KEY_NAME,
     group: 'optimizer',
     label: 'Hetzner SSH Key Name',
