@@ -123,6 +123,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     rows: 3
   },
   {
+    key: SETTING_KEYS.TRADINGVIEW_CHARTS_ENABLED,
+    group: 'app',
+    label: 'TradingView Charts Enabled',
+    description: 'Set to false to hide TradingView embeds on trade and ticker pages (true/false).',
+    placeholder: 'true',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.CANDLE_DATA_PROVIDER,
     group: 'data-provider',
     label: 'Candle Data Provider',

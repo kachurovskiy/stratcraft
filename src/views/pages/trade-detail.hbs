@@ -405,11 +405,13 @@
             </div>
         </div>
 
+        {{#if showTradingViewChart}}
         <div class="col-12">
             <div id="tradingViewChart" style="position: relative; height: 420px;">
                 <div class="text-muted text-center small mt-5">Loading TradingView chart...</div>
             </div>
         </div>
+        {{/if}}
 
         <!-- Trade Change History -->
         <div class="col-12">
@@ -458,7 +460,9 @@
     </div>
 </div>
 
+{{#if showTradingViewChart}}
 <script src="https://s3.tradingview.com/tv.js"></script>
+{{/if}}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // Ticker Chart with Candlesticks
@@ -482,8 +486,10 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
     }
+    {{#if showTradingViewChart}}
     if (trade && trade.ticker) {
         initializeTickerTradingViewChart(trade.ticker);
     }
+    {{/if}}
 });
 </script>

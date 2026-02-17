@@ -1,6 +1,7 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { TickerQueryParams, TickerParams } from '../../shared/types/Express';
 import { BacktestScope, Candle, Strategy, TickerInfo } from '../../shared/types/StrategyTemplate';
+import { SETTING_KEYS } from '../constants';
 import { formatBacktestPeriodLabel, getReqUserId, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -693,6 +694,10 @@ router.get<TickerParams>('/:symbol', requireAuth, async (req, res) => {
     const hasUsdVolumeStats = minUsdVolume !== null && maxUsdVolume !== null;
     const hasUnadjustedCloseStats = minUnadjustedClose !== null && maxUnadjustedClose !== null;
     const hasPriceRangeStats = minLow !== null && maxHigh !== null;
+    const tradingViewChartsEnabledRaw = await req.db.settings.getSettingValue(
+      SETTING_KEYS.TRADINGVIEW_CHARTS_ENABLED
+    );
+    const showTradingViewChart = tradingViewChartsEnabledRaw?.trim().toLowerCase() !== 'false';
 
     res.render('pages/ticker-detail', {
       title: `${symbol} - Ticker Details`,
@@ -717,6 +722,7 @@ router.get<TickerParams>('/:symbol', requireAuth, async (req, res) => {
       tickerBacktestScopeLabel,
       tickerSignalSimulations,
       signalSimulationLookbackDays: SIGNAL_SIMULATION_LOOKBACK_DAYS,
+      showTradingViewChart,
       success: req.query.success as string,
       error: req.query.error as string
     });

@@ -7,6 +7,7 @@ import {
   AccountOperation,
   AccountOperationStatus
 } from '../../shared/types/StrategyTemplate';
+import { SETTING_KEYS } from '../constants';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -976,6 +977,10 @@ router.get<TradeParams>('/trades/:id', requireAuth, async (req, res) => {
       count: tradeOperationsSummary.counts[status] ?? 0
     }));
     const tradeOrders = buildTradeOrderViews(trade, tradeOperations);
+    const tradingViewChartsEnabledRaw = await req.db.settings.getSettingValue(
+      SETTING_KEYS.TRADINGVIEW_CHARTS_ENABLED
+    );
+    const showTradingViewChart = tradingViewChartsEnabledRaw?.trim().toLowerCase() !== 'false';
 
     res.render('pages/trade-detail', {
       title: `Trade ${trade.ticker} - Trade Details`,
@@ -1002,6 +1007,7 @@ router.get<TradeParams>('/trades/:id', requireAuth, async (req, res) => {
       simulatedFutureData,
       expectedEndDate,
       expectedPriceTarget,
+      showTradingViewChart,
       currentUrl: getCurrentUrl(req)
     });
   } catch (error) {

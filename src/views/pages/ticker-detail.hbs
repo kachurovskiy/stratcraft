@@ -333,7 +333,7 @@
         </div>
         {{/if}}
 
-        {{#if chartData}}
+        {{#if (and chartData showTradingViewChart)}}
         <div class="col-12">
             <div id="tradingViewChart" style="position: relative; height: 420px;">
                 <div class="text-muted text-center small mt-5">Loading TradingView chart...</div>
@@ -542,14 +542,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+{{#if (and chartData showTradingViewChart)}}
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    {{#if chartData}}
     initializeTickerTradingViewChart('{{ticker.symbol}}');
-    {{/if}}
 });
 </script>
+{{/if}}
 
 <script>
 async function deleteTicker(symbol) {

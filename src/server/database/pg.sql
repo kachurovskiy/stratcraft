@@ -314,6 +314,7 @@ INSERT INTO settings (setting_key, value)
 VALUES
     ('SITE_NAME', 'StratCraft'),
     ('DOMAIN', ''),
+    ('TRADINGVIEW_CHARTS_ENABLED', 'true'),
     ('CANDLE_DATA_PROVIDER', 'TIINGO'),
     ('EODHD_BASE_URL', 'https://eodhd.com/api/eod'),
     ('EODHD_RATE_LIMIT_WAIT_SECONDS', '60'),
