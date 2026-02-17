@@ -1,3 +1,29 @@
+<style>
+  .database-card-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .database-card {
+    flex: 1 1 340px;
+    max-width: 520px;
+  }
+
+  .database-action-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
+  @media (max-width: 991.98px) {
+    .database-action-stack {
+      width: 100%;
+    }
+  }
+</style>
+
 <div class="container-fluid">
   <div class="d-flex flex-column flex-lg-row justify-content-lg-between align-items-lg-center gap-3 mb-3">
     <div>
@@ -16,8 +42,8 @@
     </div>
   </div>
 
-  <div class="d-grid gap-4">
-    <section class="card">
+  <div class="database-card-grid gap-4">
+    <section class="card database-card">
       <div class="card-header">
         <h5 class="mb-0">Templates & Lifecycles</h5>
       </div>
@@ -30,7 +56,7 @@
                 <span class="fw-semibold">Templates</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.templates 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-trading-data" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -49,7 +75,7 @@
                 <span>Strategies</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.strategies 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-strategies" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -68,7 +94,7 @@
                 <span>Signals</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.signals 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-signals" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -87,7 +113,7 @@
                 <span>Backtests</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.backtests 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-backtests" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -106,7 +132,7 @@
                 <span>Trades</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.trades 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-trades" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -131,7 +157,7 @@
                   {{/if}}
                 </span>
               </div>
-              <div class="d-flex flex-wrap gap-2">
+              <div class="database-action-stack ms-lg-auto">
                 <a class="btn btn-outline-secondary btn-sm" href="/admin/database/backtest-cache/export">
                   <i class="fas fa-download"></i>
                   Download SQL
@@ -184,7 +210,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card database-card">
       <div class="card-header">
         <h5 class="mb-0">Tickers & Market Data</h5>
       </div>
@@ -197,7 +223,7 @@
                 <span class="fw-semibold">Tickers</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.tickers 0}}</span>
               </div>
-              <div class="d-flex flex-wrap gap-2">
+              <div class="database-action-stack ms-lg-auto">
                 <button type="button" class="btn btn-outline-primary btn-sm" onclick="promptAddTickers()">
                   <i class="fas fa-plus"></i>
                   Add tickers
@@ -225,7 +251,7 @@
                 <span>Candles</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.candles 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-candles" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -249,7 +275,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card database-card">
       <div class="card-header">
         <h5 class="mb-0">Users & Accounts</h5>
       </div>
@@ -262,7 +288,7 @@
                 <span class="fw-semibold">Users</span>
                 <span class="text-muted">{{formatNumber allUsers.length 0}}</span>
               </div>
-              <div class="text-muted">No direct actions</div>
+              <div class="database-action-stack ms-lg-auto text-muted">No direct actions</div>
             </div>
           </div>
 
@@ -273,7 +299,7 @@
                 <span>Accounts</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.accounts 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-accounts" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -292,7 +318,7 @@
                 <span>Account operations</span>
                 <span class="text-muted">{{formatNumber databaseEntityCounts.accountOperations 0}}</span>
               </div>
-              <div>
+              <div class="database-action-stack ms-lg-auto">
                 <form method="POST" action="/admin/database/clear-all-account-operations" class="d-inline">
                     {{> csrf-field}}
                   <button type="submit" class="btn btn-outline-danger btn-sm"
