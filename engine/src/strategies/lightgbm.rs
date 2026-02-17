@@ -1030,7 +1030,6 @@ pub struct PrecomputedInputs {
     opens: Vec<f64>,
     volumes: Vec<f64>,
     returns: Vec<f64>,
-    log_returns: Vec<f64>,
     volume_changes: Vec<f64>,
     ma_fast_series: Vec<f64>,
     ma_slow_series: Vec<f64>,
@@ -1061,12 +1060,10 @@ pub fn precompute_inputs_for_ticker(
     let volumes: Vec<f64> = candles.iter().map(|c| c.volume_shares as f64).collect();
 
     let mut returns = vec![0.0; closes.len()];
-    let mut log_returns = vec![0.0; closes.len()];
     for i in 1..closes.len() {
         let prev = closes[i - 1];
         if prev.abs() > EPSILON {
             returns[i] = (closes[i] - prev) / prev;
-            log_returns[i] = (closes[i] / prev).ln();
         }
     }
 
@@ -1132,7 +1129,6 @@ pub fn precompute_inputs_for_ticker(
         opens,
         volumes,
         returns,
-        log_returns,
         volume_changes,
         ma_fast_series,
         ma_slow_series,
@@ -1176,16 +1172,23 @@ pub fn compute_features_from_precomputed(
         close_now
     };
 
-    let daily_return = pre.returns[candle_index];
-    let log_return = pre.log_returns[candle_index];
     let overnight_return = if prev_close.abs() > EPSILON {
         (open_now / prev_close) - 1.0
     } else {
         0.0
     };
-    let high_low_range = safe_div(high_now - low_now, close_now.abs());
+    let intraday_range = (high_now - low_now).abs();
+    let high_low_range = safe_div(intraday_range, close_now.abs());
     let close_open_return = safe_div(close_now - open_now, open_now.abs());
-    let gap_return = overnight_return;
+    let true_range = intraday_range
+        .max((high_now - prev_close).abs())
+        .max((low_now - prev_close).abs());
+    let true_range_pct = safe_div(true_range, close_now.abs());
+    let close_range_position = if intraday_range > EPSILON {
+        (close_now - low_now) / intraday_range
+    } else {
+        0.5
+    };
 
     let rolling_mean_short =
         rolling_mean_at(&pre.returns, candle_index, config.volatility_short).unwrap_or(0.0);
@@ -1371,6 +1374,7 @@ pub fn compute_features_from_precomputed(
 
     let atr = pre.atr_series.get(candle_index).copied().unwrap_or(0.0);
     let atr_normalized = safe_div(atr, close_now.abs());
+    let range_to_atr = safe_div(intraday_range, atr);
 
     let bb_index = candle_index + 1 - config.bollinger_period;
     let (bollinger_pct_b, bollinger_bandwidth) =
@@ -1427,12 +1431,11 @@ pub fn compute_features_from_precomputed(
 
     let mut values = Vec::new();
     values.extend_from_slice(&[
-        daily_return,
-        log_return,
         overnight_return,
         high_low_range,
         close_open_return,
-        gap_return,
+        true_range_pct,
+        close_range_position,
         rolling_mean_short,
         rolling_mean_long,
         rolling_std_short,
@@ -1463,6 +1466,7 @@ pub fn compute_features_from_precomputed(
         cci_value,
         williams_r,
         atr_normalized,
+        range_to_atr,
         bollinger_pct_b,
         bollinger_bandwidth,
         breakout_high_ratio,
@@ -1517,12 +1521,10 @@ pub fn compute_features_from_refs(
     };
 
     let mut returns = vec![0.0; closes.len()];
-    let mut log_returns = vec![0.0; closes.len()];
     for i in 1..closes.len() {
         let prev = closes[i - 1];
         if prev.abs() > EPSILON {
             returns[i] = (closes[i] - prev) / prev;
-            log_returns[i] = (closes[i] / prev).ln();
         }
     }
 
@@ -1534,16 +1536,23 @@ pub fn compute_features_from_refs(
         }
     }
 
-    let daily_return = returns[candle_index];
-    let log_return = log_returns[candle_index];
     let overnight_return = if prev_close.abs() > EPSILON {
         (open_now / prev_close) - 1.0
     } else {
         0.0
     };
-    let high_low_range = safe_div(high_now - low_now, close_now.abs());
+    let intraday_range = (high_now - low_now).abs();
+    let high_low_range = safe_div(intraday_range, close_now.abs());
     let close_open_return = safe_div(close_now - open_now, open_now.abs());
-    let gap_return = overnight_return;
+    let true_range = intraday_range
+        .max((high_now - prev_close).abs())
+        .max((low_now - prev_close).abs());
+    let true_range_pct = safe_div(true_range, close_now.abs());
+    let close_range_position = if intraday_range > EPSILON {
+        (close_now - low_now) / intraday_range
+    } else {
+        0.5
+    };
 
     let rolling_mean_short =
         rolling_mean_at(&returns, candle_index, config.volatility_short).unwrap_or(0.0);
@@ -1748,6 +1757,7 @@ pub fn compute_features_from_refs(
     let atr = indicators::calculate_atr_from_candles(candles, candle_index, config.atr_period)
         .unwrap_or(0.0);
     let atr_normalized = safe_div(atr, close_now.abs());
+    let range_to_atr = safe_div(intraday_range, atr);
 
     let (bb_upper, bb_middle, bb_lower) = indicators::calculate_bollinger_bands(
         &closes,
@@ -1805,12 +1815,11 @@ pub fn compute_features_from_refs(
 
     let mut values = Vec::new();
     values.extend_from_slice(&[
-        daily_return,
-        log_return,
         overnight_return,
         high_low_range,
         close_open_return,
-        gap_return,
+        true_range_pct,
+        close_range_position,
         rolling_mean_short,
         rolling_mean_long,
         rolling_std_short,
@@ -1841,6 +1850,7 @@ pub fn compute_features_from_refs(
         cci_value,
         williams_r,
         atr_normalized,
+        range_to_atr,
         bollinger_pct_b,
         bollinger_bandwidth,
         breakout_high_ratio,
