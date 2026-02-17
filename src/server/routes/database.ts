@@ -93,9 +93,10 @@ async function cancelAllJobsForMaintenance(
 
 router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const [allUsers, backtestCacheStats, signalSummary, adminEntityCounts] = await Promise.all([
+    const [allUsers, backtestCacheStats, backtestCacheTemplateCounts, signalSummary, adminEntityCounts] = await Promise.all([
       req.authService.getAllUsers(),
       req.db.backtestCache.getBacktestCacheStats(),
+      req.db.backtestCache.getBacktestCacheTemplateCounts(),
       req.db.signals.getSignalSummary(),
       req.db.admin.getAdminEntityCounts()
     ]);
@@ -113,6 +114,7 @@ router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) =
       user: req.user,
       allUsers,
       backtestCacheStats,
+      backtestCacheTemplateCounts,
       databaseEntityCounts,
       success: req.query.success as string,
       error: req.query.error as string

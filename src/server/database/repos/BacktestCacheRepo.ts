@@ -86,6 +86,11 @@ type BacktestCacheStatsRow = QueryResultRow & {
   max_ticker_count: number | null;
 };
 
+type BacktestCacheTemplateCountRow = QueryResultRow & {
+  template_id: string;
+  entry_count: number;
+};
+
 type TemplateMaxRow = QueryResultRow & { template_id: string; value: number | null };
 
 type BestTemplateRow = QueryResultRow & { template_id: string; sharpe_ratio: number | null };
@@ -489,6 +494,27 @@ export class BacktestCacheRepo {
         minTickerCount: 0,
         maxTickerCount: 0
       };
+    }
+  }
+
+  async getBacktestCacheTemplateCounts(): Promise<{ templateId: string; count: number }[]> {
+    try {
+      const rows = await this.db.all<BacktestCacheTemplateCountRow>(
+        `
+          SELECT template_id, COUNT(*) as entry_count
+          FROM backtest_cache
+          GROUP BY template_id
+          ORDER BY template_id ASC
+        `
+      );
+
+      return rows.map((row) => ({
+        templateId: row.template_id,
+        count: Math.max(0, toInteger(row.entry_count, 0))
+      }));
+    } catch (error) {
+      console.error('Error getting backtest cache counts by template:', error);
+      return [];
     }
   }
 
