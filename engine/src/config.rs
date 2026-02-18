@@ -143,6 +143,7 @@ pub struct EngineConfig {
     pub trade_size_ratio: f64,
     pub sell_fraction: f64,
     pub minimum_trade_size: f64,
+    pub max_leverage: f64,
     pub allow_short_selling: bool,
     // Buy parameters
     pub buy_discount_ratio: f64,
@@ -165,6 +166,7 @@ impl Default for EngineConfig {
             trade_size_ratio: 0.02,
             sell_fraction: 1.0,
             minimum_trade_size: 50.0,
+            max_leverage: 1.0,
             allow_short_selling: false,
             buy_discount_ratio: 0.0,
             max_holding_days: 365,
@@ -180,11 +182,19 @@ impl EngineConfig {
     pub fn from_parameters(parameters: &HashMap<String, f64>) -> Self {
         use crate::param_utils::*;
 
+        let max_leverage_raw = get_param(parameters, "maxLeverage", 1.0);
+        let max_leverage = if max_leverage_raw.is_finite() && max_leverage_raw >= 1.0 {
+            max_leverage_raw
+        } else {
+            1.0
+        };
+
         Self {
             initial_capital: get_param(parameters, "initialCapital", 100000.0),
             trade_size_ratio: get_param(parameters, "tradeSizeRatio", 0.02),
             sell_fraction: coerce_binary_param(get_param(parameters, "sellFraction", 1.0), 1.0),
             minimum_trade_size: get_param(parameters, "minimumTradeSize", 50.0),
+            max_leverage,
             allow_short_selling: get_param(parameters, "allowShortSelling", 0.0) >= 0.5,
             buy_discount_ratio: get_param(parameters, "buyDiscountRatio", 0.0),
             max_holding_days: get_rounded_param(parameters, "maxHoldingDays", 365),

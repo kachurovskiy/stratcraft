@@ -121,6 +121,7 @@ impl<'a> AlpacaClient<'a> {
 
         Ok(AccountStateSnapshot {
             available_cash: account.cash.unwrap_or(0.0).max(0.0),
+            buying_power: account.buying_power.map(|value| value.max(0.0)),
             held_tickers,
             open_buy_orders,
             open_sell_orders,
@@ -377,6 +378,12 @@ pub enum OrderState {
 struct AlpacaAccount {
     #[serde(default, deserialize_with = "deserialize_f64_opt")]
     cash: Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_f64_opt",
+        alias = "regt_buying_power"
+    )]
+    buying_power: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]

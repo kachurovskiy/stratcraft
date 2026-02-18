@@ -137,6 +137,11 @@ pub async fn run(app: &AppContext) -> Result<()> {
         };
 
         let engine = Engine::from_parameters(&strategy.parameters, runtime_settings.clone());
+        let effective_buying_power = engine.effective_buying_power_for_account(&account_state);
+        info!(
+            "Strategy {} (account {}) effective buying power for sizing: {:.2}",
+            strategy.name, account_id, effective_buying_power
+        );
 
         let excluded_keywords: Vec<String> = strategy
             .excluded_keywords

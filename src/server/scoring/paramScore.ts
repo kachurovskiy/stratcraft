@@ -175,7 +175,7 @@ const resolveParamScoreSettingsFromOptions = async (
   });
 };
 
-const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'ticker']);
+const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'maxLeverage', 'ticker']);
 
 export const scoreBacktestParameters = async (
   rows: BacktestCacheRow[],

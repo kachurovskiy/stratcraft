@@ -143,7 +143,7 @@ pub fn finite_param(params: &HashMap<String, f64>, key: &str) -> Option<f64> {
 /// Check if a parameter is inactive based on the current parameter configuration
 pub fn parameter_is_inactive(param_name: &str, params: &HashMap<String, f64>) -> bool {
     match param_name {
-        "initialCapital" => true,
+        "initialCapital" | "maxLeverage" => true,
         "stopLossRatio" => {
             if let Some(mode) = rounded_param(params, "stopLossMode") {
                 mode == 1

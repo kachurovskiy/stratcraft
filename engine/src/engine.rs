@@ -76,6 +76,7 @@ pub struct PlannedOperations {
 #[derive(Debug, Clone)]
 pub struct AccountStateSnapshot {
     pub available_cash: f64,
+    pub buying_power: Option<f64>,
     pub held_tickers: HashSet<String>,
     pub open_buy_orders: HashSet<String>,
     pub open_sell_orders: HashSet<String>,
@@ -1722,6 +1723,49 @@ impl Engine {
         (actual - expected).abs() <= tolerance
     }
 
+    fn resolve_account_buying_power(&self, account_state: &AccountStateSnapshot) -> f64 {
+        let cash = if account_state.available_cash.is_finite() {
+            account_state.available_cash.max(0.0)
+        } else {
+            0.0
+        };
+        let leverage = if self.config.max_leverage.is_finite() && self.config.max_leverage >= 1.0 {
+            self.config.max_leverage
+        } else {
+            1.0
+        };
+        let mut exposure = 0.0;
+        let mut position_value = 0.0;
+        for position in &account_state.positions {
+            let price = position.current_price.unwrap_or(position.avg_entry_price);
+            if !price.is_finite() || price <= 0.0 {
+                continue;
+            }
+            let value = position.quantity as f64 * price;
+            position_value += value;
+            exposure += value.abs();
+        }
+        let equity = cash + position_value;
+        let leverage_cap = if equity.is_finite() {
+            equity.max(0.0) * leverage
+        } else {
+            0.0
+        };
+        let remaining_by_leverage = (leverage_cap - exposure).max(0.0);
+        let buying_power = account_state
+            .buying_power
+            .filter(|value| value.is_finite() && *value >= 0.0);
+
+        match buying_power {
+            Some(bp) => bp.min(remaining_by_leverage),
+            None => cash,
+        }
+    }
+
+    pub fn effective_buying_power_for_account(&self, account_state: &AccountStateSnapshot) -> f64 {
+        self.resolve_account_buying_power(account_state)
+    }
+
     pub fn plan_account_operations(
         &self,
         strategy_id: &str,
@@ -1758,11 +1802,7 @@ impl Engine {
             };
         }
 
-        let mut available_cash = if account_state.available_cash.is_finite() {
-            account_state.available_cash.max(0.0)
-        } else {
-            0.0
-        };
+        let mut available_cash = self.resolve_account_buying_power(account_state);
         if available_cash <= 0.0 {
             notes.push("account_cash_unavailable".to_string());
         }
@@ -3017,6 +3057,7 @@ mod tests {
     fn sample_account_state(cash: f64) -> AccountStateSnapshot {
         AccountStateSnapshot {
             available_cash: cash,
+            buying_power: None,
             held_tickers: HashSet::new(),
             open_buy_orders: HashSet::new(),
             open_sell_orders: HashSet::new(),
@@ -3061,6 +3102,7 @@ mod tests {
 
         AccountStateSnapshot {
             available_cash: cash,
+            buying_power: None,
             held_tickers,
             open_buy_orders: HashSet::new(),
             open_sell_orders: HashSet::new(),
