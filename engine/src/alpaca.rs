@@ -280,11 +280,7 @@ impl<'a> AlpacaClient<'a> {
             .with_context(|| format!("GET {}{} failed", self.base_url, path))?
             .error_for_status()
             .with_context(|| format!("GET {}{} returned error", self.base_url, path))?;
-        let value = response
-            .json::<T>()
-            .await
-            .context("failed to parse Alpaca response")?;
-        Ok(value)
+        parse_alpaca_json(response, path).await
     }
 
     async fn get_optional<T: DeserializeOwned>(&self, path: &str) -> Result<Option<T>> {
@@ -303,10 +299,7 @@ impl<'a> AlpacaClient<'a> {
         }
 
         let response = response.error_for_status()?;
-        let payload = response
-            .json::<T>()
-            .await
-            .context("failed to parse Alpaca response")?;
+        let payload = parse_alpaca_json(response, path).await?;
         Ok(Some(payload))
     }
 
@@ -327,11 +320,7 @@ impl<'a> AlpacaClient<'a> {
             .with_context(|| format!("GET {}{} with query failed", self.base_url, path))?
             .error_for_status()
             .with_context(|| format!("GET {}{} returned error", self.base_url, path))?;
-        let value = response
-            .json::<T>()
-            .await
-            .context("failed to parse Alpaca response")?;
-        Ok(value)
+        parse_alpaca_json(response, path).await
     }
 }
 
@@ -573,4 +562,33 @@ fn is_cancel_status(status: &str) -> bool {
             | "suspended"
             | "pending_cancel"
     )
+}
+
+async fn parse_alpaca_json<T: DeserializeOwned>(
+    response: reqwest::Response,
+    path: &str,
+) -> Result<T> {
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read Alpaca response body")?;
+    match serde_json::from_slice::<T>(&bytes) {
+        Ok(value) => Ok(value),
+        Err(err) => {
+            warn!(
+                "Alpaca response preview for {} (status {}): {}",
+                path,
+                status,
+                preview_response(&bytes)
+            );
+            Err(err).context("failed to parse Alpaca response")
+        }
+    }
+}
+
+fn preview_response(bytes: &[u8]) -> String {
+    const MAX_CHARS: usize = 1000;
+    let raw = String::from_utf8_lossy(bytes);
+    raw.chars().take(MAX_CHARS).collect()
 }
