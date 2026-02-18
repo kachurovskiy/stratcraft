@@ -4,6 +4,7 @@ import type { JobScheduler } from '../jobs/JobScheduler';
 import type { AuthMiddleware } from '../middleware/auth';
 import type { AccountDataService } from '../services/AccountDataService';
 import type { AuthService } from '../services/AuthService';
+import type { CpuMetricsService } from '../services/CpuMetricsService';
 import type { EmailService } from '../services/EmailService';
 import type { LoggingService } from '../services/LoggingService';
 import type { MtlsLockdownService } from '../services/MtlsLockdownService';
@@ -18,6 +19,7 @@ declare global {
       strategyRegistry: StrategyRegistry;
       authService: AuthService;
       authMiddleware: AuthMiddleware;
+      cpuMetricsService: CpuMetricsService;
       emailService: EmailService;
       loggingService: LoggingService;
       mtlsLockdownService: MtlsLockdownService;

@@ -8,6 +8,57 @@
         </div>
       </div>
 
+      <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+          <h5 class="mb-0">
+            <i class="fas fa-microchip"></i>
+            CPU Utilization
+          </h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-lg-3">
+              <div class="border rounded p-3 h-100">
+                <div class="text-muted small">Current Total</div>
+                <div class="fs-3 fw-semibold" id="cpuCurrentAvg">--</div>
+                <div class="text-muted small" id="cpuLastSample">Waiting for samples...</div>
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="border rounded p-3 h-100">
+                <div class="text-muted small">Core Range</div>
+                <div class="fs-5 fw-semibold" id="cpuCoreRange">--</div>
+                <div class="text-muted small" id="cpuCoreSpread">Spread: --</div>
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="border rounded p-3 h-100">
+                <div class="text-muted small">Cores</div>
+                <div class="fs-3 fw-semibold" id="cpuCoreCount">--</div>
+                <div class="text-muted small" id="cpuSampleInterval">Sample interval: --</div>
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="border rounded p-3 h-100">
+                <div class="text-muted small">Uptime</div>
+                <div class="fs-5 fw-semibold" id="cpuUptime">--</div>
+                <div class="text-muted small" id="cpuStartedAt">Started: --</div>
+              </div>
+            </div>
+          </div>
+          <div class="position-relative" style="height: 320px;">
+            <div id="cpuChartEmptyState" class="text-muted small text-center py-5">
+              Collecting CPU samples...
+            </div>
+            <canvas id="cpuUsageChart" class="w-100 h-100 d-none"></canvas>
+          </div>
+          <div class="text-muted small mt-2">
+            The line shows total utilization across all cores (100% per core). History includes every sample since the
+            last app start.
+          </div>
+        </div>
+      </div>
+
       <!-- Deployment Management Section -->
       <div class="card mb-4">
         <div class="card-header bg-primary text-white">
@@ -54,4 +105,182 @@
     </div>
   </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const chartCanvas = document.getElementById('cpuUsageChart');
+    if (!chartCanvas || typeof Chart === 'undefined') {
+      return;
+    }
+
+    const cpuCurrentAvg = document.getElementById('cpuCurrentAvg');
+    const cpuLastSample = document.getElementById('cpuLastSample');
+    const cpuCoreRange = document.getElementById('cpuCoreRange');
+    const cpuCoreSpread = document.getElementById('cpuCoreSpread');
+    const cpuCoreCount = document.getElementById('cpuCoreCount');
+    const cpuSampleInterval = document.getElementById('cpuSampleInterval');
+    const cpuUptime = document.getElementById('cpuUptime');
+    const cpuStartedAt = document.getElementById('cpuStartedAt');
+    const cpuChartEmptyState = document.getElementById('cpuChartEmptyState');
+
+    const REFRESH_MS = 30000;
+    const dateFormatter = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    let cpuChart = null;
+
+    const formatPercent = (value) => {
+      if (!Number.isFinite(value)) return '--';
+      return `${value.toFixed(1)}%`;
+    };
+
+    const formatDuration = (ms) => {
+      if (!Number.isFinite(ms) || ms < 0) return '--';
+      const totalSeconds = Math.floor(ms / 1000);
+      if (totalSeconds < 60) return `${totalSeconds}s`;
+      const totalMinutes = Math.floor(totalSeconds / 60);
+      if (totalMinutes < 60) return `${totalMinutes}m`;
+      const totalHours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (totalHours < 24) return `${totalHours}h ${minutes}m`;
+      const days = Math.floor(totalHours / 24);
+      const hours = totalHours % 24;
+      return `${days}d ${hours}h`;
+    };
+
+    const updateSummary = (data) => {
+      const latest = data.latest;
+      const coreCount = Number.isFinite(data.coreCount) && data.coreCount > 0 ? data.coreCount : 0;
+      if (!latest) {
+        cpuCurrentAvg.textContent = '--';
+        cpuCoreRange.textContent = '--';
+        cpuCoreSpread.textContent = 'Spread: --';
+        cpuLastSample.textContent = 'Collecting samples...';
+      } else {
+        const totalUtilization = coreCount > 0 ? latest.avg * coreCount : latest.avg;
+        cpuCurrentAvg.textContent = formatPercent(totalUtilization);
+        cpuCoreRange.textContent = `${formatPercent(latest.min)} - ${formatPercent(latest.max)}`;
+        const spread = latest.max - latest.min;
+        cpuCoreSpread.textContent = `Spread: ${formatPercent(spread)}`;
+        const ageMs = Date.now() - latest.ts;
+        cpuLastSample.textContent = `Updated ${formatDuration(ageMs)} ago`;
+      }
+
+      cpuCoreCount.textContent = data.coreCount ? String(data.coreCount) : '--';
+      cpuSampleInterval.textContent = data.sampleIntervalMs
+        ? `Sample interval: ${Math.round(data.sampleIntervalMs / 1000)}s`
+        : 'Sample interval: --';
+      cpuUptime.textContent = formatDuration(data.uptimeMs);
+      cpuStartedAt.textContent = data.startedAt
+        ? `Started: ${dateFormatter.format(new Date(data.startedAt))}`
+        : 'Started: --';
+    };
+
+    const renderChart = (samples, coreCount) => {
+      if (!Array.isArray(samples) || samples.length === 0) {
+        chartCanvas.classList.add('d-none');
+        cpuChartEmptyState.classList.remove('d-none');
+        return;
+      }
+
+      chartCanvas.classList.remove('d-none');
+      cpuChartEmptyState.classList.add('d-none');
+
+      const labels = samples.map(sample => dateFormatter.format(new Date(sample.ts)));
+      const totalSeries = samples.map(sample => sample.avg * coreCount);
+
+      const chartData = {
+        labels,
+        datasets: [
+          {
+            label: 'Total Utilization',
+            data: totalSeries,
+            borderColor: 'rgba(32, 201, 151, 0.9)',
+            backgroundColor: 'rgba(32, 201, 151, 0.08)',
+            pointRadius: 0,
+            tension: 0.2,
+            order: 1
+          }
+        ]
+      };
+
+      const maxTotal = totalSeries.length ? Math.max(...totalSeries) : 100;
+      const baseMax = Math.max(coreCount * 100, 100);
+      const scaledMax = Math.max(baseMax, maxTotal);
+      const yAxisMax = Math.ceil(scaledMax / 100) * 100;
+
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        scales: {
+          x: {
+            ticks: {
+              maxTicksLimit: 8
+            }
+          },
+          y: {
+            min: 0,
+            max: yAxisMax,
+            ticks: {
+              callback: (value) => `${value}%`
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.dataset.label}: ${formatPercent(context.parsed.y)}`
+            }
+          }
+        }
+      };
+
+      if (!cpuChart) {
+        const ctx = chartCanvas.getContext('2d');
+        cpuChart = new Chart(ctx, {
+          type: 'line',
+          data: chartData,
+          options: chartOptions
+        });
+      } else {
+        cpuChart.data.labels = chartData.labels;
+        cpuChart.data.datasets = chartData.datasets;
+        if (cpuChart.options && cpuChart.options.scales && cpuChart.options.scales.y) {
+          cpuChart.options.scales.y.max = yAxisMax;
+        }
+        cpuChart.update('none');
+      }
+    };
+
+    const loadCpuMetrics = async () => {
+      try {
+        const response = await fetch('/admin/deployment/cpu-metrics', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Failed to load CPU metrics (${response.status})`);
+        }
+        const data = await response.json();
+        updateSummary(data);
+        const coreCount = Number.isFinite(data.coreCount) && data.coreCount > 0 ? data.coreCount : 1;
+        renderChart(data.samples, coreCount);
+      } catch (error) {
+        console.error('Failed to load CPU metrics:', error);
+      }
+    };
+
+    loadCpuMetrics();
+    setInterval(loadCpuMetrics, REFRESH_MS);
+  });
+</script>
 

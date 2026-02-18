@@ -12,6 +12,7 @@ const DEPLOY_UPDATE_SCRIPT_PATH = '/usr/local/bin/stratcraft-update.sh';
 const DEPLOY_TRIGGER_SCRIPT_PATH = '/usr/local/bin/stratcraft-manual-update-check.sh';
 const COMMAND_OUTPUT_MAX_CHARS = 500;
 const COMMAND_TIMEOUT_MS = 120000;
+const MAX_CPU_METRIC_POINTS = 5000;
 
 const stripAnsiCodes = (value: string): string => value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
@@ -77,6 +78,17 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       error: 'Failed to load deployment panel'
     });
   }
+});
+
+// CPU metrics (admin only)
+router.get('/cpu-metrics', (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAuth(req, res, next);
+}, (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAdmin(req, res, next);
+}, (req: Request, res: Response) => {
+  const summary = req.cpuMetricsService.getSummary(MAX_CPU_METRIC_POINTS);
+  res.set('Cache-Control', 'no-store');
+  res.json(summary);
 });
 
 // Trigger server update (admin only)

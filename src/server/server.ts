@@ -14,6 +14,7 @@ import { AuthService } from './services/AuthService';
 import { AuthMiddleware } from './middleware/auth';
 import { csrfMiddleware } from './middleware/csrf';
 import { EmailService } from './services/EmailService';
+import { CpuMetricsService } from './services/CpuMetricsService';
 import { LoggingService } from './services/LoggingService';
 import { MtlsLockdownService } from './services/MtlsLockdownService';
 import { RemoteOptimizationService } from './services/RemoteOptimizationService';
@@ -57,6 +58,7 @@ export class Server {
   private authService: AuthService;
   private authMiddleware: AuthMiddleware;
   private emailService: EmailService;
+  private cpuMetricsService: CpuMetricsService;
   private loggingService: LoggingService;
   private accountDataService: AccountDataService;
   private alpacaAssetService: AlpacaAssetService;
@@ -77,6 +79,7 @@ export class Server {
     this.inlineAssets = new InlineAssetsMiddleware();
     this.authService = new AuthService(this.db, this.loggingService);
     this.authMiddleware = new AuthMiddleware(this.authService, this.loggingService);
+    this.cpuMetricsService = new CpuMetricsService();
     this.accountDataService = new AccountDataService(this.loggingService, this.db);
     this.alpacaAssetService = new AlpacaAssetService(this.loggingService, this.db);
     this.engineCliService = new EngineCliService(this.loggingService);
@@ -153,6 +156,7 @@ export class Server {
     await this.ensureBacktestApiSecret();
     await this.ensureEmailSecurityEmoji();
     await this.jobScheduler.refreshAutoOptimizationSettings();
+    this.cpuMetricsService.start();
 
     try {
       await this.remoteOptimizationService.ensureHetznerSshKeys();
@@ -225,6 +229,7 @@ export class Server {
       req.strategyRegistry = this.strategyRegistry;
       req.authService = this.authService;
       req.authMiddleware = this.authMiddleware;
+      req.cpuMetricsService = this.cpuMetricsService;
       req.emailService = this.emailService;
       req.loggingService = this.loggingService;
       req.accountDataService = this.accountDataService;
@@ -336,6 +341,8 @@ export class Server {
         // Stop job scheduler and background work
         await this.jobScheduler.shutdown();
         this.loggingService.info('system', 'Job scheduler stopped');
+
+        this.cpuMetricsService.stop();
 
         // Shutdown logging service
         await this.loggingService.shutdown();
