@@ -10,6 +10,7 @@ import {
 import { AccountSnapshot } from '../../shared/types/Account';
 import { LogEntry, LogLevel } from '../services/LoggingService';
 import type { TradeTickerStats } from '../database/types';
+import { SETTING_KEYS } from '../constants';
 import {
   BACKTEST_SCOPE_META,
   buildBacktestComparisonView,
@@ -23,6 +24,7 @@ import {
   buildPortfolioValueDataFromSnapshots,
   type PortfolioValuePoint
 } from '../utils/backtestCharts';
+import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -1095,17 +1097,10 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       )
     ).sort((a, b) => a.localeCompare(b));
 
-    const rawInitialCapital =
-      strategy.parameters && Object.prototype.hasOwnProperty.call(strategy.parameters, 'initialCapital')
-        ? strategy.parameters['initialCapital']
-        : undefined;
-    let initialCapital: number | null = null;
-    if (rawInitialCapital !== undefined && rawInitialCapital !== null && rawInitialCapital !== '') {
-      const parsedInitialCapital = Number(rawInitialCapital);
-      if (Number.isFinite(parsedInitialCapital)) {
-        initialCapital = parsedInitialCapital;
-      }
-    }
+    const rawBacktestInitialCapital = await req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_INITIAL_CAPITAL);
+    const backtestInitialCapital = resolveBacktestInitialCapitalSetting(rawBacktestInitialCapital);
+    const initialCapital = resolveStrategyInitialCapital(strategy, backtestInitialCapital);
+    const hasInitialCapital = Number.isFinite(initialCapital) && initialCapital > 0;
 
     const { parameterSummaries, extraParameters } = buildParameterContexts(template, strategy.parameters);
 
@@ -1266,7 +1261,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       backtestCount: backtests.length,
       latestBacktestRanAt: latestBacktest ? latestBacktest.createdAt : null,
       initialCapital,
-      hasInitialCapital: initialCapital !== null,
+      hasInitialCapital,
       parameterSummaries,
       parameterSummariesCount: parameterSummaries.length,
       extraParameters,
@@ -1616,12 +1611,17 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
     performance.backtestId = targetBacktest.id ?? performance.backtestId;
 
     const dailySnapshots = Array.isArray(targetBacktest.dailySnapshots) ? targetBacktest.dailySnapshots : [];
+    const backtestInitialCapital = Number(targetBacktest.initialCapital);
     const portfolioValueData = buildPortfolioValueDataFromSnapshots(dailySnapshots);
     const { best: bestPortfolioDays, worst: worstPortfolioDays } = buildPortfolioDayMovers(
       portfolioValueData,
       10
     );
-    const benchmarkData = await buildBenchmarkDataFromSnapshots(req.db, dailySnapshots, strategy);
+    const benchmarkData = await buildBenchmarkDataFromSnapshots(
+      req.db,
+      dailySnapshots,
+      backtestInitialCapital
+    );
     const drawdownData = buildDrawdownDataFromPortfolio(portfolioValueData);
     const dailyReturnDistributionData = buildDailyReturnDistribution(portfolioValueData);
     const cashPercentageData = buildCashPercentageDataFromSnapshots(dailySnapshots);
@@ -1648,6 +1648,7 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
       tradesPageUrl,
       tradeDateInsightsUrl,
       cashPercentageData,
+      backtestInitialCapital,
       parameterSummaries,
       parameterSummariesCount: parameterSummaries.length,
       extraParameters,

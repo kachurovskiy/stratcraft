@@ -500,9 +500,9 @@
                                     {{/if}}
                                 </td>
                                 <td class="border-0 text-end" data-label="Total Return">
-                                    {{#if (and performance (defined performance.totalReturn) (defined parameters.initialCapital))}}
+                                    {{#if (and performance (defined performance.totalReturn) (defined initialCapital))}}
                                         <span class="fw-bold {{#if (gt performance.totalReturn 0)}}text-success{{else}}text-danger{{/if}}">
-                                            {{formatTotalReturnPercent performance.totalReturn  parameters.initialCapital}}
+                                            {{formatTotalReturnPercent performance.totalReturn initialCapital}}
                                         </span>
                                     {{else}}
                                         <span class="text-muted">N/A</span>

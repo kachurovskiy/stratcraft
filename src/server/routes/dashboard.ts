@@ -1,6 +1,8 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { AccountSnapshot } from '../../shared/types/Account';
 import { BacktestScope, Strategy, TickerInfo } from '../../shared/types/StrategyTemplate';
+import { SETTING_KEYS } from '../constants';
+import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel } from './utils';
 
 const router = express.Router();
@@ -37,11 +39,14 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const [
       strategiesWithPerformance,
-      rawAccounts
+      rawAccounts,
+      rawBacktestInitialCapital
     ] = await Promise.all([
       fetchStrategiesWithPerformance(req, userId, selectedBacktestPeriodMonths ?? undefined, 'validation'),
-      req.db.accounts.getAccountsForUser(userId)
+      req.db.accounts.getAccountsForUser(userId),
+      req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_INITIAL_CAPITAL)
     ]);
+    const backtestInitialCapital = resolveBacktestInitialCapitalSetting(rawBacktestInitialCapital);
 
     const strategies = strategiesWithPerformance.filter((strategy: Strategy) => {
       const performance = strategy.performance;
@@ -104,8 +109,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const annotateStrategy = (strategy: Strategy): Strategy & {
       medianSharpeRatio: number | null;
       medianCalmarRatio: number | null;
+      initialCapital: number;
     } => ({
       ...strategy,
+      initialCapital: resolveStrategyInitialCapital(strategy, backtestInitialCapital),
       medianSharpeRatio: strategySharpeMedianMap[strategy.id] ?? null,
       medianCalmarRatio: strategyCalmarMedianMap[strategy.id] ?? null
     });

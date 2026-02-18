@@ -1,6 +1,7 @@
 import express, { NextFunction, Request, Response } from 'express';
 import {
   DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS,
+  DEFAULT_BACKTEST_INITIAL_CAPITAL,
   DEFAULT_MTLS_ACCESS_CERT_PASSWORD,
   SETTING_KEYS,
   SETTING_KEY_LIST,
@@ -365,6 +366,15 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     description: 'Comma-separated or JSON array of months for backtest-active runs.',
     placeholder: '1,3,6,12,24,36,48,60,120',
     inputType: 'text'
+  },
+  {
+    key: SETTING_KEYS.BACKTEST_INITIAL_CAPITAL,
+    group: 'engine',
+    label: 'Backtest Initial Capital (USD)',
+    description: 'Initial capital used for optimization and non-account backtests.',
+    placeholder: String(DEFAULT_BACKTEST_INITIAL_CAPITAL),
+    inputType: 'number',
+    min: '1'
   },
   {
     key: SETTING_KEYS.ALPACA_PAPER_URL,

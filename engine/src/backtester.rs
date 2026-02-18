@@ -1,4 +1,4 @@
-use crate::config::EngineRuntimeSettings;
+use crate::config::{resolve_backtest_initial_capital, EngineRuntimeSettings};
 use crate::data_context::{MarketData, TickerScope};
 use crate::database::Database;
 use crate::engine::Engine;
@@ -435,6 +435,7 @@ impl<'a> ActiveStrategyBacktester<'a> {
         let ticker_universe = self.data.tickers_arc();
         let ticker_expense_map = self.data.ticker_expense_map_arc();
         let runtime_settings = EngineRuntimeSettings::from_settings_map(self.data.settings())?;
+        let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
         let mut handles = Vec::new();
         for _ in 0..num_workers {
             let rx = task_rx.clone();
@@ -525,7 +526,10 @@ impl<'a> ActiveStrategyBacktester<'a> {
                     backtest_window_end,
                 )
                 .await?;
-            let parameters = strategy.parameters.clone();
+            let mut parameters = strategy.parameters.clone();
+            if !strategy_has_linked_account(&strategy) {
+                parameters.insert("initialCapital".to_string(), backtest_initial_capital);
+            }
             task_tx.send(StrategyBacktestTask {
                 id: strategy.id.clone(),
                 name: strategy.name.clone(),

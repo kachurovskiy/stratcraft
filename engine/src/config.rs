@@ -2,6 +2,20 @@ use anyhow::{anyhow, Result};
 use chrono::NaiveDate;
 use std::collections::HashMap;
 
+const BACKTEST_INITIAL_CAPITAL_SETTING: &str = "BACKTEST_INITIAL_CAPITAL";
+const DEFAULT_BACKTEST_INITIAL_CAPITAL: f64 = 100000.0;
+
+pub fn resolve_backtest_initial_capital(settings: &HashMap<String, String>) -> f64 {
+    let raw = settings
+        .get(BACKTEST_INITIAL_CAPITAL_SETTING)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    let parsed = raw
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| value.is_finite() && *value > 0.0);
+    parsed.unwrap_or(DEFAULT_BACKTEST_INITIAL_CAPITAL)
+}
+
 /// Configuration for position sizing strategies
 #[derive(Debug, Clone)]
 pub struct PositionSizingConfig {

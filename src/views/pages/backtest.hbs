@@ -86,7 +86,7 @@
                                     <td class="fw-bold text-muted">Total Return</td>
                                     <td
                                         class="text-end fw-bold {{#if (gt strategy.performance.totalReturn 0)}}text-success{{else}}text-danger{{/if}}">
-                                        {{formatTotalReturnPercent strategy.performance.totalReturn strategy.parameters.initialCapital}}</td>
+                                        {{formatTotalReturnPercent strategy.performance.totalReturn backtestInitialCapital}}</td>
                                 </tr>
                                 <tr>
                                     <td class="fw-bold text-muted">CAGR</td>

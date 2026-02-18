@@ -1,7 +1,9 @@
 use crate::app_url::resolve_api_base_url;
 use crate::backtest_api_client::build_async_client;
 use crate::cache::{CacheManager, CacheStoreParams};
-use crate::config::{EngineRuntimeSettings, LocalOptimizationObjective};
+use crate::config::{
+    resolve_backtest_initial_capital, EngineRuntimeSettings, LocalOptimizationObjective,
+};
 use crate::data_context::MarketData;
 use crate::database::Database;
 use crate::engine::Engine;
@@ -161,6 +163,7 @@ impl<'a> OptimizationEngine<'a> {
         parameter_ranges: &HashMap<String, ParameterRange>,
     ) -> Result<()> {
         let runtime_settings = EngineRuntimeSettings::from_settings_map(self.data.settings())?;
+        let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
         let local_optimization_version = runtime_settings.local_optimization_version;
         let max_drawdown_ratio = runtime_settings.max_allowed_drawdown_ratio;
         let objective = runtime_settings.local_optimization_objective;
@@ -176,6 +179,7 @@ impl<'a> OptimizationEngine<'a> {
         );
 
         let mut current_params = self.load_baseline_parameters(template_id, &template).await;
+        current_params.insert("initialCapital".to_string(), backtest_initial_capital);
 
         clamp_to_bounds(
             &mut current_params,
@@ -502,6 +506,7 @@ impl<'a> OptimizationEngine<'a> {
 
         let variation_count = variations.len();
         let runtime_settings = EngineRuntimeSettings::from_settings_map(self.data.settings())?;
+        let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
         info!("Running {} backtests...", variation_count);
 
         let num_workers = std::cmp::min(variation_count, std::cmp::max(1, num_cpus::get()));
@@ -584,7 +589,8 @@ impl<'a> OptimizationEngine<'a> {
         }
 
         for (i, parameters) in variations.iter().enumerate() {
-            let parameters = parameters.clone();
+            let mut parameters = parameters.clone();
+            parameters.insert("initialCapital".to_string(), backtest_initial_capital);
             let task = BacktestTask {
                 id: format!("{}_{}", template_id, i),
                 template_id: template_id.to_string(),

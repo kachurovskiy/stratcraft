@@ -56,10 +56,6 @@ type DbLike = {
   };
 };
 
-type StrategyLike = {
-  parameters?: Record<string, unknown> | null;
-} | null | undefined;
-
 export function buildPortfolioValueDataFromSnapshots(dailySnapshots: DailySnapshotLike[]): PortfolioValuePoint[] {
   if (!Array.isArray(dailySnapshots)) {
     return [];
@@ -84,7 +80,7 @@ export function buildPortfolioValueDataFromSnapshots(dailySnapshots: DailySnapsh
 export async function buildBenchmarkDataFromSnapshots(
   db: DbLike,
   dailySnapshots: DailySnapshotLike[],
-  strategy: StrategyLike
+  initialCapital: number
 ): Promise<BenchmarkData> {
   if (!Array.isArray(dailySnapshots) || dailySnapshots.length === 0) {
     return { spy: [], qqq: [] };
@@ -96,7 +92,8 @@ export async function buildBenchmarkDataFromSnapshots(
     return { spy: [], qqq: [] };
   }
 
-  const initialCapital = Number(strategy?.parameters?.initialCapital) || 100000;
+  const resolvedInitialCapital =
+    Number.isFinite(initialCapital) && initialCapital > 0 ? initialCapital : 100000;
   const benchmarkCandles = await db.candles.getCandles(['SPY', 'QQQ'], startDate, endDate);
 
   const mapCandles = (candles: Candle[]): BenchmarkSeriesPoint[] => {
@@ -109,7 +106,7 @@ export async function buildBenchmarkDataFromSnapshots(
     return candles.map((candle, index) => {
       const date = new Date(candle.date).toISOString().split('T')[0];
       if (!Number.isFinite(firstPrice) || firstPrice === 0 || index === 0) {
-        return { date, value: initialCapital };
+        return { date, value: resolvedInitialCapital };
       }
 
       const currentPrice = Number(candle.close);
@@ -117,7 +114,7 @@ export async function buildBenchmarkDataFromSnapshots(
         Number.isFinite(currentPrice) && firstPrice !== 0
           ? currentPrice / firstPrice
           : 0;
-      return { date, value: initialCapital * multiplier };
+      return { date, value: resolvedInitialCapital * multiplier };
     });
   };
 
