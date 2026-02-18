@@ -15,6 +15,7 @@ export type BacktestCacheRow = QueryResultRow & {
   total_trades: number;
   verify_sharpe_ratio?: number | null;
   verify_calmar_ratio?: number | null;
+  verify_total_return?: number | null;
   verify_cagr?: number | null;
   verify_max_drawdown_ratio?: number | null;
   top_abs_gain_ticker?: string | null;
@@ -49,6 +50,11 @@ type NormalizedCandidate = {
   totalTrades: number | null;
   coreScore: number;
   ddPenalty: number;
+  verifySharpeRatio?: number | null;
+  verifyCalmarRatio?: number | null;
+  verifyTotalReturn?: number | null;
+  verifyCagr?: number | null;
+  verifyMaxDrawdownRatio?: number | null;
   sourceRow: BacktestCacheRow;
 };
 
@@ -81,6 +87,7 @@ export type ParamScoreSettings = {
   neighborThreshold: number;
   coreScoreQuantile: number;
   pairwiseNeighborLimit: number;
+  stabilityGamma: number;
 };
 
 export type ParamScoreOptions = {
@@ -95,7 +102,8 @@ export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoreSettings = {
   drawdownLambda: 3.5,
   neighborThreshold: 0.15,
   coreScoreQuantile: 0.6,
-  pairwiseNeighborLimit: 1500
+  pairwiseNeighborLimit: 1500,
+  stabilityGamma: 2
 };
 
 const PARAM_SCORE_SETTING_KEYS: SettingKey[] = [
@@ -142,6 +150,11 @@ const resolveParamScoreSettings = (
       merged.pairwiseNeighborLimit,
       DEFAULT_PARAM_SCORE_SETTINGS.pairwiseNeighborLimit,
       { min: 1, integer: true }
+    ),
+    stabilityGamma: normalizeNumber(
+      merged.stabilityGamma,
+      DEFAULT_PARAM_SCORE_SETTINGS.stabilityGamma,
+      { min: 0 }
     )
   };
 };
@@ -162,7 +175,7 @@ const resolveParamScoreSettingsFromOptions = async (
   });
 };
 
-const STABILITY_IGNORED_PARAMS = new Set(['initialCapital']);
+const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'ticker']);
 
 export const scoreBacktestParameters = async (
   rows: BacktestCacheRow[],
@@ -191,14 +204,61 @@ export const scoreBacktestParameters = async (
   const sharpePercentiles = computePercentileRanks(candidates.map(candidate => candidate.sharpeRatio));
   const calmarPercentiles = computePercentileRanks(candidates.map(candidate => candidate.calmarRatio));
   const returnPercentiles = computePercentileRanks(candidates.map(candidate => candidate.totalReturn));
+  const verifySharpeValues: Array<{ idx: number; value: number }> = [];
+  const verifyCalmarValues: Array<{ idx: number; value: number }> = [];
+  const verifyReturnLikeValues: Array<{ idx: number; value: number }> = [];
+
+  candidates.forEach((candidate, idx) => {
+    const verifySharpe = candidate.verifySharpeRatio;
+    if (verifySharpe !== null && verifySharpe !== undefined) {
+      verifySharpeValues.push({ idx, value: verifySharpe });
+    }
+
+    const verifyCalmar = candidate.verifyCalmarRatio;
+    if (verifyCalmar !== null && verifyCalmar !== undefined) {
+      verifyCalmarValues.push({ idx, value: verifyCalmar });
+    }
+
+    const verifyReturnLike = candidate.verifyTotalReturn ?? candidate.verifyCagr;
+    if (verifyReturnLike !== null && verifyReturnLike !== undefined) {
+      verifyReturnLikeValues.push({ idx, value: verifyReturnLike });
+    }
+  });
+
+  const verifySharpePercentiles = buildAlignedPercentiles(verifySharpeValues, candidates.length);
+  const verifyCalmarPercentiles = buildAlignedPercentiles(verifyCalmarValues, candidates.length);
+  const verifyReturnLikePercentiles = buildAlignedPercentiles(verifyReturnLikeValues, candidates.length);
 
   const scoredCandidates: ScoredCandidate[] = candidates.map((candidate, i) => {
-    const coreScore = Math.cbrt(
+    const coreTrain = Math.cbrt(
       (sharpePercentiles[i] + CORE_SCORE_EPSILON) *
       (calmarPercentiles[i] + CORE_SCORE_EPSILON) *
       (returnPercentiles[i] + CORE_SCORE_EPSILON)
     );
-    const ddPenalty = Math.exp(-scoreSettings.drawdownLambda * Math.max(0, candidate.maxDrawdownRatio));
+    let coreScore = coreTrain;
+    const verifySharpePercentile = verifySharpePercentiles[i];
+    const verifyCalmarPercentile = verifyCalmarPercentiles[i];
+    const verifyReturnLikePercentile = verifyReturnLikePercentiles[i];
+    if (
+      verifySharpePercentile !== null &&
+      verifyCalmarPercentile !== null &&
+      verifyReturnLikePercentile !== null
+    ) {
+      const coreVerify = Math.cbrt(
+        (verifySharpePercentile + CORE_SCORE_EPSILON) *
+        (verifyCalmarPercentile + CORE_SCORE_EPSILON) *
+        (verifyReturnLikePercentile + CORE_SCORE_EPSILON)
+      );
+      coreScore = Math.sqrt(coreTrain * coreVerify);
+    }
+
+    const ddPenaltyTrain = Math.exp(-scoreSettings.drawdownLambda * Math.max(0, candidate.maxDrawdownRatio));
+    let ddPenalty = ddPenaltyTrain;
+    const verifyDrawdown = candidate.verifyMaxDrawdownRatio;
+    if (verifyDrawdown !== null && verifyDrawdown !== undefined) {
+      const ddPenaltyVerify = Math.exp(-scoreSettings.drawdownLambda * Math.max(0, verifyDrawdown));
+      ddPenalty = Math.sqrt(ddPenaltyTrain * ddPenaltyVerify);
+    }
 
     return {
       ...candidate,
@@ -214,7 +274,8 @@ export const scoreBacktestParameters = async (
   const sorted = scoredCandidates
     .map((candidate) => {
       const stability = clampNumber(candidate.stabilityScore, 0, 1);
-      const finalScore = candidate.coreScore * candidate.ddPenalty * (0.5 + 0.5 * stability);
+      const stabilityFactor = Math.pow(stability, scoreSettings.stabilityGamma);
+      const finalScore = candidate.coreScore * candidate.ddPenalty * stabilityFactor;
       return { ...candidate, finalScore };
     })
     .sort((a, b) => b.finalScore - a.finalScore);
@@ -294,6 +355,11 @@ const evaluateCandidateRow = (
     totalTrades,
     coreScore: 0,
     ddPenalty: 0,
+    verifySharpeRatio: parseNullableNumber(row.verify_sharpe_ratio),
+    verifyCalmarRatio: parseNullableNumber(row.verify_calmar_ratio),
+    verifyTotalReturn: parseNullableNumber(row.verify_total_return),
+    verifyCagr: parseNullableNumber(row.verify_cagr),
+    verifyMaxDrawdownRatio: parseNullableNumber(row.verify_max_drawdown_ratio),
     sourceRow: row
   };
 
@@ -355,37 +421,79 @@ const computePercentileRanks = (values: number[]): number[] => {
   return percentiles;
 };
 
+const buildAlignedPercentiles = (
+  values: Array<{ idx: number; value: number }>,
+  totalCount: number
+): Array<number | null> => {
+  const aligned = new Array(totalCount).fill(null) as Array<number | null>;
+  if (!values.length) {
+    return aligned;
+  }
+
+  const percentiles = computePercentileRanks(values.map(entry => entry.value));
+  values.forEach((entry, index) => {
+    aligned[entry.idx] = percentiles[index];
+  });
+
+  return aligned;
+};
+
 const applyStabilityScores = (
   candidates: ScoredCandidate[],
   scoreSettings: ParamScoreSettings
 ): void => {
   const scaleMap = computeParameterScales(candidates);
-  const sortedCore = candidates.map(candidate => candidate.coreScore).sort((a, b) => a - b);
-  const quantileIndex = sortedCore.length === 1
-    ? 0
-    : Math.min(
-        sortedCore.length - 1,
-        Math.max(0, Math.floor(clampNumber(scoreSettings.coreScoreQuantile, 0, 1) * (sortedCore.length - 1)))
-      );
-  const coreScoreCutoff = sortedCore[quantileIndex];
+  const qualityValues = candidates.map(candidate => candidate.coreScore * candidate.ddPenalty);
+  let qualityMin = Number.POSITIVE_INFINITY;
+  let qualityMax = Number.NEGATIVE_INFINITY;
+  for (const value of qualityValues) {
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    qualityMin = Math.min(qualityMin, value);
+    qualityMax = Math.max(qualityMax, value);
+  }
+  if (!Number.isFinite(qualityMin) || !Number.isFinite(qualityMax)) {
+    qualityMin = 0;
+    qualityMax = 0;
+  }
 
   if (candidates.length <= scoreSettings.pairwiseNeighborLimit) {
-    applyPairwiseStabilityScores(candidates, coreScoreCutoff, scoreSettings.neighborThreshold, scaleMap);
+    applyPairwiseStabilityScores(
+      candidates,
+      qualityValues,
+      qualityMin,
+      qualityMax,
+      scoreSettings.neighborThreshold,
+      scaleMap
+    );
     return;
   }
 
-  applyBucketedStabilityScores(candidates, coreScoreCutoff, scoreSettings.neighborThreshold, scaleMap);
+  applyBucketedStabilityScores(
+    candidates,
+    qualityValues,
+    qualityMin,
+    qualityMax,
+    scoreSettings.neighborThreshold,
+    scaleMap
+  );
 };
 
 const applyPairwiseStabilityScores = (
   candidates: ScoredCandidate[],
-  coreScoreCutoff: number,
+  qualityValues: number[],
+  qualityMin: number,
+  qualityMax: number,
   threshold: number,
   scaleMap: ParameterScaleMap
 ): void => {
+  const qualityRange = qualityMax - qualityMin;
+  const hasQualityRange = qualityRange > 1e-12;
+
   for (let i = 0; i < candidates.length; i += 1) {
     let neighborCount = 0;
-    let goodNeighbors = 0;
+    let neighborQualitySum = 0;
 
     for (let j = 0; j < candidates.length; j += 1) {
       if (i === j) {
@@ -394,22 +502,30 @@ const applyPairwiseStabilityScores = (
       const distance = computeParameterDistance(candidates[i].parameters, candidates[j].parameters, scaleMap);
       if (distance <= threshold) {
         neighborCount += 1;
-        if (candidates[j].coreScore >= coreScoreCutoff) {
-          goodNeighbors += 1;
-        }
+        neighborQualitySum += qualityValues[j];
       }
     }
 
-    candidates[i].stabilityScore = neighborCount > 0 ? goodNeighbors / neighborCount : 0;
+    if (neighborCount > 0) {
+      const neighborMean = neighborQualitySum / neighborCount;
+      const normalized = hasQualityRange ? (neighborMean - qualityMin) / qualityRange : 1;
+      candidates[i].stabilityScore = clampNumber(normalized, 0, 1);
+    } else {
+      candidates[i].stabilityScore = 0;
+    }
   }
 };
 
 const applyBucketedStabilityScores = (
   candidates: ScoredCandidate[],
-  coreScoreCutoff: number,
+  qualityValues: number[],
+  qualityMin: number,
+  qualityMax: number,
   threshold: number,
   scaleMap: ParameterScaleMap
 ): void => {
+  const qualityRange = qualityMax - qualityMin;
+  const hasQualityRange = qualityRange > 1e-12;
   const step = Math.max(threshold, 0.01);
   const bucketMap = new Map<string, number[]>();
   const candidateKeys: string[][] = new Array(candidates.length);
@@ -438,7 +554,7 @@ const applyBucketedStabilityScores = (
     }
 
     let neighborCount = 0;
-    let goodNeighbors = 0;
+    let neighborQualitySum = 0;
     for (const neighborIndex of neighborIndexes) {
       if (neighborIndex === i) {
         continue;
@@ -446,13 +562,17 @@ const applyBucketedStabilityScores = (
       const distance = computeParameterDistance(candidates[i].parameters, candidates[neighborIndex].parameters, scaleMap);
       if (distance <= threshold) {
         neighborCount += 1;
-        if (candidates[neighborIndex].coreScore >= coreScoreCutoff) {
-          goodNeighbors += 1;
-        }
+        neighborQualitySum += qualityValues[neighborIndex];
       }
     }
 
-    candidates[i].stabilityScore = neighborCount > 0 ? goodNeighbors / neighborCount : 0;
+    if (neighborCount > 0) {
+      const neighborMean = neighborQualitySum / neighborCount;
+      const normalized = hasQualityRange ? (neighborMean - qualityMin) / qualityRange : 1;
+      candidates[i].stabilityScore = clampNumber(normalized, 0, 1);
+    } else {
+      candidates[i].stabilityScore = 0;
+    }
   }
 };
 
