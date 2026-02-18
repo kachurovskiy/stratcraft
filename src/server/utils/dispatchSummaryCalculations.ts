@@ -10,7 +10,8 @@ export type DispatchSummaryOperation = {
 };
 
 export type CashImpactSummary = {
-  impact: number;
+  totalImpact: number;
+  estimatedImpact: number;
   considered: number;
   missingPricing: number;
   eligible: number;
@@ -27,10 +28,12 @@ export type OrderSizeStats = {
 
 type TickerBehavior = {
   referencePrice: number | null;
-  volatility: number | null;
+  sigma: number | null;
 };
 
-const DEFAULT_VOLATILITY_LOOKBACK_DAYS = 14;
+const DEFAULT_SIGMA_LOOKBACK_DAYS = 20;
+const DEFAULT_SIGMA_FALLBACK = 0.02;
+const DEFAULT_SIGMA_FLOOR = 0.002;
 
 export async function calculateEstimatedCashImpact(
   operations: DispatchSummaryOperation[],
@@ -39,7 +42,8 @@ export async function calculateEstimatedCashImpact(
     lookbackDays?: number;
   }
 ): Promise<CashImpactSummary | null> {
-  let impact = 0;
+  let totalImpact = 0;
+  let estimatedImpact = 0;
   let considered = 0;
   let missingPricing = 0;
   let eligible = 0;
@@ -50,7 +54,7 @@ export async function calculateEstimatedCashImpact(
   const tickerBehavior = await buildTickerBehaviorForLimitOrders(
     operations,
     options.candlesRepo,
-    options.lookbackDays ?? DEFAULT_VOLATILITY_LOOKBACK_DAYS
+    options.lookbackDays ?? DEFAULT_SIGMA_LOOKBACK_DAYS
   );
 
   for (const op of operations) {
@@ -67,6 +71,8 @@ export async function calculateEstimatedCashImpact(
       continue;
     }
 
+    totalImpact += direction * quantity * price;
+
     let fillWeight = 1;
     if (op.orderType === 'limit') {
       limitOrders += 1;
@@ -79,7 +85,7 @@ export async function calculateEstimatedCashImpact(
       }
     }
 
-    impact += direction * quantity * price * fillWeight;
+    estimatedImpact += direction * quantity * price * fillWeight;
     considered += 1;
   }
 
@@ -87,7 +93,16 @@ export async function calculateEstimatedCashImpact(
     return null;
   }
 
-  return { impact, considered, missingPricing, eligible, limitOrders, limitAdjusted, limitMissing };
+  return {
+    totalImpact,
+    estimatedImpact,
+    considered,
+    missingPricing,
+    eligible,
+    limitOrders,
+    limitAdjusted,
+    limitMissing
+  };
 }
 
 export function calculateOrderSizeStats(
@@ -161,59 +176,24 @@ const buildTickerBehaviorForLimitOrders = async (
     const candles = (candlesByTicker[ticker] ?? []).filter(
       (candle) => candle.date >= start && candle.date <= lastDate
     );
-    const referencePrice = extractReferencePrice(candles);
-    const volatility = computeVolatilityFromCandles(candles);
-    behavior.set(ticker, { referencePrice, volatility });
+    const closes = extractClosesFromCandles(candles);
+    const referencePrice = closes.length > 0 ? closes[closes.length - 1] : null;
+    const sigma = estimateSigmaRolling(closes, lookbackDays);
+    behavior.set(ticker, { referencePrice, sigma });
   }
 
   return behavior;
 };
 
-const extractReferencePrice = (candles: Candle[]): number | null => {
-  if (candles.length === 0) {
-    return null;
-  }
-  const lastCandle = candles[candles.length - 1];
-  return normalizePositiveNumber(lastCandle.close);
-};
-
-const computeVolatilityFromCandles = (candles: Candle[]): number | null => {
-  if (candles.length < 3) {
-    return null;
-  }
+const extractClosesFromCandles = (candles: Candle[]): number[] => {
   const closes: number[] = [];
   for (const candle of candles) {
     const close = normalizePositiveNumber(candle.close);
-    if (close !== null) {
+    if (close !== null && close > 0) {
       closes.push(close);
     }
   }
-  if (closes.length < 3) {
-    return null;
-  }
-
-  const returns: number[] = [];
-  for (let i = 1; i < closes.length; i += 1) {
-    const prev = closes[i - 1];
-    const current = closes[i];
-    if (prev > 0) {
-      const dailyReturn = current / prev - 1;
-      if (Number.isFinite(dailyReturn)) {
-        returns.push(dailyReturn);
-      }
-    }
-  }
-
-  if (returns.length < 2) {
-    return null;
-  }
-
-  const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
-  const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / returns.length;
-  if (!Number.isFinite(variance)) {
-    return null;
-  }
-  return Math.sqrt(variance);
+  return closes;
 };
 
 const estimateLimitFillWeight = (
@@ -224,36 +204,154 @@ const estimateLimitFillWeight = (
     return null;
   }
   const referencePrice = normalizePositiveNumber(behavior.referencePrice);
-  const volatility = normalizePositiveNumber(behavior.volatility);
+  const sigma = normalizePositiveNumber(behavior.sigma);
   const limitPrice = normalizePositiveNumber(op.price);
-  if (referencePrice === null || referencePrice <= 0 || volatility === null || volatility <= 0 || limitPrice === null) {
+  if (referencePrice === null || referencePrice <= 0 || sigma === null || limitPrice === null) {
     return null;
   }
 
-  const isBuy = op.operationType === 'open_position';
-  const isSell = op.operationType === 'close_position';
-  if (!isBuy && !isSell) {
+  const side =
+    op.operationType === 'open_position'
+      ? 'buy'
+      : op.operationType === 'close_position'
+        ? 'sell'
+        : null;
+  if (!side) {
     return null;
   }
 
-  if (isBuy && limitPrice >= referencePrice) {
+  if (side === 'buy' && limitPrice >= referencePrice) {
     return 1;
   }
-  if (isSell && limitPrice <= referencePrice) {
+  if (side === 'sell' && limitPrice <= referencePrice) {
     return 1;
   }
 
-  const distanceRatio = Math.abs(referencePrice - limitPrice) / referencePrice;
-  if (!Number.isFinite(distanceRatio)) {
+  const n =
+    side === 'buy'
+      ? (referencePrice - limitPrice) / referencePrice
+      : (limitPrice - referencePrice) / referencePrice;
+  if (!Number.isFinite(n) || n <= 0 || n >= 1) {
     return null;
   }
 
-  const weight = 1 - distanceRatio / volatility;
-  if (!Number.isFinite(weight)) {
-    return null;
+  return fillProbability(side, n, sigma);
+};
+
+export function estimateSigmaRolling(
+  closes: number[],
+  lookback = DEFAULT_SIGMA_LOOKBACK_DAYS
+): number {
+  const normalized: number[] = [];
+  for (const close of closes) {
+    const value = normalizePositiveNumber(close);
+    if (value !== null && value > 0) {
+      normalized.push(value);
+    }
+  }
+  if (normalized.length < 2) {
+    return DEFAULT_SIGMA_FALLBACK;
   }
 
-  return Math.max(0, Math.min(1, weight));
+  const returns = computeLogReturns(normalized);
+  if (returns.length < 2) {
+    return DEFAULT_SIGMA_FALLBACK;
+  }
+
+  const start = Math.max(0, returns.length - lookback);
+  const window = returns.slice(start);
+  if (window.length < 2) {
+    return DEFAULT_SIGMA_FALLBACK;
+  }
+
+  const mean = window.reduce((sum, value) => sum + value, 0) / window.length;
+  const variance =
+    window.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (window.length - 1);
+  if (!Number.isFinite(variance)) {
+    return DEFAULT_SIGMA_FALLBACK;
+  }
+  const sigma = Math.sqrt(variance);
+  if (!Number.isFinite(sigma)) {
+    return DEFAULT_SIGMA_FALLBACK;
+  }
+  return sigma;
+}
+
+export function erf(x: number): number {
+  if (!Number.isFinite(x)) {
+    if (x === Infinity) {
+      return 1;
+    }
+    if (x === -Infinity) {
+      return -1;
+    }
+    return 0;
+  }
+
+  const sign = x < 0 ? -1 : 1;
+  const abs = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * abs);
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const y =
+    1 -
+    (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) *
+      Math.exp(-abs * abs);
+  return sign * y;
+}
+
+export function normalCdf(x: number): number {
+  return 0.5 * (1 + erf(x / Math.SQRT2));
+}
+
+export function fillProbability(side: 'buy' | 'sell', n: number, sigma: number): number {
+  if (!Number.isFinite(n) || n <= 0 || n >= 1 || !Number.isFinite(sigma)) {
+    return 0;
+  }
+  const a = side === 'buy' ? Math.log(1 / (1 - n)) : Math.log(1 + n);
+  if (!Number.isFinite(a)) {
+    return 0;
+  }
+  const sigmaAdj = Math.max(Math.abs(sigma), DEFAULT_SIGMA_FLOOR);
+  const z = a / sigmaAdj;
+  const p = 2 * (1 - normalCdf(z));
+  if (!Number.isFinite(p)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, p));
+}
+
+export function expectedFills(
+  orders: { side: 'buy' | 'sell'; n: number; closes: number[] }[],
+  lookback = DEFAULT_SIGMA_LOOKBACK_DAYS
+): { expected: number; perOrder: number[] } {
+  let expected = 0;
+  const perOrder: number[] = [];
+  for (const order of orders) {
+    const sigma = estimateSigmaRolling(order.closes, lookback);
+    const pFill = fillProbability(order.side, order.n, sigma);
+    perOrder.push(pFill);
+    expected += pFill;
+  }
+  return { expected, perOrder };
+}
+
+const computeLogReturns = (closes: number[]): number[] => {
+  const returns: number[] = [];
+  for (let i = 1; i < closes.length; i += 1) {
+    const prev = closes[i - 1];
+    const current = closes[i];
+    if (prev > 0 && current > 0) {
+      const value = Math.log(current / prev);
+      if (Number.isFinite(value)) {
+        returns.push(value);
+      }
+    }
+  }
+  return returns;
 };
 
 const getOperationCashDirection = (operationType: string): number => {

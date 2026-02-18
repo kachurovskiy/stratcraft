@@ -602,20 +602,28 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
       return `<p style="${baseStyle}">Estimated cash impact unavailable &mdash; missing pricing for ${summary.missingPricing} of ${summary.eligible} eligible order${summary.missingPricing === 1 ? '' : 's'}.</p>`;
     }
 
-    const formattedImpact = EmailService.USD_FORMATTER.format(summary.impact);
+    const formattedTotalImpact = EmailService.USD_FORMATTER.format(summary.totalImpact);
+    const formattedEstimatedImpact = EmailService.USD_FORMATTER.format(summary.estimatedImpact);
     const hasLimitOrders = summary.limitOrders > 0;
-    const directionLabel = summary.impact > 0
+    const impactsMatch = !hasLimitOrders && summary.estimatedImpact === summary.totalImpact;
+    const totalLabel = summary.totalImpact > 0
+      ? 'Total cash increase if all orders fill.'
+      : summary.totalImpact < 0
+        ? 'Total cash decrease if all orders fill.'
+        : 'No net cash change if all orders fill.';
+    const estimatedLabel = summary.estimatedImpact > 0
       ? hasLimitOrders
         ? 'Estimated cash increase with limit fill weighting.'
-        : 'Cash increases if all orders fill.'
-      : summary.impact < 0
+        : 'Estimated cash increase assuming all orders fill.'
+      : summary.estimatedImpact < 0
         ? hasLimitOrders
           ? 'Estimated cash decrease with limit fill weighting.'
-          : 'Cash decreases if all orders fill.'
+          : 'Estimated cash decrease assuming all orders fill.'
         : hasLimitOrders
           ? 'Estimated net cash change with limit fill weighting.'
-          : 'No net cash change if all orders fill.';
-    const emphasisColor = summary.impact > 0 ? '#1f7a1f' : summary.impact < 0 ? '#c0392b' : '#1f3b64';
+          : 'Estimated net cash change assuming all orders fill.';
+    const totalColor = summary.totalImpact > 0 ? '#1f7a1f' : summary.totalImpact < 0 ? '#c0392b' : '#1f3b64';
+    const estimatedColor = summary.estimatedImpact > 0 ? '#1f7a1f' : summary.estimatedImpact < 0 ? '#c0392b' : '#1f3b64';
     const missingText = summary.missingPricing > 0
       ? `<span style="color:#6c757d;margin-left:8px;">${summary.missingPricing} of ${summary.eligible} order${summary.missingPricing === 1 ? '' : 's'} missing price data.</span>`
       : '';
@@ -623,7 +631,16 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
       ? `<span style="color:#6c757d;margin-left:8px;">${summary.limitAdjusted} of ${summary.limitOrders} limit order${summary.limitOrders === 1 ? '' : 's'} adjusted for expected fills${summary.limitMissing > 0 ? `; ${summary.limitMissing} missing ticker data.` : '.'}</span>`
       : '';
 
-    return `<p style="${baseStyle}"><strong style="color:${emphasisColor};">${formattedImpact}</strong> <span style="color:${emphasisColor};">${directionLabel}</span>${limitText}${missingText}</p>`;
+    if (impactsMatch) {
+      return `<p style="${baseStyle}"><strong style="color:${totalColor};">${formattedTotalImpact}</strong> <span style="color:${totalColor};">${totalLabel}</span>${missingText}</p>`;
+    }
+
+    return `
+      <div style="${baseStyle}">
+        <div><strong style="color:${totalColor};">${formattedTotalImpact}</strong> <span style="color:${totalColor};">${totalLabel}</span></div>
+        <div><strong style="color:${estimatedColor};">${formattedEstimatedImpact}</strong> <span style="color:${estimatedColor};">${estimatedLabel}</span>${limitText}${missingText}</div>
+      </div>
+    `;
   }
 
   private renderOrderSizeStats(stats: OrderSizeStats | null): string {
