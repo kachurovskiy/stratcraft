@@ -488,36 +488,42 @@ function parseOperationDate(raw: unknown, mode: 'start' | 'end'): Date | undefin
 type SkipSourceKey = 'backtest' | 'planOperations';
 
 type SkipReasonAggregate = {
-  action: string;
   reason: string;
   details: string | null;
   count: number;
 };
 
-type SkipTickerAggregate = {
-  total: number;
-  reasons: Map<string, SkipReasonAggregate>;
-};
-
 type SkipCellAggregate = {
   total: number;
-  tickers: Map<string, SkipTickerAggregate>;
+  reasons: Map<string, SkipReasonAggregate>;
 };
 
 type SkipCellView = {
   total: number;
   hasItems: boolean;
-  tickers: Array<{
-    ticker: string;
-    total: number;
-    lines: Array<{ text: string }>;
-  }>;
+  text: string;
 };
 
 type SkipRowView = {
-  letter: string;
+  ticker: string;
+  action: string;
+  actionLabel: string;
+  actionBadge: string;
   backtest: SkipCellView;
   planOperations: SkipCellView;
+};
+
+type SkipSummaryRowView = {
+  label: string;
+  backtest: number;
+  planOperations: number;
+};
+
+type SkipSummaryView = {
+  hasSignals: boolean;
+  hasReasons: boolean;
+  signals: SkipSummaryRowView[];
+  reasons: SkipSummaryRowView[];
 };
 
 const SKIP_SOURCE_META: Record<SkipSourceKey, { label: string; source: string }> = {
@@ -541,9 +547,8 @@ const normalizeSkipDate = (raw: unknown): string | null => {
 };
 
 const buildSkipReasonLine = (reason: SkipReasonAggregate): string => {
-  const actionLabel = reason.action ? reason.action.toUpperCase() : 'UNKNOWN';
   const reasonLabel = reason.reason;
-  let text = `${actionLabel} - ${reasonLabel}`;
+  let text = `${reasonLabel}`;
   if (reason.details) {
     text += ` (${reason.details})`;
   }
@@ -554,47 +559,30 @@ const buildSkipReasonLine = (reason: SkipReasonAggregate): string => {
 };
 
 const buildSkipCellView = (aggregate: SkipCellAggregate): SkipCellView => {
-  const tickers = Array.from(aggregate.tickers.entries())
-    .map(([ticker, tickerAgg]) => {
-      const reasons = Array.from(tickerAgg.reasons.values()).sort((a, b) => {
-        const actionOrder = (value: string) => (value === 'buy' ? 0 : value === 'sell' ? 1 : 2);
-        const actionDiff = actionOrder(a.action) - actionOrder(b.action);
-        if (actionDiff !== 0) {
-          return actionDiff;
-        }
-        const reasonDiff = a.reason.localeCompare(b.reason);
-        if (reasonDiff !== 0) {
-          return reasonDiff;
-        }
-        return (a.details ?? '').localeCompare(b.details ?? '');
-      });
-      return {
-        ticker,
-        total: tickerAgg.total,
-        lines: reasons.map((reason) => ({ text: buildSkipReasonLine(reason) }))
-      };
-    })
-    .sort((a, b) => a.ticker.localeCompare(b.ticker));
+  const reasons = Array.from(aggregate.reasons.values()).sort((a, b) => {
+    const reasonDiff = a.reason.localeCompare(b.reason);
+    if (reasonDiff !== 0) {
+      return reasonDiff;
+    }
+    return (a.details ?? '').localeCompare(b.details ?? '');
+  });
+  const text = reasons.map((reason) => buildSkipReasonLine(reason)).join(' | ');
 
   return {
     total: aggregate.total,
-    hasItems: tickers.length > 0,
-    tickers
+    hasItems: reasons.length > 0,
+    text
   };
 };
 
 const buildSkipComparisonRows = (
   skips: AccountSignalSkipRow[]
-): { rows: SkipRowView[]; totals: Record<SkipSourceKey, number> } => {
-  const alphabet = Array.from({ length: 26 }, (_, idx) => String.fromCharCode(65 + idx));
+): { rows: SkipRowView[]; totals: Record<SkipSourceKey, number>; summary: SkipSummaryView } => {
   const createCell = (): SkipCellAggregate => ({
     total: 0,
-    tickers: new Map()
+    reasons: new Map()
   });
-  const rows = new Map<string, { backtest: SkipCellAggregate; planOperations: SkipCellAggregate }>();
-  alphabet.forEach((letter) => {
-    rows.set(letter, { backtest: createCell(), planOperations: createCell() });
-  });
+  const rows = new Map<string, { ticker: string; action: string; backtest: SkipCellAggregate; planOperations: SkipCellAggregate }>();
 
   const sourceMap: Record<string, SkipSourceKey | undefined> = {
     backtest: 'backtest',
@@ -607,32 +595,26 @@ const buildSkipComparisonRows = (
       continue;
     }
     const ticker = skip.ticker;
-    const letter = ticker.charAt(0).toUpperCase();
-    const row = rows.get(letter);
+    const action = typeof skip.action === 'string' ? skip.action.toLowerCase() : '';
+    const rowKey = `${ticker}|${action}`;
+    let row = rows.get(rowKey);
     if (!row) {
-      continue;
+      row = { ticker, action, backtest: createCell(), planOperations: createCell() };
+      rows.set(rowKey, row);
     }
 
     const cell = row[sourceKey];
     cell.total += 1;
-    let tickerAgg = cell.tickers.get(ticker);
-    if (!tickerAgg) {
-      tickerAgg = { total: 0, reasons: new Map() };
-      cell.tickers.set(ticker, tickerAgg);
-    }
-    tickerAgg.total += 1;
-    const action = typeof skip.action === 'string' ? skip.action.toLowerCase() : '';
     const details = typeof skip.details === 'string' && skip.details.length > 0 ? skip.details : null;
-    const reasonKey = `${action}|${skip.reason}|${details ?? ''}`;
-    let reasonAgg = tickerAgg.reasons.get(reasonKey);
+    const reasonKey = `${skip.reason}|${details ?? ''}`;
+    let reasonAgg = cell.reasons.get(reasonKey);
     if (!reasonAgg) {
       reasonAgg = {
-        action,
         reason: skip.reason,
         details,
         count: 0
       };
-      tickerAgg.reasons.set(reasonKey, reasonAgg);
+      cell.reasons.set(reasonKey, reasonAgg);
     }
     reasonAgg.count += 1;
   }
@@ -642,27 +624,163 @@ const buildSkipComparisonRows = (
     planOperations: 0
   };
 
+  const summarySignalCounts: Record<SkipSourceKey, { total: number; buy: number; sell: number; other: number }> = {
+    backtest: { total: 0, buy: 0, sell: 0, other: 0 },
+    planOperations: { total: 0, buy: 0, sell: 0, other: 0 }
+  };
+  const summaryReasonCounts: Record<SkipSourceKey, Map<string, number>> = {
+    backtest: new Map(),
+    planOperations: new Map()
+  };
+
   const rowViews: SkipRowView[] = [];
-  for (const letter of alphabet) {
-    const row = rows.get(letter);
-    if (!row) {
+  const actionSortOrder = (value: string) => (value === 'buy' ? 0 : value === 'sell' ? 1 : 2);
+  const sortedRows = Array.from(rows.values()).sort((a, b) => {
+    const tickerDiff = a.ticker.localeCompare(b.ticker);
+    if (tickerDiff !== 0) {
+      return tickerDiff;
+    }
+    return actionSortOrder(a.action) - actionSortOrder(b.action);
+  });
+
+  const hasOnlyReason = (cell: SkipCellAggregate, reason: string): boolean => {
+    if (cell.total === 0) {
+      return false;
+    }
+    return Array.from(cell.reasons.values()).every((entry) => entry.reason === reason);
+  };
+
+  const addSignalCounts = (sourceKey: SkipSourceKey, action: string, count: number) => {
+    if (count <= 0) {
+      return;
+    }
+    const bucket = summarySignalCounts[sourceKey];
+    bucket.total += count;
+    if (action === 'buy') {
+      bucket.buy += count;
+    } else if (action === 'sell') {
+      bucket.sell += count;
+    } else {
+      bucket.other += count;
+    }
+  };
+
+  const addReasonCounts = (sourceKey: SkipSourceKey, cell: SkipCellAggregate) => {
+    const bucket = summaryReasonCounts[sourceKey];
+    for (const entry of cell.reasons.values()) {
+      const current = bucket.get(entry.reason) ?? 0;
+      bucket.set(entry.reason, current + entry.count);
+    }
+  };
+
+  const resolveActionMeta = (action: string): { label: string; badge: string } => {
+    if (action === 'buy') {
+      return { label: 'Buy', badge: 'success' };
+    }
+    if (action === 'sell') {
+      return { label: 'Sell', badge: 'danger' };
+    }
+    if (!action) {
+      return { label: 'Unknown', badge: 'secondary' };
+    }
+    return { label: action.toUpperCase(), badge: 'secondary' };
+  };
+
+  for (const row of sortedRows) {
+    const shouldOmit =
+      hasOnlyReason(row.backtest, 'sell_no_active_position') &&
+      hasOnlyReason(row.planOperations, 'sell_no_active_position');
+    if (shouldOmit) {
       continue;
     }
-    totals.backtest += row.backtest.total;
-    totals.planOperations += row.planOperations.total;
+
     const backtestView = buildSkipCellView(row.backtest);
     const planView = buildSkipCellView(row.planOperations);
     if (!backtestView.hasItems && !planView.hasItems) {
       continue;
     }
+
+    totals.backtest += row.backtest.total;
+    totals.planOperations += row.planOperations.total;
+    addSignalCounts('backtest', row.action, row.backtest.total);
+    addSignalCounts('planOperations', row.action, row.planOperations.total);
+    addReasonCounts('backtest', row.backtest);
+    addReasonCounts('planOperations', row.planOperations);
+
+    const actionMeta = resolveActionMeta(row.action);
     rowViews.push({
-      letter,
+      ticker: row.ticker,
+      action: row.action,
+      actionLabel: actionMeta.label,
+      actionBadge: actionMeta.badge,
       backtest: backtestView,
       planOperations: planView
     });
   }
 
-  return { rows: rowViews, totals };
+  const signalRows: SkipSummaryRowView[] = [
+    {
+      label: 'Total signals',
+      backtest: summarySignalCounts.backtest.total,
+      planOperations: summarySignalCounts.planOperations.total
+    },
+    {
+      label: 'Buy signals',
+      backtest: summarySignalCounts.backtest.buy,
+      planOperations: summarySignalCounts.planOperations.buy
+    },
+    {
+      label: 'Sell signals',
+      backtest: summarySignalCounts.backtest.sell,
+      planOperations: summarySignalCounts.planOperations.sell
+    }
+  ];
+
+  if (summarySignalCounts.backtest.other > 0 || summarySignalCounts.planOperations.other > 0) {
+    signalRows.push({
+      label: 'Other signals',
+      backtest: summarySignalCounts.backtest.other,
+      planOperations: summarySignalCounts.planOperations.other
+    });
+  }
+
+  const reasonKeys = new Set<string>();
+  for (const key of summaryReasonCounts.backtest.keys()) {
+    reasonKeys.add(key);
+  }
+  for (const key of summaryReasonCounts.planOperations.keys()) {
+    reasonKeys.add(key);
+  }
+
+  const reasonRows = Array.from(reasonKeys)
+    .map((reason) => {
+      const backtestCount = summaryReasonCounts.backtest.get(reason) ?? 0;
+      const planCount = summaryReasonCounts.planOperations.get(reason) ?? 0;
+      return {
+        label: reason,
+        backtest: backtestCount,
+        planOperations: planCount,
+        total: backtestCount + planCount
+      };
+    })
+    .sort((a, b) => {
+      if (b.total !== a.total) {
+        return b.total - a.total;
+      }
+      return a.label.localeCompare(b.label);
+    })
+    .map(({ label, backtest, planOperations }) => ({ label, backtest, planOperations }));
+
+  return {
+    rows: rowViews,
+    totals,
+    summary: {
+      hasSignals: signalRows.some((row) => row.backtest > 0 || row.planOperations > 0),
+      hasReasons: reasonRows.length > 0,
+      signals: signalRows,
+      reasons: reasonRows
+    }
+  };
 };
 
 function buildOperationsPageUrl(
@@ -1494,7 +1612,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId/skips', requireAuth, async
       );
     }
 
-    const { rows, totals } = buildSkipComparisonRows(skips);
+    const { rows, totals, summary } = buildSkipComparisonRows(skips);
     const hasAnySkips = Boolean(latestDate);
     const hasRows = rows.length > 0;
 
@@ -1509,6 +1627,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId/skips', requireAuth, async
       hasRows,
       rows,
       totals,
+      summary,
       sourceLabels: {
         backtest: SKIP_SOURCE_META.backtest.label,
         planOperations: SKIP_SOURCE_META.planOperations.label

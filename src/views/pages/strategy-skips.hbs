@@ -45,21 +45,82 @@
                     <div class="small text-muted">Latest skip date: {{latestDate}}</div>
                 </div>
                 {{/if}}
+                {{#if hasAnySkips}}
+                <div class="card-body border-bottom">
+                    <div class="row g-3">
+                        <div class="col-12 col-lg-4">
+                            <h6 class="text-muted text-uppercase small mb-2">Signals</h6>
+                            {{#if summary.hasSignals}}
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0 text-nowrap">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th scope="col">Type</th>
+                                            <th scope="col">{{sourceLabels.backtest}}</th>
+                                            <th scope="col">{{sourceLabels.planOperations}}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{#each summary.signals}}
+                                        <tr>
+                                            <th scope="row" class="text-muted">{{label}}</th>
+                                            <td>{{backtest}}</td>
+                                            <td>{{planOperations}}</td>
+                                        </tr>
+                                        {{/each}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{else}}
+                            <div class="text-muted small">No signals recorded for the selected day.</div>
+                            {{/if}}
+                        </div>
+                        <div class="col-12 col-lg-8">
+                            <h6 class="text-muted text-uppercase small mb-2">Skip Reasons</h6>
+                            {{#if summary.hasReasons}}
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0 text-nowrap">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th scope="col">Reason</th>
+                                            <th scope="col">{{sourceLabels.backtest}}</th>
+                                            <th scope="col">{{sourceLabels.planOperations}}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{#each summary.reasons}}
+                                        <tr>
+                                            <th scope="row" class="text-muted">{{label}}</th>
+                                            <td>{{backtest}}</td>
+                                            <td>{{planOperations}}</td>
+                                        </tr>
+                                        {{/each}}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {{else}}
+                            <div class="text-muted small">No skip reasons recorded for the selected day.</div>
+                            {{/if}}
+                        </div>
+                    </div>
+                </div>
+                {{/if}}
                 <div class="table-responsive">
                     {{#if hasAnySkips}}
                         {{#if hasRows}}
-                        <table class="table table-sm align-middle mb-0">
+                        <table class="table table-sm align-middle mb-0 text-nowrap">
                             <thead class="table-light">
                                 <tr>
-                                    <th scope="col" style="width: 80px;">Letter</th>
+                                    <th scope="col">Ticker</th>
+                                    <th scope="col" style="width: 140px;">Signal Type</th>
                                     <th scope="col">
-                                        {{sourceLabels.backtest}}
+                                        {{sourceLabels.backtest}} skip reason
                                         {{#if (gt totals.backtest 0)}}
                                             <span class="text-muted">({{totals.backtest}})</span>
                                         {{/if}}
                                     </th>
                                     <th scope="col">
-                                        {{sourceLabels.planOperations}}
+                                        {{sourceLabels.planOperations}} skip reason
                                         {{#if (gt totals.planOperations 0)}}
                                             <span class="text-muted">({{totals.planOperations}})</span>
                                         {{/if}}
@@ -69,37 +130,20 @@
                             <tbody>
                                 {{#each rows}}
                                 <tr>
-                                    <th scope="row" class="text-muted">{{letter}}</th>
+                                    <th scope="row" class="text-muted">{{ticker}}</th>
+                                    <td>
+                                        <span class="badge bg-{{actionBadge}} text-uppercase">{{actionLabel}}</span>
+                                    </td>
                                     <td>
                                         {{#if backtest.hasItems}}
-                                            {{#each backtest.tickers}}
-                                            <div class="mb-2">
-                                                <div class="fw-semibold">
-                                                    {{ticker}}
-                                                    <span class="badge bg-light text-dark ms-1">{{total}}</span>
-                                                </div>
-                                                {{#each lines}}
-                                                <div class="small text-muted">{{text}}</div>
-                                                {{/each}}
-                                            </div>
-                                            {{/each}}
+                                            <span class="small text-muted text-nowrap">{{backtest.text}}</span>
                                         {{else}}
                                             <span class="text-muted">&mdash;</span>
                                         {{/if}}
                                     </td>
                                     <td>
                                         {{#if planOperations.hasItems}}
-                                            {{#each planOperations.tickers}}
-                                            <div class="mb-2">
-                                                <div class="fw-semibold">
-                                                    {{ticker}}
-                                                    <span class="badge bg-light text-dark ms-1">{{total}}</span>
-                                                </div>
-                                                {{#each lines}}
-                                                <div class="small text-muted">{{text}}</div>
-                                                {{/each}}
-                                            </div>
-                                            {{/each}}
+                                            <span class="small text-muted text-nowrap">{{planOperations.text}}</span>
                                         {{else}}
                                             <span class="text-muted">&mdash;</span>
                                         {{/if}}
