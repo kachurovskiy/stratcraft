@@ -4,6 +4,26 @@ import type { AccountSignalSkipRow } from '../types';
 export class AccountSignalSkipsRepo {
   constructor(private readonly db: DbClient) {}
 
+  async getLatestSignalSkipDateForStrategy(
+    strategyId: string,
+    sources?: string[]
+  ): Promise<string | null> {
+    const params: Array<string | string[]> = [strategyId];
+    let sql = `
+      SELECT MAX(signal_date) AS latest_date
+        FROM account_signal_skips
+       WHERE strategy_id = ?
+    `;
+
+    if (sources && sources.length > 0) {
+      sql += ' AND source = ANY(?::text[])';
+      params.push(sources);
+    }
+
+    const row = await this.db.get<{ latest_date?: string | null }>(sql, params);
+    return row?.latest_date ?? null;
+  }
+
   async getAccountSignalSkipsForStrategyInRange(
     strategyId: string,
     startDate: Date,

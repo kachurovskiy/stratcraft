@@ -9,7 +9,7 @@ import {
 } from '../../shared/types/StrategyTemplate';
 import { AccountSnapshot } from '../../shared/types/Account';
 import { LogEntry, LogLevel } from '../services/LoggingService';
-import type { TradeTickerStats } from '../database/types';
+import type { AccountSignalSkipRow, TradeTickerStats } from '../database/types';
 import { SETTING_KEYS } from '../constants';
 import {
   BACKTEST_SCOPE_META,
@@ -484,6 +484,186 @@ function parseOperationDate(raw: unknown, mode: 'start' | 'end'): Date | undefin
   }
   return parsed;
 }
+
+type SkipSourceKey = 'backtest' | 'planOperations';
+
+type SkipReasonAggregate = {
+  action: string;
+  reason: string;
+  details: string | null;
+  count: number;
+};
+
+type SkipTickerAggregate = {
+  total: number;
+  reasons: Map<string, SkipReasonAggregate>;
+};
+
+type SkipCellAggregate = {
+  total: number;
+  tickers: Map<string, SkipTickerAggregate>;
+};
+
+type SkipCellView = {
+  total: number;
+  hasItems: boolean;
+  tickers: Array<{
+    ticker: string;
+    total: number;
+    lines: Array<{ text: string }>;
+  }>;
+};
+
+type SkipRowView = {
+  letter: string;
+  backtest: SkipCellView;
+  planOperations: SkipCellView;
+};
+
+const SKIP_SOURCE_META: Record<SkipSourceKey, { label: string; source: string }> = {
+  backtest: { label: 'Engine backtest', source: 'backtest' },
+  planOperations: { label: 'Operation planning', source: 'plan_operations' }
+};
+
+
+const SKIP_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+const normalizeSkipDate = (raw: unknown): string | null => {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || !SKIP_DATE_PATTERN.test(trimmed)) {
+    return null;
+  }
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+};
+
+const buildSkipReasonLine = (reason: SkipReasonAggregate): string => {
+  const actionLabel = reason.action ? reason.action.toUpperCase() : 'UNKNOWN';
+  const reasonLabel = reason.reason;
+  let text = `${actionLabel} - ${reasonLabel}`;
+  if (reason.details) {
+    text += ` (${reason.details})`;
+  }
+  if (reason.count > 1) {
+    text += ` x${reason.count}`;
+  }
+  return text;
+};
+
+const buildSkipCellView = (aggregate: SkipCellAggregate): SkipCellView => {
+  const tickers = Array.from(aggregate.tickers.entries())
+    .map(([ticker, tickerAgg]) => {
+      const reasons = Array.from(tickerAgg.reasons.values()).sort((a, b) => {
+        const actionOrder = (value: string) => (value === 'buy' ? 0 : value === 'sell' ? 1 : 2);
+        const actionDiff = actionOrder(a.action) - actionOrder(b.action);
+        if (actionDiff !== 0) {
+          return actionDiff;
+        }
+        const reasonDiff = a.reason.localeCompare(b.reason);
+        if (reasonDiff !== 0) {
+          return reasonDiff;
+        }
+        return (a.details ?? '').localeCompare(b.details ?? '');
+      });
+      return {
+        ticker,
+        total: tickerAgg.total,
+        lines: reasons.map((reason) => ({ text: buildSkipReasonLine(reason) }))
+      };
+    })
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
+
+  return {
+    total: aggregate.total,
+    hasItems: tickers.length > 0,
+    tickers
+  };
+};
+
+const buildSkipComparisonRows = (
+  skips: AccountSignalSkipRow[]
+): { rows: SkipRowView[]; totals: Record<SkipSourceKey, number> } => {
+  const alphabet = Array.from({ length: 26 }, (_, idx) => String.fromCharCode(65 + idx));
+  const createCell = (): SkipCellAggregate => ({
+    total: 0,
+    tickers: new Map()
+  });
+  const rows = new Map<string, { backtest: SkipCellAggregate; planOperations: SkipCellAggregate }>();
+  alphabet.forEach((letter) => {
+    rows.set(letter, { backtest: createCell(), planOperations: createCell() });
+  });
+
+  const sourceMap: Record<string, SkipSourceKey | undefined> = {
+    backtest: 'backtest',
+    plan_operations: 'planOperations'
+  };
+
+  for (const skip of skips) {
+    const sourceKey = sourceMap[String(skip.source ?? '').toLowerCase()];
+    if (!sourceKey) {
+      continue;
+    }
+    const ticker = skip.ticker;
+    const letter = ticker.charAt(0).toUpperCase();
+    const row = rows.get(letter);
+    if (!row) {
+      continue;
+    }
+
+    const cell = row[sourceKey];
+    cell.total += 1;
+    let tickerAgg = cell.tickers.get(ticker);
+    if (!tickerAgg) {
+      tickerAgg = { total: 0, reasons: new Map() };
+      cell.tickers.set(ticker, tickerAgg);
+    }
+    tickerAgg.total += 1;
+    const action = typeof skip.action === 'string' ? skip.action.toLowerCase() : '';
+    const details = typeof skip.details === 'string' && skip.details.length > 0 ? skip.details : null;
+    const reasonKey = `${action}|${skip.reason}|${details ?? ''}`;
+    let reasonAgg = tickerAgg.reasons.get(reasonKey);
+    if (!reasonAgg) {
+      reasonAgg = {
+        action,
+        reason: skip.reason,
+        details,
+        count: 0
+      };
+      tickerAgg.reasons.set(reasonKey, reasonAgg);
+    }
+    reasonAgg.count += 1;
+  }
+
+  const totals: Record<SkipSourceKey, number> = {
+    backtest: 0,
+    planOperations: 0
+  };
+
+  const rowViews: SkipRowView[] = [];
+  for (const letter of alphabet) {
+    const row = rows.get(letter);
+    if (!row) {
+      continue;
+    }
+    totals.backtest += row.backtest.total;
+    totals.planOperations += row.planOperations.total;
+    const backtestView = buildSkipCellView(row.backtest);
+    const planView = buildSkipCellView(row.planOperations);
+    if (!backtestView.hasItems && !planView.hasItems) {
+      continue;
+    }
+    rowViews.push({
+      letter,
+      backtest: backtestView,
+      planOperations: planView
+    });
+  }
+
+  return { rows: rowViews, totals };
+};
 
 function buildOperationsPageUrl(
   basePath: string,
@@ -1282,6 +1462,64 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
     res.status(500).render('pages/error', {
       title: 'Error',
       error: 'Failed to load strategy overview'
+    });
+  }
+});
+
+router.get<StrategyIdParams>('/strategies/:strategyId/skips', requireAuth, async (req, res) => {
+  try {
+    const { strategyId } = req.params;
+    const userId = getReqUserId(req);
+    const strategy = await req.db.strategies.getStrategy(strategyId, userId);
+    if (!strategy) {
+      return res.status(404).render('pages/error', {
+        title: 'Strategy Not Found',
+        error: `Strategy ${strategyId} not found`
+      });
+    }
+
+    const sources = [SKIP_SOURCE_META.backtest.source, SKIP_SOURCE_META.planOperations.source];
+    const latestDate = await req.db.accountSignalSkips.getLatestSignalSkipDateForStrategy(strategyId, sources);
+    const requestedDate = normalizeSkipDate(req.query.date);
+    const selectedDate = requestedDate ?? latestDate ?? '';
+
+    let skips: AccountSignalSkipRow[] = [];
+    if (selectedDate) {
+      const date = new Date(`${selectedDate}T00:00:00Z`);
+      skips = await req.db.accountSignalSkips.getAccountSignalSkipsForStrategyInRange(
+        strategyId,
+        date,
+        date,
+        sources
+      );
+    }
+
+    const { rows, totals } = buildSkipComparisonRows(skips);
+    const hasAnySkips = Boolean(latestDate);
+    const hasRows = rows.length > 0;
+
+    res.render('pages/strategy-skips', {
+      title: `${strategy.name} - Signal Skips`,
+      page: 'dashboard',
+      user: req.user,
+      strategy,
+      selectedDate,
+      latestDate,
+      hasAnySkips,
+      hasRows,
+      rows,
+      totals,
+      sourceLabels: {
+        backtest: SKIP_SOURCE_META.backtest.label,
+        planOperations: SKIP_SOURCE_META.planOperations.label
+      },
+      currentUrl: getCurrentUrl(req)
+    });
+  } catch (error) {
+    console.error('Error rendering strategy skips page:', error);
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: 'Failed to load strategy skips'
     });
   }
 });
