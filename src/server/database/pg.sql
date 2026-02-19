@@ -291,6 +291,16 @@ CREATE TABLE IF NOT EXISTS backtest_cache (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE backtest_cache
+    ADD COLUMN IF NOT EXISTS balance_training_sharpe_ratio DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_training_calmar_ratio DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_training_cagr DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_training_max_drawdown_ratio DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_validation_sharpe_ratio DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_validation_calmar_ratio DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_validation_cagr DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS balance_validation_max_drawdown_ratio DOUBLE PRECISION;
+
 CREATE TABLE IF NOT EXISTS signals (
     id TEXT PRIMARY KEY,
     date DATE NOT NULL,
