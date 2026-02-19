@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use engine::{
     commands::{
-        backtest_accounts, backtest_active, export_market_data, generate_signals, optimize,
-        plan_operations, reconcile_trades, train_lightgbm, verify,
+        backtest_accounts, backtest_active, balance, export_market_data, generate_signals,
+        optimize, plan_operations, reconcile_trades, train_lightgbm, verify,
     },
     context::AppContext,
     strategy,
@@ -36,6 +36,14 @@ enum Commands {
     /// Verify top cached parameter sets over the configured verification window across all tickers
     Verify {
         /// Template ID to verify
+        template_id: String,
+        /// Path to the market data snapshot file
+        #[arg(long = "data-file", value_name = "PATH")]
+        data_file: Option<PathBuf>,
+    },
+    /// Compute training/validation balance metrics for cached parameter sets
+    Balance {
+        /// Template ID to balance
         template_id: String,
         /// Path to the market data snapshot file
         #[arg(long = "data-file", value_name = "PATH")]
@@ -148,6 +156,13 @@ async fn main() -> anyhow::Result<()> {
             let market_data_path = resolve_market_data_path(data_file);
             verify::run(&app_context, &template_id, &market_data_path).await?;
         }
+        Commands::Balance {
+            template_id,
+            data_file,
+        } => {
+            let market_data_path = resolve_market_data_path(data_file);
+            balance::run(&app_context, &template_id, &market_data_path).await?;
+        }
         Commands::GenerateSignals => {
             generate_signals::run(&app_context).await?;
         }
@@ -251,6 +266,7 @@ fn command_requires_database(command: &Commands) -> bool {
     match command {
         Commands::Optimize { data_file, .. } => data_file.is_none(),
         Commands::Verify { .. }
+        | Commands::Balance { .. }
         | Commands::GenerateSignals
         | Commands::BacktestActive { .. }
         | Commands::BacktestAccounts

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, Utc};
 use engine::commands::{
-    backtest_accounts, backtest_active, export_market_data, generate_signals, optimize,
+    backtest_accounts, backtest_active, balance, export_market_data, generate_signals, optimize,
     plan_operations, reconcile_trades, verify,
 };
 use engine::context::AppContext;
@@ -552,7 +552,7 @@ async fn reconcile_trades_smoke() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn verify_smoke() -> Result<()> {
+async fn verify_balance_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock().await;
     std::env::set_var("RAYON_NUM_THREADS", "2");
@@ -576,6 +576,18 @@ async fn verify_smoke() -> Result<()> {
     test_db
         .update_setting(
             "VERIFY_WINDOW_END_DATE",
+            &end_date.format("%Y-%m-%d").to_string(),
+        )
+        .await?;
+    test_db
+        .update_setting(
+            "BALANCE_WINDOW_START_DATE",
+            &start_date.format("%Y-%m-%d").to_string(),
+        )
+        .await?;
+    test_db
+        .update_setting(
+            "BALANCE_WINDOW_END_DATE",
             &end_date.format("%Y-%m-%d").to_string(),
         )
         .await?;
@@ -609,6 +621,7 @@ async fn verify_smoke() -> Result<()> {
     export_market_data::run(&app_context, &output_path).await?;
 
     verify::run(&app_context, &template.id, &output_path).await?;
+    balance::run(&app_context, &template.id, &output_path).await?;
 
     let verification = test_db.get_backtest_cache_verify_values(cache_id).await?;
     assert!(
@@ -629,6 +642,18 @@ async fn verify_smoke() -> Result<()> {
     assert!(
         verification.verify_max_drawdown_ratio.is_some(),
         "expected verify_max_drawdown_ratio for {}",
+        cache_id
+    );
+
+    let balance_values = test_db.get_backtest_cache_balance_values(cache_id).await?;
+    assert!(
+        balance_values.balance_training_cagr.is_some(),
+        "expected balance_training_cagr for {}",
+        cache_id
+    );
+    assert!(
+        balance_values.balance_validation_cagr.is_some(),
+        "expected balance_validation_cagr for {}",
         cache_id
     );
 
@@ -779,6 +804,11 @@ struct BacktestCacheVerifyValues {
     verify_max_drawdown_ratio: Option<f64>,
 }
 
+struct BacktestCacheBalanceValues {
+    balance_training_cagr: Option<f64>,
+    balance_validation_cagr: Option<f64>,
+}
+
 impl TestDatabase {
     async fn create() -> Result<Self> {
         let db_name = std::env::var("STRATCRAFT_TEST_DATABASE_NAME")
@@ -832,6 +862,7 @@ impl TestDatabase {
         let tx = client.transaction().await?;
         let price_scale = 0.025;
         for (idx, ticker) in TickerSeed::universe().iter().enumerate() {
+            let is_training = idx % 4 != 0;
             tx.execute(
                 "INSERT INTO tickers (symbol, market_cap, volume_usd, max_fluctuation_ratio, training)
                  VALUES ($1, $2, $3, $4, $5)",
@@ -840,7 +871,7 @@ impl TestDatabase {
                     &((idx as f64 + 1.0) * 400_000_000.0),
                     &((idx as f64 + 1.0) * 20_000_000.0),
                     &0.5_f64,
-                    &true,
+                    &is_training,
                 ],
             )
             .await?;
@@ -1260,6 +1291,24 @@ impl TestDatabase {
             verify_calmar_ratio: row.get(1),
             verify_cagr: row.get(2),
             verify_max_drawdown_ratio: row.get(3),
+        })
+    }
+
+    async fn get_backtest_cache_balance_values(
+        &self,
+        cache_id: &str,
+    ) -> Result<BacktestCacheBalanceValues> {
+        let client = connect(self.database_url()).await?;
+        let row = client
+            .query_one(
+                "SELECT balance_training_cagr, balance_validation_cagr
+                 FROM backtest_cache WHERE id = $1",
+                &[&cache_id],
+            )
+            .await?;
+        Ok(BacktestCacheBalanceValues {
+            balance_training_cagr: row.get(0),
+            balance_validation_cagr: row.get(1),
         })
     }
 

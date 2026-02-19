@@ -1365,6 +1365,82 @@ impl Database {
         Ok(())
     }
 
+    pub async fn update_backtest_cache_balance_training(
+        &self,
+        cache_id: &str,
+        sharpe_ratio: Option<f64>,
+        calmar_ratio: Option<f64>,
+        cagr: Option<f64>,
+        max_drawdown_ratio: Option<f64>,
+    ) -> Result<()> {
+        let normalize_metric = |value: Option<f64>| -> Option<f64> {
+            value.and_then(|v| if v.is_finite() { Some(v) } else { None })
+        };
+
+        let normalized_sharpe = normalize_metric(sharpe_ratio);
+        let normalized_calmar = normalize_metric(calmar_ratio);
+        let normalized_cagr = normalize_metric(cagr);
+        let normalized_dd_ratio = normalize_metric(max_drawdown_ratio);
+
+        self.client
+            .execute(
+                "UPDATE backtest_cache
+                 SET balance_training_sharpe_ratio = $1,
+                     balance_training_calmar_ratio = $2,
+                     balance_training_cagr = $3,
+                     balance_training_max_drawdown_ratio = $4
+                 WHERE id = $5",
+                &[
+                    &normalized_sharpe,
+                    &normalized_calmar,
+                    &normalized_cagr,
+                    &normalized_dd_ratio,
+                    &cache_id,
+                ],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_backtest_cache_balance_validation(
+        &self,
+        cache_id: &str,
+        sharpe_ratio: Option<f64>,
+        calmar_ratio: Option<f64>,
+        cagr: Option<f64>,
+        max_drawdown_ratio: Option<f64>,
+    ) -> Result<()> {
+        let normalize_metric = |value: Option<f64>| -> Option<f64> {
+            value.and_then(|v| if v.is_finite() { Some(v) } else { None })
+        };
+
+        let normalized_sharpe = normalize_metric(sharpe_ratio);
+        let normalized_calmar = normalize_metric(calmar_ratio);
+        let normalized_cagr = normalize_metric(cagr);
+        let normalized_dd_ratio = normalize_metric(max_drawdown_ratio);
+
+        self.client
+            .execute(
+                "UPDATE backtest_cache
+                 SET balance_validation_sharpe_ratio = $1,
+                     balance_validation_calmar_ratio = $2,
+                     balance_validation_cagr = $3,
+                     balance_validation_max_drawdown_ratio = $4
+                 WHERE id = $5",
+                &[
+                    &normalized_sharpe,
+                    &normalized_calmar,
+                    &normalized_cagr,
+                    &normalized_dd_ratio,
+                    &cache_id,
+                ],
+            )
+            .await?;
+
+        Ok(())
+    }
+
     fn map_trade_row(row: &Row, strategy_id: &str) -> Result<Trade> {
         let status_str: String = row.get(5);
         let status = parse_trade_status(&status_str)?;

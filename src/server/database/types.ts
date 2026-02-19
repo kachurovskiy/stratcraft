@@ -178,6 +178,14 @@ export type BacktestCacheLookupResult = {
   verifyCalmarRatio: number | null;
   verifyCagr: number | null;
   verifyMaxDrawdownRatio: number | null;
+  balanceTrainingSharpeRatio: number | null;
+  balanceTrainingCalmarRatio: number | null;
+  balanceTrainingCagr: number | null;
+  balanceTrainingMaxDrawdownRatio: number | null;
+  balanceValidationSharpeRatio: number | null;
+  balanceValidationCalmarRatio: number | null;
+  balanceValidationCagr: number | null;
+  balanceValidationMaxDrawdownRatio: number | null;
   winRate: number;
   totalTrades: number;
   tickerCount: number;

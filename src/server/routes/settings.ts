@@ -518,6 +518,22 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'text'
   },
   {
+    key: SETTING_KEYS.BALANCE_WINDOW_START_DATE,
+    group: 'optimizer',
+    label: 'Optimizer Balance Start Date',
+    description: 'Start date (YYYY-MM-DD) for training/validation balance runs.',
+    placeholder: 'YYYY-MM-DD',
+    inputType: 'text'
+  },
+  {
+    key: SETTING_KEYS.BALANCE_WINDOW_END_DATE,
+    group: 'optimizer',
+    label: 'Optimizer Balance End Date',
+    description: 'End date (YYYY-MM-DD) for training/validation balance runs.',
+    placeholder: 'YYYY-MM-DD',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.LOCAL_OPTIMIZATION_VERSION,
     group: 'optimizer',
     label: 'Local Optimization Version',

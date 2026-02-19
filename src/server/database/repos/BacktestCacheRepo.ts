@@ -24,6 +24,14 @@ type BacktestCacheDbRow = QueryResultRow & {
   verify_calmar_ratio?: number | null;
   verify_cagr?: number | null;
   verify_max_drawdown_ratio?: number | null;
+  balance_training_sharpe_ratio?: number | null;
+  balance_training_calmar_ratio?: number | null;
+  balance_training_cagr?: number | null;
+  balance_training_max_drawdown_ratio?: number | null;
+  balance_validation_sharpe_ratio?: number | null;
+  balance_validation_calmar_ratio?: number | null;
+  balance_validation_cagr?: number | null;
+  balance_validation_max_drawdown_ratio?: number | null;
   win_rate: number;
   total_trades: number;
   ticker_count?: number;
@@ -61,6 +69,14 @@ type BacktestCacheExportRow = {
   verify_calmar_ratio?: number | null;
   verify_cagr?: number | null;
   verify_max_drawdown_ratio?: number | null;
+  balance_training_sharpe_ratio?: number | null;
+  balance_training_calmar_ratio?: number | null;
+  balance_training_cagr?: number | null;
+  balance_training_max_drawdown_ratio?: number | null;
+  balance_validation_sharpe_ratio?: number | null;
+  balance_validation_calmar_ratio?: number | null;
+  balance_validation_cagr?: number | null;
+  balance_validation_max_drawdown_ratio?: number | null;
   win_rate: number;
   total_trades: number;
   ticker_count: number;
@@ -145,6 +161,14 @@ export class BacktestCacheRepo {
       verify_calmar_ratio: toNullableNumber(row.verify_calmar_ratio),
       verify_cagr: toNullableNumber(row.verify_cagr),
       verify_max_drawdown_ratio: toNullableNumber(row.verify_max_drawdown_ratio),
+      balance_training_sharpe_ratio: toNullableNumber(row.balance_training_sharpe_ratio),
+      balance_training_calmar_ratio: toNullableNumber(row.balance_training_calmar_ratio),
+      balance_training_cagr: toNullableNumber(row.balance_training_cagr),
+      balance_training_max_drawdown_ratio: toNullableNumber(row.balance_training_max_drawdown_ratio),
+      balance_validation_sharpe_ratio: toNullableNumber(row.balance_validation_sharpe_ratio),
+      balance_validation_calmar_ratio: toNullableNumber(row.balance_validation_calmar_ratio),
+      balance_validation_cagr: toNullableNumber(row.balance_validation_cagr),
+      balance_validation_max_drawdown_ratio: toNullableNumber(row.balance_validation_max_drawdown_ratio),
       win_rate: toNumber(row.win_rate, 0),
       total_trades: Math.max(0, toInteger(row.total_trades, 0)),
       top_abs_gain_ticker:
@@ -190,6 +214,14 @@ export class BacktestCacheRepo {
         verifyCalmarRatio: toNullableNumber(cachedResult.verify_calmar_ratio),
         verifyCagr: toNullableNumber(cachedResult.verify_cagr),
         verifyMaxDrawdownRatio: toNullableNumber(cachedResult.verify_max_drawdown_ratio),
+        balanceTrainingSharpeRatio: toNullableNumber(cachedResult.balance_training_sharpe_ratio),
+        balanceTrainingCalmarRatio: toNullableNumber(cachedResult.balance_training_calmar_ratio),
+        balanceTrainingCagr: toNullableNumber(cachedResult.balance_training_cagr),
+        balanceTrainingMaxDrawdownRatio: toNullableNumber(cachedResult.balance_training_max_drawdown_ratio),
+        balanceValidationSharpeRatio: toNullableNumber(cachedResult.balance_validation_sharpe_ratio),
+        balanceValidationCalmarRatio: toNullableNumber(cachedResult.balance_validation_calmar_ratio),
+        balanceValidationCagr: toNullableNumber(cachedResult.balance_validation_cagr),
+        balanceValidationMaxDrawdownRatio: toNullableNumber(cachedResult.balance_validation_max_drawdown_ratio),
         winRate: toNumber(cachedResult.win_rate, 0),
         totalTrades: toInteger(cachedResult.total_trades, 0),
         tickerCount: toInteger(cachedResult.ticker_count, 0),
@@ -211,6 +243,9 @@ export class BacktestCacheRepo {
         `
           SELECT id, template_id, parameters, sharpe_ratio, calmar_ratio, total_return, cagr, max_drawdown,
                  max_drawdown_ratio, verify_sharpe_ratio, verify_calmar_ratio, verify_cagr, verify_max_drawdown_ratio,
+                 balance_training_sharpe_ratio, balance_training_calmar_ratio, balance_training_cagr,
+                 balance_training_max_drawdown_ratio, balance_validation_sharpe_ratio,
+                 balance_validation_calmar_ratio, balance_validation_cagr, balance_validation_max_drawdown_ratio,
                  win_rate, total_trades, top_abs_gain_ticker, top_rel_gain_ticker
           FROM backtest_cache
           WHERE template_id = ?
@@ -238,6 +273,9 @@ export class BacktestCacheRepo {
         `
           SELECT id, template_id, parameters, sharpe_ratio, calmar_ratio, total_return, cagr, max_drawdown,
                  max_drawdown_ratio, verify_sharpe_ratio, verify_calmar_ratio, verify_cagr, verify_max_drawdown_ratio,
+                 balance_training_sharpe_ratio, balance_training_calmar_ratio, balance_training_cagr,
+                 balance_training_max_drawdown_ratio, balance_validation_sharpe_ratio,
+                 balance_validation_calmar_ratio, balance_validation_cagr, balance_validation_max_drawdown_ratio,
                  win_rate, total_trades, top_abs_gain_ticker, top_rel_gain_ticker
           FROM backtest_cache
           WHERE template_id = ANY(?::text[])
@@ -846,6 +884,14 @@ export class BacktestCacheRepo {
       verify_calmar_ratio: toNullableNumber(row.verify_calmar_ratio),
       verify_cagr: toNullableNumber(row.verify_cagr),
       verify_max_drawdown_ratio: toNullableNumber(row.verify_max_drawdown_ratio),
+      balance_training_sharpe_ratio: toNullableNumber(row.balance_training_sharpe_ratio),
+      balance_training_calmar_ratio: toNullableNumber(row.balance_training_calmar_ratio),
+      balance_training_cagr: toNullableNumber(row.balance_training_cagr),
+      balance_training_max_drawdown_ratio: toNullableNumber(row.balance_training_max_drawdown_ratio),
+      balance_validation_sharpe_ratio: toNullableNumber(row.balance_validation_sharpe_ratio),
+      balance_validation_calmar_ratio: toNullableNumber(row.balance_validation_calmar_ratio),
+      balance_validation_cagr: toNullableNumber(row.balance_validation_cagr),
+      balance_validation_max_drawdown_ratio: toNullableNumber(row.balance_validation_max_drawdown_ratio),
       win_rate: toNumber(row.win_rate, 0),
       total_trades: Math.max(0, toInteger(row.total_trades, 0)),
       ticker_count: Math.max(0, toInteger(row.ticker_count, 0)),
@@ -873,7 +919,10 @@ export class BacktestCacheRepo {
         `
           SELECT id, template_id, parameters, sharpe_ratio, calmar_ratio, total_return, cagr,
                  max_drawdown, max_drawdown_ratio, verify_sharpe_ratio, verify_calmar_ratio,
-                 verify_cagr, verify_max_drawdown_ratio, win_rate, total_trades, ticker_count,
+                 verify_cagr, verify_max_drawdown_ratio, balance_training_sharpe_ratio,
+                 balance_training_calmar_ratio, balance_training_cagr, balance_training_max_drawdown_ratio,
+                 balance_validation_sharpe_ratio, balance_validation_calmar_ratio,
+                 balance_validation_cagr, balance_validation_max_drawdown_ratio, win_rate, total_trades, ticker_count,
                  start_date, end_date, period_days, period_months,
                  duration_minutes, tool, top_abs_gain_ticker,
                  top_rel_gain_ticker, created_at
@@ -919,6 +968,14 @@ export class BacktestCacheRepo {
       verify_calmar_ratio: toNullableNumber(entry.verify_calmar_ratio),
       verify_cagr: toNullableNumber(entry.verify_cagr),
       verify_max_drawdown_ratio: toNullableNumber(entry.verify_max_drawdown_ratio),
+      balance_training_sharpe_ratio: toNullableNumber(entry.balance_training_sharpe_ratio),
+      balance_training_calmar_ratio: toNullableNumber(entry.balance_training_calmar_ratio),
+      balance_training_cagr: toNullableNumber(entry.balance_training_cagr),
+      balance_training_max_drawdown_ratio: toNullableNumber(entry.balance_training_max_drawdown_ratio),
+      balance_validation_sharpe_ratio: toNullableNumber(entry.balance_validation_sharpe_ratio),
+      balance_validation_calmar_ratio: toNullableNumber(entry.balance_validation_calmar_ratio),
+      balance_validation_cagr: toNullableNumber(entry.balance_validation_cagr),
+      balance_validation_max_drawdown_ratio: toNullableNumber(entry.balance_validation_max_drawdown_ratio),
       win_rate: toNumber(entry.win_rate, 0),
       total_trades: Math.max(0, toInteger(entry.total_trades, 0)),
       ticker_count: Math.max(0, toInteger(entry.ticker_count, 0)),
@@ -958,11 +1015,14 @@ export class BacktestCacheRepo {
           `INSERT INTO backtest_cache (
             id, template_id, parameters, sharpe_ratio, calmar_ratio, total_return, cagr,
             max_drawdown, max_drawdown_ratio, verify_sharpe_ratio, verify_calmar_ratio,
-            verify_cagr, verify_max_drawdown_ratio, win_rate, total_trades, ticker_count,
+            verify_cagr, verify_max_drawdown_ratio, balance_training_sharpe_ratio,
+            balance_training_calmar_ratio, balance_training_cagr, balance_training_max_drawdown_ratio,
+            balance_validation_sharpe_ratio, balance_validation_calmar_ratio,
+            balance_validation_cagr, balance_validation_max_drawdown_ratio, win_rate, total_trades, ticker_count,
             start_date, end_date, period_days, period_months,
             duration_minutes, tool, top_abs_gain_ticker,
             top_rel_gain_ticker, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             entry.id,
             entry.template_id,
@@ -977,6 +1037,14 @@ export class BacktestCacheRepo {
             entry.verify_calmar_ratio ?? null,
             entry.verify_cagr ?? null,
             entry.verify_max_drawdown_ratio ?? null,
+            entry.balance_training_sharpe_ratio ?? null,
+            entry.balance_training_calmar_ratio ?? null,
+            entry.balance_training_cagr ?? null,
+            entry.balance_training_max_drawdown_ratio ?? null,
+            entry.balance_validation_sharpe_ratio ?? null,
+            entry.balance_validation_calmar_ratio ?? null,
+            entry.balance_validation_cagr ?? null,
+            entry.balance_validation_max_drawdown_ratio ?? null,
             entry.win_rate,
             entry.total_trades,
             entry.ticker_count,

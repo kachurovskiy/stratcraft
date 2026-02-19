@@ -1,5 +1,6 @@
 pub mod backtest_accounts;
 pub mod backtest_active;
+pub mod balance;
 pub mod export_market_data;
 pub mod generate_signals;
 pub mod market_data_snapshot;

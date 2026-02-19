@@ -18,6 +18,14 @@ export type BacktestCacheRow = QueryResultRow & {
   verify_total_return?: number | null;
   verify_cagr?: number | null;
   verify_max_drawdown_ratio?: number | null;
+  balance_training_sharpe_ratio?: number | null;
+  balance_training_calmar_ratio?: number | null;
+  balance_training_cagr?: number | null;
+  balance_training_max_drawdown_ratio?: number | null;
+  balance_validation_sharpe_ratio?: number | null;
+  balance_validation_calmar_ratio?: number | null;
+  balance_validation_cagr?: number | null;
+  balance_validation_max_drawdown_ratio?: number | null;
   top_abs_gain_ticker?: string | null;
   top_rel_gain_ticker?: string | null;
 };
@@ -55,6 +63,8 @@ type NormalizedCandidate = {
   verifyTotalReturn?: number | null;
   verifyCagr?: number | null;
   verifyMaxDrawdownRatio?: number | null;
+  balanceTrainingCagr?: number | null;
+  balanceValidationCagr?: number | null;
   sourceRow: BacktestCacheRow;
 };
 
@@ -275,7 +285,8 @@ export const scoreBacktestParameters = async (
     .map((candidate) => {
       const stability = clampNumber(candidate.stabilityScore, 0, 1);
       const stabilityFactor = Math.pow(stability, scoreSettings.stabilityGamma);
-      const finalScore = candidate.coreScore * candidate.ddPenalty * stabilityFactor;
+      const balancePenalty = computeBalancePenalty(candidate.balanceTrainingCagr, candidate.balanceValidationCagr);
+      const finalScore = candidate.coreScore * candidate.ddPenalty * stabilityFactor * balancePenalty;
       return { ...candidate, finalScore };
     })
     .sort((a, b) => b.finalScore - a.finalScore);
@@ -360,6 +371,8 @@ const evaluateCandidateRow = (
     verifyTotalReturn: parseNullableNumber(row.verify_total_return),
     verifyCagr: parseNullableNumber(row.verify_cagr),
     verifyMaxDrawdownRatio: parseNullableNumber(row.verify_max_drawdown_ratio),
+    balanceTrainingCagr: parseNullableNumber(row.balance_training_cagr),
+    balanceValidationCagr: parseNullableNumber(row.balance_validation_cagr),
     sourceRow: row
   };
 
@@ -436,6 +449,27 @@ const buildAlignedPercentiles = (
   });
 
   return aligned;
+};
+
+const computeBalancePenalty = (
+  trainingCagr?: number | null,
+  validationCagr?: number | null
+): number => {
+  if (trainingCagr === null || trainingCagr === undefined) {
+    return 1;
+  }
+  if (validationCagr === null || validationCagr === undefined) {
+    return 1;
+  }
+  if (!Number.isFinite(trainingCagr) || !Number.isFinite(validationCagr)) {
+    return 1;
+  }
+  const denom = Math.abs(trainingCagr) + Math.abs(validationCagr);
+  if (denom <= 1e-6) {
+    return 1;
+  }
+  const shortfall = Math.max(0, trainingCagr - validationCagr);
+  return clampNumber(1 - shortfall / denom, 0, 1);
 };
 
 const applyStabilityScores = (
