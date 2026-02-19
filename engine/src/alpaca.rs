@@ -577,18 +577,16 @@ async fn parse_alpaca_json<T: DeserializeOwned>(
         Ok(value) => Ok(value),
         Err(err) => {
             warn!(
-                "Alpaca response preview for {} (status {}): {}",
+                "Alpaca response body for {} (status {}): {}",
                 path,
                 status,
-                preview_response(&bytes)
+                response_body(&bytes)
             );
             Err(err).context("failed to parse Alpaca response")
         }
     }
 }
 
-fn preview_response(bytes: &[u8]) -> String {
-    const MAX_CHARS: usize = 1000;
-    let raw = String::from_utf8_lossy(bytes);
-    raw.chars().take(MAX_CHARS).collect()
+fn response_body(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
 }
