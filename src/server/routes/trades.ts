@@ -982,7 +982,7 @@ router.get<TradeParams>('/trades/:id', requireAuth, async (req, res) => {
     );
     const showTradingViewChart = tradingViewChartsEnabledRaw?.trim().toLowerCase() !== 'false';
 
-    res.render('pages/trade-detail', {
+    res.render('pages/trade', {
       title: `Trade ${trade.ticker} - Trade Details`,
       page: 'dashboard',
       user: req.user,

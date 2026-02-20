@@ -648,7 +648,7 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       cacheEntryCount: backtestCacheEntries.length
     };
 
-    res.render('pages/template-detail', {
+    res.render('pages/template', {
       title: `${template.name} Template Overview`,
       page: 'templates',
       user: req.user,
