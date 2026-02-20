@@ -540,16 +540,18 @@ impl<'a> ActiveStrategyBacktester<'a> {
         }
 
         for (strategy, effective_start, months_filter, existing_backtest) in runnable_strategies {
+            let has_linked_account = strategy_has_linked_account(&strategy);
+            let signal_end = if has_linked_account && unique_dates_window.len() > 1 {
+                unique_dates_window[unique_dates_window.len() - 2]
+            } else {
+                backtest_window_end
+            };
             let signals = self
                 .db
-                .get_signals_for_strategy_in_range(
-                    &strategy.id,
-                    effective_start,
-                    backtest_window_end,
-                )
+                .get_signals_for_strategy_in_range(&strategy.id, effective_start, signal_end)
                 .await?;
             let mut parameters = strategy.parameters.clone();
-            if !strategy_has_linked_account(&strategy) {
+            if !has_linked_account {
                 parameters.insert("initialCapital".to_string(), backtest_initial_capital);
             }
             task_tx.send(StrategyBacktestTask {
