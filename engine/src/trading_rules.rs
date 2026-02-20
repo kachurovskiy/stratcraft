@@ -107,7 +107,10 @@ pub fn determine_position_size(params: PositionSizingParams) -> PositionSizingOu
     }
 
     if quantity <= 0 {
-        return PositionSizingOutcome::InsufficientCash { required: price };
+        if available_cash + PRICE_EPSILON < price {
+            return PositionSizingOutcome::InsufficientCash { required: price };
+        }
+        return PositionSizingOutcome::TooSmall;
     }
 
     if trade_value > available_cash + PRICE_EPSILON {
@@ -356,6 +359,21 @@ mod tests {
             insufficient,
             PositionSizingOutcome::InsufficientCash { .. }
         ));
+    }
+
+    #[test]
+    fn test_position_size_too_small_when_allocation_below_one_share() {
+        let too_small = determine_position_size(PositionSizingParams {
+            price: 100.0,
+            available_cash: 1000.0,
+            trade_size_ratio: 0.001,
+            minimum_trade_size: 10.0,
+            position_sizing_mode: 0,
+            confidence: 1.0,
+            vol_target_annual: 0.0,
+            realized_vol: None,
+        });
+        assert_eq!(too_small, PositionSizingOutcome::TooSmall);
     }
 
     #[test]
