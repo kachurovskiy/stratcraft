@@ -7,7 +7,7 @@ use crate::optimizer_status::OptimizerStatus;
 use crate::retry::retry_db_operation;
 use crate::strategy_utils::calculate_period_days_local;
 use anyhow::{anyhow, Result};
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use log::{info, warn};
 use serde_json::json;
@@ -270,6 +270,7 @@ impl<'a> ActiveStrategyBacktester<'a> {
             }
 
             let mut effective_start = strategy.backtest_start_date.unwrap_or(default_period_start);
+            let mut first_trade_date: Option<DateTime<Utc>> = None;
             if has_linked_account {
                 let first_filled_trade = self
                     .db
@@ -283,7 +284,28 @@ impl<'a> ActiveStrategyBacktester<'a> {
                     skipped_strategies += 1;
                     continue;
                 };
-                effective_start = first_filled_trade;
+                first_trade_date = Some(first_filled_trade);
+                // Shift back one trading day so signals can open the first live entry date.
+                let trade_index = match unique_dates_window.binary_search(&first_filled_trade) {
+                    Ok(idx) => idx,
+                    Err(idx) => idx.saturating_sub(1),
+                };
+                let signal_index = trade_index.saturating_sub(1);
+                effective_start = *unique_dates_window.get(signal_index).unwrap_or_else(|| {
+                    unique_dates_window
+                        .first()
+                        .expect("unique_dates_window is not empty")
+                });
+            }
+            if let Some(first_trade_date) = first_trade_date {
+                if first_trade_date < backtest_window_start {
+                    info!(
+                        "Skipping account strategy {} because its first filled trade date {} is before available data starting at {}",
+                        strategy.name, first_trade_date, backtest_window_start
+                    );
+                    skipped_strategies += 1;
+                    continue;
+                }
             }
             if effective_start < backtest_window_start {
                 if has_linked_account {
