@@ -1849,6 +1849,13 @@ impl Engine {
             }
             sell_signals.entry(ticker).or_insert(signal);
         }
+        let sell_fraction = coerce_binary_param(self.config.sell_fraction, 1.0);
+        if sell_fraction == 0.0 && !sell_signals.is_empty() {
+            for ticker in sell_signals.keys() {
+                record_skip(ticker, SignalAction::Sell, "sell_fraction_zero", None);
+            }
+            sell_signals.clear();
+        }
 
         let mut actionable_signals: Vec<(u64, String, &GeneratedSignal)> = signals
             .iter()
@@ -3535,6 +3542,61 @@ mod tests {
         assert_eq!(close.reason.as_deref(), Some("sell_signal_sync"));
         assert_eq!(close.order_type.as_deref(), Some("market"));
         assert_eq!(close.signal_confidence, Some(0.6));
+    }
+
+    #[test]
+    fn test_plan_account_operations_skips_sell_signal_when_sell_fraction_zero() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.sell_fraction = 0.0;
+
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("HALT", vec![100.0, 95.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "HALT".to_string(),
+            action: SignalAction::Sell,
+            confidence: Some(0.3),
+        }];
+        let state = sample_account_state_with_holdings(0.0, &[("HALT", 10, 100.0)], None);
+
+        let existing_trade = sample_active_trade(
+            "halt-trade",
+            "strategy",
+            "HALT",
+            10,
+            100.0,
+            dates[history_offset],
+            None,
+        );
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            &HashSet::new(),
+            &[existing_trade],
+            0,
+            &HashMap::new(),
+        );
+
+        assert!(
+            plan.operations
+                .iter()
+                .all(|op| op.operation_type != AccountOperationType::ClosePosition),
+            "expected sell operations to be skipped when sell fraction is zero"
+        );
+        assert!(
+            plan.skipped_signals.iter().any(|skip| {
+                skip.ticker == "HALT"
+                    && matches!(skip.action, SignalAction::Sell)
+                    && skip.reason == "sell_fraction_zero"
+            }),
+            "expected sell_fraction_zero skip reason"
+        );
     }
 
     #[test]
