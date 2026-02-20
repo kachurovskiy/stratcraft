@@ -156,7 +156,7 @@
           <div class="card-header d-flex justify-content-between align-items-center">
             <div>
               <h5 class="mb-0">Cache Performance Overview</h5>
-              <small class="text-muted">Sharpe, Calmar, and total return plotted together.</small>
+              <small class="text-muted">Sharpe, balance (validation/training CAGR), and total return plotted together.</small>
             </div>
             <span class="badge bg-light text-dark">{{performanceChartPoints.length}} plotted</span>
           </div>
@@ -165,7 +165,7 @@
               <canvas
                 id="cachePerformanceBubbleChart"
                 class="position-absolute top-0 start-0 w-100 h-100"
-                aria-label="Sharpe vs Calmar vs total return chart"
+                aria-label="Sharpe vs balance vs total return chart"
               ></canvas>
             </div>
             <p class="text-muted small mb-0 mt-2">
@@ -235,6 +235,8 @@
             <th class="cache-sortable" data-sort-key="total-return" data-sort-type="number" role="button" aria-sort="none">Total Return</th>
             <th class="cache-sortable" data-sort-key="cagr" data-sort-type="number" role="button" aria-sort="none">CAGR</th>
             <th class="cache-sortable" data-sort-key="verify-cagr" data-sort-type="number" role="button" aria-sort="none">Verify CAGR</th>
+            <th class="cache-sortable" data-sort-key="balance-training-cagr" data-sort-type="number" role="button" aria-sort="none">Balance Train CAGR</th>
+            <th class="cache-sortable" data-sort-key="balance-validation-cagr" data-sort-type="number" role="button" aria-sort="none">Balance Val CAGR</th>
             <th class="cache-sortable" data-sort-key="drawdown" data-sort-type="number" role="button" aria-sort="none">Drawdown</th>
             <th class="cache-sortable" data-sort-key="core-score" data-sort-type="number" role="button" aria-sort="none">Core Score</th>
             <th class="cache-sortable" data-sort-key="stability-score" data-sort-type="number" role="button" aria-sort="none">Stability</th>
@@ -242,9 +244,6 @@
             <th class="cache-sortable" data-sort-key="trades" data-sort-type="number" role="button" aria-sort="none">Trades</th>
             <th class="cache-sortable" data-sort-key="tickers" data-sort-type="number" role="button" aria-sort="none">Tickers</th>
             <th class="cache-sortable" data-sort-key="period" data-sort-type="string" role="button" aria-sort="none">Period</th>
-            <th class="cache-sortable" data-sort-key="date-range" data-sort-type="date" role="button" aria-sort="none">Date Range</th>
-            <th class="cache-sortable" data-sort-key="tool" data-sort-type="string" role="button" aria-sort="none">Tool</th>
-            <th class="cache-sortable" data-sort-key="cached-at" data-sort-type="date" role="button" aria-sort="none">Cached</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -262,6 +261,8 @@
               data-total-return="{{totalReturn}}"
               data-cagr="{{cagr}}"
               data-verify-cagr="{{verifyCagr}}"
+              data-balance-training-cagr="{{balanceTrainingCagr}}"
+              data-balance-validation-cagr="{{balanceValidationCagr}}"
               data-drawdown="{{maxDrawdownPercent}}"
               data-core-score="{{coreScore}}"
               data-stability-score="{{stabilityScore}}"
@@ -269,9 +270,6 @@
               data-trades="{{totalTrades}}"
               data-tickers="{{tickerCount}}"
               data-period="{{periodLabel}}"
-              data-date-range="{{formatDate startDate 'YYYY-MM-DD'}}"
-              data-tool="{{tool}}"
-              data-cached-at="{{createdAt}}"
             >
               {{#each parameterCells}}
                 <td class="small text-nowrap{{#if isDifferent}} table-warning fw-semibold{{/if}}" style="min-width: 50px; width: 50px;">
@@ -314,6 +312,20 @@
                 {{/if}}
               </td>
               <td>
+                {{#if hasBalanceTrainingCagr}}
+                  {{formatRateAsPercent balanceTrainingCagr}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
+                {{#if hasBalanceValidationCagr}}
+                  {{formatRateAsPercent balanceValidationCagr}}
+                {{else}}
+                  <span class="text-muted">N/A</span>
+                {{/if}}
+              </td>
+              <td>
                 {{#if maxDrawdownPercent}}
                   {{maxDrawdownPercent}}%
                 {{else}}
@@ -344,13 +356,6 @@
               <td>{{totalTrades}}</td>
               <td>{{tickerCount}}</td>
               <td>{{periodLabel}}</td>
-              <td>
-                <small>{{formatDate startDate 'YYYY-MM-DD'}} – {{formatDate endDate 'YYYY-MM-DD'}}</small>
-              </td>
-              <td>
-                {{#if tool}}{{tool}}{{else}}<span class="text-muted">—</span>{{/if}}
-              </td>
-              <td><small>{{formatDate createdAt}}</small></td>
               <td class="text-end">
                 <a href="/strategies/create?template={{../template.id}}&params={{encodeURIComponent (json parameters)}}" class="btn btn-outline-primary btn-sm">
                   Use Params
@@ -635,21 +640,43 @@
         return () => {};
       }
 
-      const palette = buildReturnPalette(performanceChartPointsRaw);
-      const dataset = performanceChartPointsRaw.map(point => ({
-        x: point.sharpeRatio,
-        y: point.calmarRatio,
-        totalReturn: point.totalReturn,
-        cacheEntryId: point.id,
-        sharpeRatio: point.sharpeRatio,
-        calmarRatio: point.calmarRatio,
-        totalTrades: point.totalTrades,
-        tickerCount: point.tickerCount,
-        periodLabel: point.periodLabel,
-        createdAt: point.createdAt,
-        tool: point.tool,
-        parameterSummary: point.parameterSummary
-      }));
+      const dataset = performanceChartPointsRaw.map(point => {
+        const sharpeRatio = typeof point.sharpeRatio === 'number' ? point.sharpeRatio : null;
+        const trainingCagr = typeof point.balanceTrainingCagr === 'number' ? point.balanceTrainingCagr : null;
+        const validationCagr = typeof point.balanceValidationCagr === 'number' ? point.balanceValidationCagr : null;
+        if (!Number.isFinite(sharpeRatio) || !Number.isFinite(trainingCagr) || !Number.isFinite(validationCagr)) {
+          return null;
+        }
+        if (trainingCagr === 0) {
+          return null;
+        }
+        const balanceRatio = validationCagr / trainingCagr;
+        if (!Number.isFinite(balanceRatio) || balanceRatio < 0.2 || balanceRatio > 5) {
+          return null;
+        }
+        return {
+          x: sharpeRatio,
+          y: balanceRatio,
+          totalReturn: point.totalReturn,
+          cacheEntryId: point.id,
+          sharpeRatio,
+          balanceRatio,
+          balanceTrainingCagr: trainingCagr,
+          balanceValidationCagr: validationCagr,
+          totalTrades: point.totalTrades,
+          tickerCount: point.tickerCount,
+          periodLabel: point.periodLabel,
+          createdAt: point.createdAt,
+          tool: point.tool,
+          parameterSummary: point.parameterSummary
+        };
+      }).filter(Boolean);
+
+      if (!dataset.length) {
+        return () => {};
+      }
+
+      const palette = buildReturnPalette(dataset);
 
       const xBounds = computeBounds(dataset.map(point => point.x), 0.03);
       const yBounds = computeBounds(dataset.map(point => point.y), 0.05);
@@ -710,7 +737,7 @@
               ...(xBounds ? { min: xBounds.min, max: xBounds.max } : {})
             },
             y: {
-              title: { display: true, text: 'Calmar Ratio' },
+              title: { display: true, text: 'Balance (Validation / Training CAGR)' },
               ...(yBounds ? { min: yBounds.min, max: yBounds.max } : {})
             }
           },
@@ -723,15 +750,23 @@
                   const sharpe = typeof point.sharpeRatio === 'number'
                     ? point.sharpeRatio.toFixed(2)
                     : 'N/A';
-                  const calmar = typeof point.calmarRatio === 'number'
-                    ? point.calmarRatio.toFixed(2)
+                  const balance = typeof point.balanceRatio === 'number'
+                    ? point.balanceRatio.toFixed(2)
                     : 'N/A';
                   const totalReturn = formatUsdLabel(point.totalReturn);
+                  const trainingCagr = typeof point.balanceTrainingCagr === 'number'
+                    ? formatPercent(point.balanceTrainingCagr)
+                    : 'N/A';
+                  const validationCagr = typeof point.balanceValidationCagr === 'number'
+                    ? formatPercent(point.balanceValidationCagr)
+                    : 'N/A';
                   const trades = typeof point.totalTrades === 'number' ? point.totalTrades : 'N/A';
                   const tickers = typeof point.tickerCount === 'number' ? point.tickerCount : 'N/A';
                   const pieces = [
                     `Sharpe: ${sharpe}`,
-                    `Calmar: ${calmar}`,
+                    `Balance: ${balance}`,
+                    `Training CAGR: ${trainingCagr}`,
+                    `Validation CAGR: ${validationCagr}`,
                     `Total Return: ${totalReturn}`,
                     `Trades: ${trades}`,
                     `Tickers: ${tickers}`
@@ -1036,14 +1071,14 @@
         'total-return': 'desc',
         'cagr': 'desc',
         'verify-cagr': 'desc',
+        'balance-training-cagr': 'desc',
+        'balance-validation-cagr': 'desc',
         'drawdown': 'asc',
         'core-score': 'desc',
         'stability-score': 'desc',
         'final-score': 'desc',
         'trades': 'desc',
-        'tickers': 'desc',
-        'date-range': 'desc',
-        'cached-at': 'desc'
+        'tickers': 'desc'
       };
 
       let sortState = { key: null, direction: 'asc' };

@@ -478,6 +478,12 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
         const maxDrawdownRatio = typeof entry.max_drawdown_ratio === 'number'
           ? entry.max_drawdown_ratio
           : null;
+        const balanceTrainingCagr = typeof entry.balance_training_cagr === 'number'
+          ? entry.balance_training_cagr
+          : null;
+        const balanceValidationCagr = typeof entry.balance_validation_cagr === 'number'
+          ? entry.balance_validation_cagr
+          : null;
         const maxDrawdownPercent = typeof maxDrawdownRatio === 'number'
           ? Math.round(maxDrawdownRatio * 100)
           : null;
@@ -507,6 +513,10 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
           hasVerifyCagr: verifyCagr !== null,
           maxDrawdownRatio,
           maxDrawdownPercent,
+          balanceTrainingCagr,
+          hasBalanceTrainingCagr: balanceTrainingCagr !== null,
+          balanceValidationCagr,
+          hasBalanceValidationCagr: balanceValidationCagr !== null,
           totalTrades: entry.total_trades,
           tickerCount: entry.ticker_count,
           startDate: entry.startDate,
@@ -614,16 +624,17 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
     };
 
     const performanceChartPoints = backtestCacheEntries
-      .filter(entry => entry.hasSharpeRatio && entry.hasCalmarRatio && entry.hasTotalReturn)
+      .filter(entry => entry.hasSharpeRatio && entry.hasTotalReturn)
       .map(entry => ({
         id: entry.id,
         sharpeRatio: entry.sharpeRatio,
-        calmarRatio: entry.calmarRatio,
         totalReturn: entry.totalReturn,
         cagr: entry.cagr,
         verifyCagr: entry.verifyCagr,
         maxDrawdownRatio: entry.maxDrawdownRatio,
         maxDrawdownPercent: entry.maxDrawdownPercent,
+        balanceTrainingCagr: entry.balanceTrainingCagr,
+        balanceValidationCagr: entry.balanceValidationCagr,
         totalTrades: entry.totalTrades,
         tickerCount: entry.tickerCount,
         periodLabel: entry.periodLabel,
