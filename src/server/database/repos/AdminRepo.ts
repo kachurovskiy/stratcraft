@@ -31,6 +31,7 @@ type AdminEntityCounts = {
   trades: number;
   accounts: number;
   accountOperations: number;
+  accountSignalSkips: number;
   signals: number;
   tickers: number;
   candles: number;
@@ -75,6 +76,7 @@ export class AdminRepo {
       trades: 0,
       accounts: 0,
       accountOperations: 0,
+      accountSignalSkips: 0,
       signals: 0,
       tickers: 0,
       candles: 0
@@ -87,6 +89,7 @@ export class AdminRepo {
       { key: 'trades', sql: 'SELECT COUNT(*) AS count FROM trades' },
       { key: 'accounts', sql: 'SELECT COUNT(*) AS count FROM accounts' },
       { key: 'accountOperations', sql: 'SELECT COUNT(*) AS count FROM account_operations' },
+      { key: 'accountSignalSkips', sql: 'SELECT COUNT(*) AS count FROM account_signal_skips' },
       { key: 'signals', sql: 'SELECT COUNT(*) AS count FROM signals' },
       { key: 'tickers', sql: 'SELECT COUNT(*) AS count FROM tickers' },
       { key: 'candles', sql: 'SELECT COUNT(*) AS count FROM candles' }
