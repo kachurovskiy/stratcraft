@@ -157,7 +157,6 @@ export class Server {
     await this.ensureEmailSecurityEmoji();
     await this.jobScheduler.refreshAutoOptimizationSettings();
     this.cpuMetricsService.start();
-
     try {
       await this.remoteOptimizationService.ensureHetznerSshKeys();
     } catch (error) {

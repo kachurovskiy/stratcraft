@@ -13,7 +13,6 @@ const DEPLOY_TRIGGER_SCRIPT_PATH = '/usr/local/bin/stratcraft-manual-update-chec
 const COMMAND_OUTPUT_MAX_CHARS = 500;
 const COMMAND_TIMEOUT_MS = 120000;
 const MAX_CPU_METRIC_POINTS = 5000;
-
 const stripAnsiCodes = (value: string): string => value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
 const sanitizeCommandOutput = (output?: string): string | undefined => {
@@ -62,6 +61,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
 }, async (req: Request, res: Response) => {
   try {
     const deploymentControlsEnabled = canUseDeploymentControls();
+    const cpuMetrics = req.cpuMetricsService.getSummary(MAX_CPU_METRIC_POINTS);
 
     res.render('pages/deployment', {
       title: 'Deployment',
@@ -69,7 +69,8 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       user: req.user,
       success: req.query.success as string,
       error: req.query.error as string,
-      deploymentControlsEnabled
+      deploymentControlsEnabled,
+      cpuMetrics
     });
   } catch (error) {
     console.error('Error loading deployment panel:', error);
@@ -78,17 +79,6 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       error: 'Failed to load deployment panel'
     });
   }
-});
-
-// CPU metrics (admin only)
-router.get('/cpu-metrics', (req: Request, res: Response, next: NextFunction) => {
-  req.authMiddleware.requireAuth(req, res, next);
-}, (req: Request, res: Response, next: NextFunction) => {
-  req.authMiddleware.requireAdmin(req, res, next);
-}, (req: Request, res: Response) => {
-  const summary = req.cpuMetricsService.getSummary(MAX_CPU_METRIC_POINTS);
-  res.set('Cache-Control', 'no-store');
-  res.json(summary);
 });
 
 // Trigger server update (admin only)

@@ -7,3 +7,5 @@ Assume ticker strings are non-empty, have no whitespace and are uppercase.
 When done, run cargo fmt and check tests.
 
 Produce brief 1-sentence commit message in the end.
+
+Do not add REST APIs, use server-side rendering and forms.

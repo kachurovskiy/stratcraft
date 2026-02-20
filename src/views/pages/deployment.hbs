@@ -123,7 +123,6 @@
     const cpuStartedAt = document.getElementById('cpuStartedAt');
     const cpuChartEmptyState = document.getElementById('cpuChartEmptyState');
 
-    const REFRESH_MS = 30000;
     const dateFormatter = new Intl.DateTimeFormat(undefined, {
       month: 'short',
       day: '2-digit',
@@ -153,6 +152,18 @@
     };
 
     const updateSummary = (data) => {
+      if (!data) {
+        cpuCurrentAvg.textContent = '--';
+        cpuCoreRange.textContent = '--';
+        cpuCoreSpread.textContent = 'Spread: --';
+        cpuLastSample.textContent = 'Collecting samples...';
+        cpuCoreCount.textContent = '--';
+        cpuSampleInterval.textContent = 'Sample interval: --';
+        cpuUptime.textContent = '--';
+        cpuStartedAt.textContent = 'Started: --';
+        return;
+      }
+
       const latest = data.latest;
       const coreCount = Number.isFinite(data.coreCount) && data.coreCount > 0 ? data.coreCount : 0;
       if (!latest) {
@@ -264,23 +275,11 @@
       }
     };
 
-    const loadCpuMetrics = async () => {
-      try {
-        const response = await fetch('/admin/deployment/cpu-metrics', { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error(`Failed to load CPU metrics (${response.status})`);
-        }
-        const data = await response.json();
-        updateSummary(data);
-        const coreCount = Number.isFinite(data.coreCount) && data.coreCount > 0 ? data.coreCount : 1;
-        renderChart(data.samples, coreCount);
-      } catch (error) {
-        console.error('Failed to load CPU metrics:', error);
-      }
-    };
-
-    loadCpuMetrics();
-    setInterval(loadCpuMetrics, REFRESH_MS);
+    const cpuMetrics = {{{json cpuMetrics}}};
+    updateSummary(cpuMetrics);
+    const coreCount =
+      cpuMetrics && Number.isFinite(cpuMetrics.coreCount) && cpuMetrics.coreCount > 0 ? cpuMetrics.coreCount : 1;
+    renderChart(cpuMetrics ? cpuMetrics.samples : [], coreCount);
   });
 </script>
 
