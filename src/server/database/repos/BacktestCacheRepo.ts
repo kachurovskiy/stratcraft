@@ -692,6 +692,14 @@ export class BacktestCacheRepo {
           verify_cagr: number | null;
           max_drawdown_ratio: number;
           verify_max_drawdown_ratio: number | null;
+          balance_training_sharpe_ratio: number | null;
+          balance_training_calmar_ratio: number | null;
+          balance_training_cagr: number | null;
+          balance_training_max_drawdown_ratio: number | null;
+          balance_validation_sharpe_ratio: number | null;
+          balance_validation_calmar_ratio: number | null;
+          balance_validation_cagr: number | null;
+          balance_validation_max_drawdown_ratio: number | null;
           total_trades: number;
           ticker_count: number;
           created_at: Date;
@@ -709,6 +717,14 @@ export class BacktestCacheRepo {
             verify_cagr,
             max_drawdown_ratio,
             verify_max_drawdown_ratio,
+            balance_training_sharpe_ratio,
+            balance_training_calmar_ratio,
+            balance_training_cagr,
+            balance_training_max_drawdown_ratio,
+            balance_validation_sharpe_ratio,
+            balance_validation_calmar_ratio,
+            balance_validation_cagr,
+            balance_validation_max_drawdown_ratio,
             total_trades,
             ticker_count,
             created_at
@@ -737,6 +753,14 @@ export class BacktestCacheRepo {
         verifyCagr: toNullableNumber(row.verify_cagr),
         maxDrawdownRatio: toNullableNumber(row.max_drawdown_ratio),
         verifyMaxDrawdownRatio: toNullableNumber(row.verify_max_drawdown_ratio),
+        balanceTrainingSharpeRatio: toNullableNumber(row.balance_training_sharpe_ratio),
+        balanceTrainingCalmarRatio: toNullableNumber(row.balance_training_calmar_ratio),
+        balanceTrainingCagr: toNullableNumber(row.balance_training_cagr),
+        balanceTrainingMaxDrawdownRatio: toNullableNumber(row.balance_training_max_drawdown_ratio),
+        balanceValidationSharpeRatio: toNullableNumber(row.balance_validation_sharpe_ratio),
+        balanceValidationCalmarRatio: toNullableNumber(row.balance_validation_calmar_ratio),
+        balanceValidationCagr: toNullableNumber(row.balance_validation_cagr),
+        balanceValidationMaxDrawdownRatio: toNullableNumber(row.balance_validation_max_drawdown_ratio),
         totalTrades: toNullableNumber(row.total_trades),
         tickerCount: toNullableNumber(row.ticker_count),
         createdAt: row.created_at ? new Date(row.created_at) : null

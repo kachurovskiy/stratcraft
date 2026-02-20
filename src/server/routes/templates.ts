@@ -126,6 +126,14 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       verifyCagr: entry.verifyCagr,
       maxDrawdownRatio: entry.maxDrawdownRatio,
       verifyMaxDrawdownRatio: entry.verifyMaxDrawdownRatio,
+      balanceTrainingSharpeRatio: entry.balanceTrainingSharpeRatio,
+      balanceTrainingCalmarRatio: entry.balanceTrainingCalmarRatio,
+      balanceTrainingCagr: entry.balanceTrainingCagr,
+      balanceTrainingMaxDrawdownRatio: entry.balanceTrainingMaxDrawdownRatio,
+      balanceValidationSharpeRatio: entry.balanceValidationSharpeRatio,
+      balanceValidationCalmarRatio: entry.balanceValidationCalmarRatio,
+      balanceValidationCagr: entry.balanceValidationCagr,
+      balanceValidationMaxDrawdownRatio: entry.balanceValidationMaxDrawdownRatio,
       totalTrades: entry.totalTrades,
       tickerCount: entry.tickerCount,
       createdAt: entry.createdAt
@@ -630,7 +638,6 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       typeof point.verifyCagr === 'number'
     ).length;
     const hasCagrComparisonChartData = cagrComparisonPointCount > 0;
-
     const parameterViews = template.parameters.map((param: StrategyParameter) => ({
       ...param,
       hasDefaultValue: param.default !== undefined && param.default !== null,

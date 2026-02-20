@@ -136,6 +136,14 @@ export type BacktestCachePerformancePoint = {
   verifyCagr: number | null;
   maxDrawdownRatio: number | null;
   verifyMaxDrawdownRatio: number | null;
+  balanceTrainingSharpeRatio: number | null;
+  balanceTrainingCalmarRatio: number | null;
+  balanceTrainingCagr: number | null;
+  balanceTrainingMaxDrawdownRatio: number | null;
+  balanceValidationSharpeRatio: number | null;
+  balanceValidationCalmarRatio: number | null;
+  balanceValidationCagr: number | null;
+  balanceValidationMaxDrawdownRatio: number | null;
   totalTrades: number | null;
   tickerCount: number | null;
   createdAt: Date | null;

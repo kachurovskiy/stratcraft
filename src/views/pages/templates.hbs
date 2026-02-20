@@ -237,6 +237,20 @@
       </div>
     </div>
   </div>
+  <div class="card mt-4">
+    <div class="card-header">
+      <div class="fw-semibold">Balance Training vs Validation</div>
+      <div class="text-muted small">Training-to-validation comparisons colored by CAGR (red = lower, green = higher).</div>
+    </div>
+    <div class="card-body">
+      <div class="template-performance-cloud-grid">
+        <div id="templateBalanceCloudSharpe" class="template-performance-cloud" aria-label="Training vs validation Sharpe scatter chart"></div>
+        <div id="templateBalanceCloudCalmar" class="template-performance-cloud" aria-label="Training vs validation Calmar scatter chart"></div>
+        <div id="templateBalanceCloudCagr" class="template-performance-cloud" aria-label="Training vs validation CAGR scatter chart"></div>
+        <div id="templateBalanceCloudDrawdown" class="template-performance-cloud" aria-label="Training vs validation max drawdown scatter chart"></div>
+      </div>
+    </div>
+  </div>
 {{/if}}
 
 <script>
@@ -250,6 +264,12 @@ const templateCloudTargetIds = {
   sharpeVerifySharpe: 'templatePerformanceCloudSharpeVerifySharpe',
   calmarVerifyCalmar: 'templatePerformanceCloudCalmarVerifyCalmar',
   drawdownVerifyDrawdown: 'templatePerformanceCloudDrawdownVerifyDrawdown'
+};
+const balanceCloudTargetIds = {
+  sharpe: 'templateBalanceCloudSharpe',
+  calmar: 'templateBalanceCloudCalmar',
+  cagr: 'templateBalanceCloudCagr',
+  drawdown: 'templateBalanceCloudDrawdown'
 };
 const templateCloudSymbols = [
   'circle',
@@ -270,6 +290,7 @@ const templateCloudSymbols = [
   'bowtie'
 ];
 const templateCloudEmptyMessage = 'Not enough backtest cache data to render the performance cloud yet.';
+const balanceCloudEmptyMessage = 'Not enough balance training/validation data to render the comparison charts yet.';
 const defaultPlotlyLayout = {
   margin: { l: 40, r: 20, t: 40, b: 55 },
   paper_bgcolor: 'rgba(0,0,0,0)',
@@ -279,6 +300,14 @@ const defaultPlotlyLayout = {
 const defaultPlotlyConfig = { displayModeBar: false, responsive: true };
 
 function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function toNullableNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 }
@@ -408,6 +437,221 @@ function getPerformanceCloudPoints() {
       createdAt
     };
   }).filter(point => point !== null);
+}
+
+function computeRange(values) {
+  const numericValues = values.filter(value => Number.isFinite(value));
+  if (!numericValues.length) {
+    return null;
+  }
+  let min = Math.min(...numericValues);
+  let max = Math.max(...numericValues);
+  if (min === max) {
+    const bump = Math.max(Math.abs(min) * 0.05, 0.01);
+    min -= bump;
+    max += bump;
+  }
+  return { min, max };
+}
+
+function getBalanceComparisonPoints() {
+  if (!Array.isArray(performanceCloudPoints)) {
+    return [];
+  }
+
+  return performanceCloudPoints.map(point => {
+    const resolvedTemplateId = point?.templateId ?? point?.id;
+    if (!resolvedTemplateId) {
+      return null;
+    }
+    const templateId = String(resolvedTemplateId);
+    return {
+      templateId,
+      templateName: point?.templateName ?? `Template ${templateId}`,
+      balanceTrainingSharpeRatio: toNullableNumber(
+        point?.balanceTrainingSharpeRatio ?? point?.balance_training_sharpe_ratio
+      ),
+      balanceValidationSharpeRatio: toNullableNumber(
+        point?.balanceValidationSharpeRatio ?? point?.balance_validation_sharpe_ratio
+      ),
+      balanceTrainingCalmarRatio: toNullableNumber(
+        point?.balanceTrainingCalmarRatio ?? point?.balance_training_calmar_ratio
+      ),
+      balanceValidationCalmarRatio: toNullableNumber(
+        point?.balanceValidationCalmarRatio ?? point?.balance_validation_calmar_ratio
+      ),
+      balanceTrainingCagr: toNullableNumber(
+        point?.balanceTrainingCagr ?? point?.balance_training_cagr
+      ),
+      balanceValidationCagr: toNullableNumber(
+        point?.balanceValidationCagr ?? point?.balance_validation_cagr
+      ),
+      balanceTrainingMaxDrawdownRatio: toNullableNumber(
+        point?.balanceTrainingMaxDrawdownRatio ?? point?.balance_training_max_drawdown_ratio
+      ),
+      balanceValidationMaxDrawdownRatio: toNullableNumber(
+        point?.balanceValidationMaxDrawdownRatio ?? point?.balance_validation_max_drawdown_ratio
+      ),
+      cagr: toNullableNumber(point?.cagr),
+      totalTrades: toNullableNumber(point?.totalTrades ?? point?.total_trades),
+      tickerCount: toNullableNumber(point?.tickerCount ?? point?.ticker_count),
+      createdAt: point?.createdAt ?? point?.created_at ?? null
+    };
+  }).filter(point => point !== null);
+}
+
+function resolveBalanceColorCagr(point) {
+  const rawCagr = point.balanceValidationCagr ?? point.balanceTrainingCagr ?? point.cagr;
+  return normalizeRate(rawCagr);
+}
+
+function buildBalanceHoverText(point, chart) {
+  const trainingCagrLabel = point.balanceTrainingCagr !== null
+    ? formatPercent(point.balanceTrainingCagr)
+    : 'N/A';
+  const validationCagrLabel = point.balanceValidationCagr !== null
+    ? formatPercent(point.balanceValidationCagr)
+    : 'N/A';
+  const colorCagrLabel = Number.isFinite(point.colorCagr)
+    ? formatPercent(point.colorCagr)
+    : 'N/A';
+  const tradesLabel = formatCount(point.totalTrades);
+  const tickersLabel = formatCount(point.tickerCount);
+
+  return [
+    `<b>${point.templateName}</b>`,
+    `${chart.xLabel}: ${chart.formatX(point.x)}`,
+    `${chart.yLabel}: ${chart.formatY(point.y)}`,
+    `Training CAGR: ${trainingCagrLabel}`,
+    `Validation CAGR: ${validationCagrLabel}`,
+    `CAGR (color): ${colorCagrLabel}`,
+    `Trades: ${tradesLabel}`,
+    `Tickers: ${tickersLabel}`
+  ].join('<br>');
+}
+
+function renderBalanceComparisonClouds() {
+  const targets = Object.values(balanceCloudTargetIds)
+    .map(targetId => document.getElementById(targetId))
+    .filter(Boolean);
+  if (!targets.length) {
+    return;
+  }
+  if (typeof Plotly === 'undefined') {
+    targets.forEach(target => showChartEmptyState(target.id, 'Plotly is not available to render this chart.'));
+    return;
+  }
+
+  const points = getBalanceComparisonPoints();
+  if (!points.length) {
+    targets.forEach(target => showChartEmptyState(target.id, balanceCloudEmptyMessage));
+    return;
+  }
+
+  const colorRange = computeRange(points
+    .map(point => resolveBalanceColorCagr(point))
+    .filter(value => Number.isFinite(value)));
+
+  const charts = [
+    {
+      targetId: balanceCloudTargetIds.sharpe,
+      xLabel: 'Training Sharpe',
+      yLabel: 'Validation Sharpe',
+      xValue: point => point.balanceTrainingSharpeRatio,
+      yValue: point => point.balanceValidationSharpeRatio,
+      formatX: value => formatNumber(value, 2),
+      formatY: value => formatNumber(value, 2)
+    },
+    {
+      targetId: balanceCloudTargetIds.calmar,
+      xLabel: 'Training Calmar',
+      yLabel: 'Validation Calmar',
+      xValue: point => point.balanceTrainingCalmarRatio,
+      yValue: point => point.balanceValidationCalmarRatio,
+      formatX: value => formatNumber(value, 2),
+      formatY: value => formatNumber(value, 2)
+    },
+    {
+      targetId: balanceCloudTargetIds.cagr,
+      xLabel: 'Training CAGR',
+      yLabel: 'Validation CAGR',
+      xValue: point => normalizeRate(point.balanceTrainingCagr),
+      yValue: point => normalizeRate(point.balanceValidationCagr),
+      formatX: formatPercent,
+      formatY: formatPercent,
+      xTickFormat: '.0%',
+      yTickFormat: '.0%'
+    },
+    {
+      targetId: balanceCloudTargetIds.drawdown,
+      xLabel: 'Training Max Drawdown',
+      yLabel: 'Validation Max Drawdown',
+      xValue: point => normalizeRate(point.balanceTrainingMaxDrawdownRatio),
+      yValue: point => normalizeRate(point.balanceValidationMaxDrawdownRatio),
+      formatX: formatPercent,
+      formatY: formatPercent,
+      xTickFormat: '.0%',
+      yTickFormat: '.0%'
+    }
+  ];
+
+  charts.forEach(chart => {
+    const target = document.getElementById(chart.targetId);
+    if (!target) {
+      return;
+    }
+    const chartPoints = points.map(point => {
+      const x = chart.xValue(point);
+      const y = chart.yValue(point);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+      }
+      const colorCagr = resolveBalanceColorCagr(point);
+      if (!Number.isFinite(colorCagr)) {
+        return null;
+      }
+      return {
+        ...point,
+        x,
+        y,
+        colorCagr
+      };
+    }).filter(point => point !== null);
+
+    if (!chartPoints.length) {
+      showChartEmptyState(target.id, balanceCloudEmptyMessage);
+      return;
+    }
+
+    const marker = {
+      size: 6,
+      color: chartPoints.map(point => point.colorCagr),
+      colorscale: 'RdYlGn',
+      opacity: 0.65
+    };
+    if (colorRange) {
+      marker.cmin = colorRange.min;
+      marker.cmax = colorRange.max;
+    }
+
+    const trace = {
+      type: 'scatter',
+      mode: 'markers',
+      x: chartPoints.map(point => point.x),
+      y: chartPoints.map(point => point.y),
+      text: chartPoints.map(point => buildBalanceHoverText(point, chart)),
+      hovertemplate: '%{text}<extra></extra>',
+      marker
+    };
+
+    const layout = {
+      ...defaultPlotlyLayout,
+      xaxis: { title: chart.xLabel, tickformat: chart.xTickFormat, automargin: true },
+      yaxis: { title: chart.yLabel, tickformat: chart.yTickFormat, automargin: true }
+    };
+
+    Plotly.react(target, [trace], layout, defaultPlotlyConfig);
+  });
 }
 
 function renderTemplatePerformanceClouds() {
@@ -643,6 +887,7 @@ function renderTemplatePerformanceClouds() {
 
 document.addEventListener('DOMContentLoaded', function() {
   renderTemplatePerformanceClouds();
+  renderBalanceComparisonClouds();
 
   if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
     document.querySelectorAll('[data-template-score-popover]').forEach(element => {
