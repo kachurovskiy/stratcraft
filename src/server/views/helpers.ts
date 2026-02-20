@@ -86,6 +86,43 @@ function formatTimeAgoShort(value: DateInput) {
   return isFuture ? `in ${valueLabel}` : `${valueLabel} ago`;
 }
 
+function formatDurationMs(value: number) {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return '--';
+  }
+  const totalSeconds = Math.floor(numeric / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+  const totalHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (totalHours < 24) {
+    return `${totalHours}h ${minutes}m`;
+  }
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `${days}d ${hours}h`;
+}
+
+function formatTimeAgoShortWithSeconds(value: DateInput) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Invalid Date';
+  }
+  const diffMs = parsed.getTime() - Date.now();
+  const isFuture = diffMs > 0;
+  const label = formatDurationMs(Math.abs(diffMs));
+  if (label === '--') {
+    return '--';
+  }
+  return isFuture ? `in ${label}` : `${label} ago`;
+}
+
 function formatDateTimeWithTimezone(value: DateInput) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
@@ -138,6 +175,9 @@ export const viewHelpers = {
   formatTimeAgoShort(date: DateInput) {
     return formatTimeAgoShort(date);
   },
+  formatTimeAgoShortWithSeconds(date: DateInput) {
+    return formatTimeAgoShortWithSeconds(date);
+  },
   formatDateTimeWithTimezone(date: DateInput) {
     return formatDateTimeWithTimezone(date);
   },
@@ -169,6 +209,9 @@ export const viewHelpers = {
       return `${hours}h ${remainingMinutes}m`;
     }
     return `${remainingMinutes}m`;
+  },
+  formatDurationMs(value: number) {
+    return formatDurationMs(value);
   },
   formatLogTime(date: Date) {
     const logDate = new Date(date);
