@@ -48,7 +48,12 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
     let mut parameter_sets = Vec::with_capacity(cache_entries.len());
     let mut ids_by_signature: HashMap<String, Vec<String>> = HashMap::new();
     let mut scheduled_signatures = HashSet::new();
+    let mut skipped = 0;
     for entry in cache_entries {
+        if entry.verify_complete {
+            skipped += 1;
+            continue;
+        }
         let signature = parameter_signature(&entry.parameters);
         ids_by_signature
             .entry(signature.clone())
@@ -61,10 +66,17 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
 
     if parameter_sets.is_empty() {
         info!(
-            "No valid parameter sets available to verify for template {}",
+            "All cached rows already have verification metrics for template {}",
             template_id
         );
         return Ok(());
+    }
+
+    if skipped > 0 {
+        info!(
+            "Skipping {} cached row(s) with existing verification metrics for template {}",
+            skipped, template_id
+        );
     }
 
     info!(

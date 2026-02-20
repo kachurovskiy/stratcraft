@@ -66,26 +66,74 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
         end_date: Some(balance_end),
     };
 
-    let mut parameter_sets = Vec::with_capacity(cache_entries.len());
-    let mut ids_by_signature: HashMap<String, Vec<String>> = HashMap::new();
-    let mut scheduled_signatures = HashSet::new();
-    for entry in cache_entries {
+    let mut training_parameter_sets = Vec::with_capacity(cache_entries.len());
+    let mut training_ids_by_signature: HashMap<String, Vec<String>> = HashMap::new();
+    let mut training_scheduled_signatures = HashSet::new();
+    let mut training_skipped = 0;
+
+    let mut validation_parameter_sets = Vec::with_capacity(cache_entries.len());
+    let mut validation_ids_by_signature: HashMap<String, Vec<String>> = HashMap::new();
+    let mut validation_scheduled_signatures = HashSet::new();
+    let mut validation_skipped = 0;
+
+    for entry in &cache_entries {
+        let needs_training = !entry.balance_training_complete;
+        let needs_validation = !entry.balance_validation_complete;
+
+        if !needs_training {
+            training_skipped += 1;
+        }
+        if !needs_validation {
+            validation_skipped += 1;
+        }
+
+        if !needs_training && !needs_validation {
+            continue;
+        }
+
         let signature = parameter_signature(&entry.parameters);
-        ids_by_signature
-            .entry(signature.clone())
-            .or_default()
-            .push(entry.id);
-        if scheduled_signatures.insert(signature) {
-            parameter_sets.push(entry.parameters);
+
+        if needs_training {
+            training_ids_by_signature
+                .entry(signature.clone())
+                .or_default()
+                .push(entry.id.clone());
+            if training_scheduled_signatures.insert(signature.clone()) {
+                training_parameter_sets.push(entry.parameters.clone());
+            }
+        }
+
+        if needs_validation {
+            validation_ids_by_signature
+                .entry(signature.clone())
+                .or_default()
+                .push(entry.id.clone());
+            if validation_scheduled_signatures.insert(signature) {
+                validation_parameter_sets.push(entry.parameters.clone());
+            }
         }
     }
 
-    if parameter_sets.is_empty() {
+    if training_parameter_sets.is_empty() && validation_parameter_sets.is_empty() {
         info!(
-            "No valid parameter sets available to balance for template {}",
+            "All cached rows already have balance metrics for template {}",
             template_id
         );
         return Ok(());
+    }
+
+    if training_skipped > 0 {
+        info!(
+            "Skipping {} cached row(s) with existing balance training metrics for template {}",
+            training_skipped, template_id
+        );
+    }
+
+    if validation_skipped > 0 {
+        info!(
+            "Skipping {} cached row(s) with existing balance validation metrics for template {}",
+            validation_skipped, template_id
+        );
     }
 
     let training_updated = run_balance_scope(
@@ -93,8 +141,8 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
         &db,
         template_id,
         market_data_file,
-        &parameter_sets,
-        &ids_by_signature,
+        &training_parameter_sets,
+        &training_ids_by_signature,
         filters,
         BalanceScope::Training,
         &start_label,
@@ -107,8 +155,8 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
         &db,
         template_id,
         market_data_file,
-        &parameter_sets,
-        &ids_by_signature,
+        &validation_parameter_sets,
+        &validation_ids_by_signature,
         filters,
         BalanceScope::Validation,
         &start_label,
@@ -138,6 +186,14 @@ async fn run_balance_scope(
 ) -> Result<usize> {
     let scope_label = scope.label();
     let ticker_scope = scope.ticker_scope();
+
+    if parameter_sets.is_empty() {
+        info!(
+            "Skipping balance {} run for template {}: no cached rows require balance metrics",
+            scope_label, template_id
+        );
+        return Ok(0);
+    }
 
     let mut context = match app
         .engine_context_from_file(market_data_file, ticker_scope, Some(filters))

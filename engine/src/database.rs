@@ -29,6 +29,9 @@ pub struct BacktestCacheEntry {
     pub template_id: String,
     pub parameters: HashMap<String, f64>,
     pub calmar_ratio: f64,
+    pub verify_complete: bool,
+    pub balance_training_complete: bool,
+    pub balance_validation_complete: bool,
 }
 
 pub struct LightgbmModelRecord {
@@ -1298,7 +1301,22 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT id, template_id, parameters, calmar_ratio
+                "SELECT id,
+                        template_id,
+                        parameters,
+                        calmar_ratio,
+                        (verify_sharpe_ratio IS NOT NULL
+                         AND verify_calmar_ratio IS NOT NULL
+                         AND verify_cagr IS NOT NULL
+                         AND verify_max_drawdown_ratio IS NOT NULL) AS verify_complete,
+                        (balance_training_sharpe_ratio IS NOT NULL
+                         AND balance_training_calmar_ratio IS NOT NULL
+                         AND balance_training_cagr IS NOT NULL
+                         AND balance_training_max_drawdown_ratio IS NOT NULL) AS balance_training_complete,
+                        (balance_validation_sharpe_ratio IS NOT NULL
+                         AND balance_validation_calmar_ratio IS NOT NULL
+                         AND balance_validation_cagr IS NOT NULL
+                         AND balance_validation_max_drawdown_ratio IS NOT NULL) AS balance_validation_complete
                  FROM backtest_cache
                  WHERE template_id = $1
                  ORDER BY created_at DESC",
@@ -1316,6 +1334,9 @@ impl Database {
                     template_id: row.get("template_id"),
                     parameters,
                     calmar_ratio: row.get("calmar_ratio"),
+                    verify_complete: row.get("verify_complete"),
+                    balance_training_complete: row.get("balance_training_complete"),
+                    balance_validation_complete: row.get("balance_validation_complete"),
                 }),
                 Err(error) => warn!(
                     "Skipping cached parameters {} for template {} due to parse error: {}",
