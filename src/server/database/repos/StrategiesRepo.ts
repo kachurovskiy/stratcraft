@@ -234,34 +234,44 @@ export class StrategiesRepo {
   }> {
     try {
       return await this.db.withTransaction(async (client) => {
+        let result: { accountOperationsDeleted: number; tradesDeleted: number; backtestResultsDeleted: number };
+
         if (!preserveAccountTrades) {
-          return this.deleteStrategyRelatedData([strategyId], client);
+          result = await this.deleteStrategyRelatedData([strategyId], client);
+        } else {
+          const nonAccountTradesResult = await this.db.run(
+            `DELETE FROM trades t
+              WHERE t.strategy_id = ?
+                AND t.entry_order_id IS NULL`,
+            [strategyId],
+            client
+          );
+          await this.db.run(
+            `UPDATE trades
+               SET backtest_result_id = NULL
+             WHERE strategy_id = ?
+               AND entry_order_id IS NOT NULL
+               AND backtest_result_id IS NOT NULL`,
+            [strategyId],
+            client
+          );
+          const backtestResultsResult = await this.db.run('DELETE FROM backtest_results WHERE strategy_id = ?', [strategyId], client);
+          await this.db.run('DELETE FROM signals WHERE strategy_id = ?', [strategyId], client);
+
+          result = {
+            accountOperationsDeleted: 0,
+            tradesDeleted: nonAccountTradesResult.changes || 0,
+            backtestResultsDeleted: backtestResultsResult.changes || 0
+          };
         }
 
-        const nonAccountTradesResult = await this.db.run(
-          `DELETE FROM trades t
-            WHERE t.strategy_id = ?
-              AND t.entry_order_id IS NULL`,
-          [strategyId],
-          client
-        );
         await this.db.run(
-          `UPDATE trades
-             SET backtest_result_id = NULL
-           WHERE strategy_id = ?
-             AND entry_order_id IS NOT NULL
-             AND backtest_result_id IS NOT NULL`,
-          [strategyId],
+          'DELETE FROM account_signal_skips WHERE strategy_id = ? AND source = ?',
+          [strategyId, 'backtest'],
           client
         );
-        const backtestResultsResult = await this.db.run('DELETE FROM backtest_results WHERE strategy_id = ?', [strategyId], client);
-        await this.db.run('DELETE FROM signals WHERE strategy_id = ?', [strategyId], client);
 
-        return {
-          accountOperationsDeleted: 0,
-          tradesDeleted: nonAccountTradesResult.changes || 0,
-          backtestResultsDeleted: backtestResultsResult.changes || 0
-        };
+        return result;
       });
     } catch (error) {
       console.error(`Failed to clear backtest results for strategy ${strategyId}:`, error);
