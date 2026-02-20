@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -1961,10 +1961,6 @@ impl LightGBMStrategy {
         }
     }
 
-    pub fn default_model_path() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/models/lightgbm_model.txt")
-    }
-
     pub fn load_model_from_path(path: impl AsRef<Path>) -> Result<()> {
         let path_buf = path.as_ref().to_path_buf();
         if !path_buf.exists() {
@@ -1976,14 +1972,6 @@ impl LightGBMStrategy {
         let text = fs::read_to_string(&path_buf)
             .with_context(|| format!("Failed to read LightGBM model {}", path_buf.display()))?;
         register_lightgbm_model("default", &text, true)?;
-        Ok(())
-    }
-
-    pub fn load_model_if_exists(path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
-        if path.exists() {
-            Self::load_model_from_path(path)?;
-        }
         Ok(())
     }
 
@@ -2208,16 +2196,8 @@ impl super::Strategy for LightGBMStrategy {
     }
 }
 
-pub fn default_model_path() -> PathBuf {
-    LightGBMStrategy::default_model_path()
-}
-
 pub fn load_model_from_path(path: impl AsRef<Path>) -> Result<()> {
     LightGBMStrategy::load_model_from_path(path)
-}
-
-pub fn load_model_if_exists(path: impl AsRef<Path>) -> Result<()> {
-    LightGBMStrategy::load_model_if_exists(path)
 }
 
 #[cfg(test)]

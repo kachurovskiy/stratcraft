@@ -21,8 +21,8 @@ use crate::context::AppContext;
 use crate::data_context::{MarketData, TickerScope};
 use crate::models::Candle;
 use crate::strategy::lightgbm::{
-    compute_features_from_precomputed, default_model_path, load_model_from_path,
-    precompute_inputs_for_ticker, CrossSectionalContext, FeatureConfig,
+    compute_features_from_precomputed, load_model_from_path, precompute_inputs_for_ticker,
+    CrossSectionalContext, FeatureConfig,
 };
 use crate::trading_rules::has_minimum_dollar_volume;
 
@@ -156,15 +156,13 @@ pub async fn run(
     let market_data = MarketData::load(&db, TickerScope::AllTickers).await?;
     let runtime_settings = EngineRuntimeSettings::from_settings_map(market_data.settings())?;
 
-    let destination: PathBuf = output_path
-        .map(|path| {
-            if path.is_absolute() {
-                path
-            } else {
-                Path::new(env!("CARGO_MANIFEST_DIR")).join(path)
-            }
-        })
-        .unwrap_or_else(default_model_path);
+    let output_path =
+        output_path.ok_or_else(|| anyhow!("LightGBM training requires an output path"))?;
+    let destination: PathBuf = if output_path.is_absolute() {
+        output_path
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(output_path)
+    };
 
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)

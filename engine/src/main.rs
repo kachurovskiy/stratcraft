@@ -222,35 +222,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn load_lightgbm_model(app_context: &AppContext) -> Result<()> {
-    if let Ok(db) = app_context.database().await {
-        match db.get_lightgbm_models().await {
-            Ok(models) if !models.is_empty() => {
-                for (idx, model) in models.iter().enumerate() {
-                    strategy::lightgbm::register_model_text(&model.id, &model.tree_text, idx == 0)?;
-                }
-                info!("Loaded {} LightGBM model(s) from database", models.len());
-                return Ok(());
-            }
-            Ok(_) => {
-                warn!("No LightGBM model found in database; falling back to local file.");
-            }
-            Err(err) => {
-                warn!("Failed to read LightGBM models from database: {err}");
-            }
-        }
-    } else {
-        warn!("Database connection unavailable; falling back to local model file.");
+    let db = app_context.database().await?;
+    let models = db.get_lightgbm_models().await?;
+    if models.is_empty() {
+        warn!("No LightGBM models found in database.");
+        return Ok(());
     }
 
-    let default_model_path = strategy::lightgbm::default_model_path();
-    if let Err(err) = strategy::lightgbm::load_model_if_exists(&default_model_path) {
-        warn!(
-            "LightGBM model not loaded from {}: {}",
-            default_model_path.display(),
-            err
-        );
+    for (idx, model) in models.iter().enumerate() {
+        strategy::lightgbm::register_model_text(&model.id, &model.tree_text, idx == 0)?;
     }
-
+    info!("Loaded {} LightGBM model(s) from database", models.len());
     Ok(())
 }
 
