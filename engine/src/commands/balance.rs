@@ -217,58 +217,98 @@ async fn run_balance_scope(
         end_label,
         scope_label
     );
-    let results = optimizer
-        .run_parameter_batch(template_id, parameter_sets, false)
-        .await?;
-
-    if results.is_empty() {
+    let cpu_count = num_cpus::get();
+    let batch_size = std::cmp::max(1, cpu_count.saturating_mul(10));
+    let total_batches = (parameter_sets.len() + batch_size - 1) / batch_size;
+    if total_batches > 1 {
         info!(
-            "Balance {} produced no results for template {}",
-            scope_label, template_id
+            "Processing balance {} in {} batch(es) of up to {} parameter set(s) ({} cores * 10)",
+            scope_label, total_batches, batch_size, cpu_count
         );
-        return Ok(0);
     }
 
-    info!(
-        "Received {} balance {} result(s) for {} requested parameter set(s)",
-        results.len(),
-        scope_label,
-        parameter_sets.len()
-    );
-
     let mut updated = 0;
-    for result in results {
-        let signature = parameter_signature(&result.parameters);
-        if let Some(ids) = ids_by_signature.get(&signature) {
-            for cache_id in ids {
-                match scope {
-                    BalanceScope::Training => {
-                        db.update_backtest_cache_balance_training(
-                            cache_id,
-                            Some(result.sharpe_ratio),
-                            Some(result.calmar_ratio),
-                            Some(result.cagr),
-                            Some(result.max_drawdown_ratio),
-                        )
-                        .await?;
+    for (batch_index, batch) in parameter_sets.chunks(batch_size).enumerate() {
+        if total_batches > 1 {
+            info!(
+                "Starting balance {} batch {}/{} ({} parameter set(s))",
+                scope_label,
+                batch_index + 1,
+                total_batches,
+                batch.len()
+            );
+        }
+
+        let results = optimizer
+            .run_parameter_batch(template_id, batch, false)
+            .await?;
+
+        if results.is_empty() {
+            info!(
+                "Balance {} batch {}/{} produced no results for template {}",
+                scope_label,
+                batch_index + 1,
+                total_batches,
+                template_id
+            );
+            continue;
+        }
+
+        info!(
+            "Received {} balance {} result(s) for {} requested parameter set(s) in batch {}/{}",
+            results.len(),
+            scope_label,
+            batch.len(),
+            batch_index + 1,
+            total_batches
+        );
+
+        let mut batch_updated = 0;
+        for result in results {
+            let signature = parameter_signature(&result.parameters);
+            if let Some(ids) = ids_by_signature.get(&signature) {
+                for cache_id in ids {
+                    match scope {
+                        BalanceScope::Training => {
+                            db.update_backtest_cache_balance_training(
+                                cache_id,
+                                Some(result.sharpe_ratio),
+                                Some(result.calmar_ratio),
+                                Some(result.cagr),
+                                Some(result.max_drawdown_ratio),
+                            )
+                            .await?;
+                        }
+                        BalanceScope::Validation => {
+                            db.update_backtest_cache_balance_validation(
+                                cache_id,
+                                Some(result.sharpe_ratio),
+                                Some(result.calmar_ratio),
+                                Some(result.cagr),
+                                Some(result.max_drawdown_ratio),
+                            )
+                            .await?;
+                        }
                     }
-                    BalanceScope::Validation => {
-                        db.update_backtest_cache_balance_validation(
-                            cache_id,
-                            Some(result.sharpe_ratio),
-                            Some(result.calmar_ratio),
-                            Some(result.cagr),
-                            Some(result.max_drawdown_ratio),
-                        )
-                        .await?;
-                    }
+                    batch_updated += 1;
                 }
-                updated += 1;
+            } else {
+                warn!(
+                    "Balance {} result with signature {} did not match cached entries",
+                    scope_label, signature
+                );
             }
-        } else {
-            warn!(
-                "Balance {} result with signature {} did not match cached entries",
-                scope_label, signature
+        }
+
+        updated += batch_updated;
+        if total_batches > 1 {
+            info!(
+                "Balance {} batch {}/{} completed: updated {} cached row(s) for template {}",
+                scope_label,
+                batch_index + 1,
+                total_batches,
+                batch_updated,
+                template_id
             );
         }
     }
