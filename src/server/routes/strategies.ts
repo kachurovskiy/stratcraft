@@ -976,7 +976,7 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
     }
 
     let template = selectedTemplateId
-      ? (req.strategyRegistry.getTemplate(selectedTemplateId) as StrategyTemplate | undefined)
+      ? (req.strategyRegistry.getTemplate(selectedTemplateId, { includeDisabled: false }) as StrategyTemplate | undefined)
       : undefined;
 
     if (!template) {
@@ -1236,7 +1236,7 @@ router.post('/strategies/create', requireAuth, async (req: Request, res: Respons
       });
     }
 
-    const template = req.strategyRegistry.getTemplate(templateId);
+    const template = req.strategyRegistry.getTemplate(templateId, { includeDisabled: false });
     if (!template) {
       return res.status(404).render('pages/error', {
         title: 'Error',

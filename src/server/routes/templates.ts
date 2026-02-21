@@ -45,7 +45,8 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
 // Template Gallery
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
-    const templates = req.strategyRegistry.getTemplates();
+    const isAdmin = req.user?.role === 'admin';
+    const templates = req.strategyRegistry.getTemplates({ includeDisabled: isAdmin });
     const remoteOptimizerService = req.remoteOptimizerService;
     const remoteOptimizationJobsByTemplate = new Map<string, RemoteOptimizationJobSnapshot[]>();
     const templateIds = templates.map((template: StrategyTemplate) => template.id);
@@ -161,6 +162,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const templateScoreBreakdowns = templateScoreResults.breakdowns;
 
     const templateViews: TemplateListItem[] = templates.map((template: StrategyTemplate) => {
+      const isEnabled = template.enabled !== false;
       const bestParams = bestParamsByTemplate[template.id];
       const sharpeValue = typeof bestParams?.sharpeRatio === 'number'
         ? bestParams.sharpeRatio
@@ -228,6 +230,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
       return {
         ...template,
+        enabled: isEnabled,
         localOptimizationVersion,
         bestSharpe: sharpeValue,
         hasBestSharpe: sharpeValue !== null,
@@ -268,7 +271,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       hasTemplates,
       performanceCloudPoints,
       currentUrl: getCurrentUrl(req),
-      isAdmin: req.user?.role === 'admin',
+      isAdmin,
       success: req.query.success as string,
       error: req.query.error as string
     });
@@ -308,6 +311,7 @@ type TemplateRemoteOptimizationState = {
 };
 
 type TemplateListItem = StrategyTemplate & {
+  enabled: boolean;
   bestSharpe: number | null;
   hasBestSharpe: boolean;
   bestCalmar: number | null;
@@ -409,7 +413,8 @@ const getComparableParameterValue = (value: unknown): string => {
 router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
   try {
     const { templateId } = req.params;
-    const template = req.strategyRegistry.getTemplate(templateId);
+    const isAdmin = req.user?.role === 'admin';
+    const template = req.strategyRegistry.getTemplate(templateId, { includeDisabled: isAdmin });
 
     if (!template) {
       return res.status(404).render('pages/error', {
@@ -670,7 +675,7 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       title: `${template.name} Template Overview`,
       page: 'templates',
       user: req.user,
-      isAdmin: req.user?.role === 'admin',
+      isAdmin,
       template,
       templateSummary: summary,
       templateParameters: parameterViews,
@@ -699,10 +704,60 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
   }
 });
 
+router.post<TemplateParams>('/:templateId/toggle-enabled', requireAuth, requireAdmin, async (req, res) => {
+  const { templateId } = req.params;
+  try {
+    const rawEnabled = req.body?.enabled;
+    const normalizedId = typeof templateId === 'string' ? templateId.trim() : '';
+    if (!normalizedId) {
+      return res.redirect(`/templates?error=${encodeURIComponent('Template ID is required')}`);
+    }
+
+    const template = req.strategyRegistry.getTemplate(normalizedId, { includeDisabled: true });
+    if (!template) {
+      return res.redirect(`/templates?error=${encodeURIComponent(`Template ${normalizedId} not found`)}`);
+    }
+
+    const normalizedEnabled = (() => {
+      if (typeof rawEnabled === 'boolean') {
+        return rawEnabled;
+      }
+      if (typeof rawEnabled === 'string') {
+        const lowered = rawEnabled.trim().toLowerCase();
+        if (lowered === 'true') {
+          return true;
+        }
+        if (lowered === 'false') {
+          return false;
+        }
+      }
+      return null;
+    })();
+
+    if (normalizedEnabled === null) {
+      return res.redirect(`/templates?error=${encodeURIComponent('Invalid enabled value supplied')}`);
+    }
+
+    await req.strategyRegistry.setTemplateEnabled(normalizedId, normalizedEnabled);
+
+    const statusLabel = normalizedEnabled ? 'enabled' : 'disabled';
+    return res.redirect(
+      `/templates?success=${encodeURIComponent(`Template "${template.name}" ${statusLabel} successfully`)}`
+    );
+  } catch (error) {
+    req.loggingService?.error?.('templates', 'Failed to toggle template status', {
+      templateId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    const message = error instanceof Error ? error.message : 'Failed to update template status';
+    return res.redirect(`/templates?error=${encodeURIComponent(message)}`);
+  }
+});
+
 router.post<TemplateParams>('/:templateId/delete', requireAuth, requireAdmin, async (req, res) => {
   const { templateId } = req.params;
   try {
-    const template = req.strategyRegistry.getTemplate(templateId);
+    const template = req.strategyRegistry.getTemplate(templateId, { includeDisabled: true });
     const isLightgbmModelTemplate = templateId.startsWith('lightgbm_');
     if (!template && !isLightgbmModelTemplate) {
       return res.redirect(`/templates?error=${encodeURIComponent(`Template ${templateId} not found`)}`);
@@ -727,6 +782,7 @@ router.post<TemplateParams>('/:templateId/delete', requireAuth, requireAdmin, as
 
       await req.db.lightgbmModels.deleteLightgbmModel(modelId);
       await req.strategyRegistry.ensureLightgbmModelTemplates();
+      await req.strategyRegistry.refreshTemplateAvailability();
 
       const label = template?.name ?? templateId;
       return res.redirect(
@@ -738,8 +794,8 @@ router.post<TemplateParams>('/:templateId/delete', requireAuth, requireAdmin, as
       return res.redirect(`/templates?error=${encodeURIComponent(`Template ${templateId} not found`)}`);
     }
 
-    await req.db.templates.removeTemplatesByIds([templateId]);
-    await req.strategyRegistry.disableTemplate(templateId);
+    await req.db.templates.disableTemplatesByIds([templateId]);
+    await req.strategyRegistry.refreshTemplateAvailability();
 
     return res.redirect(
       `/templates?success=${encodeURIComponent(`Template "${template.name}" deleted successfully`)}`
@@ -771,7 +827,7 @@ router.post<TemplateParams>('/:templateId/remote-optimize', requireAuth, require
   };
 
   try {
-    const template = req.strategyRegistry.getTemplate(templateId);
+    const template = req.strategyRegistry.getTemplate(templateId, { includeDisabled: false });
 
     if (!template) {
       return respondError(404, `Template ${templateId} not found`);

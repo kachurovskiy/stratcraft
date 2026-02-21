@@ -24,6 +24,8 @@ export class StrategyRegistry {
   private logging?: LoggingService;
   private jobScheduler?: JobScheduler;
   private templates: StrategyTemplate[] = [...BASE_TEMPLATES];
+  private allTemplates: StrategyTemplate[] = [...BASE_TEMPLATES];
+  private lightgbmTemplates: StrategyTemplate[] = [];
   private disabledTemplateIds: Set<string> = new Set();
 
   constructor(database: Database, loggingService?: LoggingService, jobScheduler?: JobScheduler) {
@@ -37,17 +39,14 @@ export class StrategyRegistry {
   }
 
   async initialize(): Promise<void> {
-    await this.loadDisabledTemplateIds();
-
     // Register all templates in the database
     for (const template of BASE_TEMPLATES) {
-      if (this.disabledTemplateIds.has(template.id)) {
-        continue;
-      }
       await this.registerTemplate(template);
     }
 
     await this.ensureLightgbmModelTemplates();
+    await this.loadDisabledTemplateIds();
+    this.rebuildTemplateLists();
     await this.removeDeletedTemplates();
 
     // Create default strategies from templates
@@ -200,46 +199,53 @@ export class StrategyRegistry {
     return mergedParams;
   }
 
-  getTemplate(templateId: string): StrategyTemplate | undefined {
-    return this.templates.find(t => t.id === templateId);
+  private attachEnabledFlag(template: StrategyTemplate): StrategyTemplate {
+    return {
+      ...template,
+      enabled: !this.disabledTemplateIds.has(template.id)
+    };
   }
 
-  private parseDisabledTemplateIds(rawValue: string | null): string[] {
-    if (!rawValue) {
-      return [];
-    }
-    const trimmed = rawValue.trim();
-    if (!trimmed) {
-      return [];
-    }
+  private rebuildTemplateLists(): void {
+    this.allTemplates = [...BASE_TEMPLATES, ...this.lightgbmTemplates];
+    this.templates = this.allTemplates.filter((template) => !this.disabledTemplateIds.has(template.id));
+  }
 
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        return Array.from(
-          new Set(
-            parsed
-              .filter((entry): entry is string => typeof entry === 'string')
-              .map((entry) => entry.trim())
-              .filter((entry) => entry.length > 0)
-          )
-        );
-      }
-    } catch {
-      // Fall back to delimiter parsing below.
+  getTemplate(
+    templateId: string,
+    options: { includeDisabled?: boolean } = {}
+  ): StrategyTemplate | undefined {
+    const includeDisabled = options.includeDisabled ?? true;
+    const normalized = typeof templateId === 'string' ? templateId.trim() : '';
+    if (!normalized) {
+      return undefined;
     }
+    const list = includeDisabled ? this.allTemplates : this.templates;
+    const template = list.find(t => t.id === normalized);
+    return template ? this.attachEnabledFlag(template) : undefined;
+  }
 
-    return Array.from(new Set(trimmed.split(/[,\s]+/g).map((entry) => entry.trim()).filter(Boolean)));
+  getTemplates(options: { includeDisabled?: boolean } = {}): StrategyTemplate[] {
+    const includeDisabled = options.includeDisabled ?? false;
+    const list = includeDisabled ? this.allTemplates : this.templates;
+    return list.map(template => this.attachEnabledFlag(template));
+  }
+
+  isTemplateEnabled(templateId: string): boolean {
+    const normalized = typeof templateId === 'string' ? templateId.trim() : '';
+    if (!normalized) {
+      return false;
+    }
+    return !this.disabledTemplateIds.has(normalized);
   }
 
   private async loadDisabledTemplateIds(): Promise<void> {
     this.disabledTemplateIds.clear();
     try {
-      const rawValue = await this.db.settings.getSettingValue(SETTING_KEYS.DISABLED_TEMPLATE_IDS);
-      const ids = this.parseDisabledTemplateIds(rawValue);
+      const ids = await this.db.templates.getDisabledTemplateIds();
       ids.forEach((id) => this.disabledTemplateIds.add(id));
     } catch (error) {
-      this.logging?.error('StrategyManager', 'Failed to load disabled templates from settings', {
+      this.logging?.error('StrategyManager', 'Failed to load disabled templates from database', {
         error: error instanceof Error ? error.message : String(error)
       });
     }
@@ -251,7 +257,7 @@ export class StrategyRegistry {
     }
 
     const normalized = templateId.trim();
-    if (this.disabledTemplateIds.has(normalized)) {
+    if (!this.isTemplateEnabled(normalized)) {
       this.logging?.info('StrategyManager', `Skipping default strategy for disabled template ${normalized}`);
       return;
     }
@@ -299,34 +305,38 @@ export class StrategyRegistry {
     }
   }
 
-  private async persistDisabledTemplateIds(): Promise<void> {
-    const ids = Array.from(this.disabledTemplateIds).sort();
-    await this.db.settings.upsertSettings({
-      [SETTING_KEYS.DISABLED_TEMPLATE_IDS]: JSON.stringify(ids)
-    });
-  }
-
-  async disableTemplate(templateId: string): Promise<void> {
+  async setTemplateEnabled(templateId: string, enabled: boolean): Promise<void> {
     if (typeof templateId !== 'string' || templateId.trim().length === 0) {
-      throw new Error('templateId is required to disable template');
+      throw new Error('templateId is required to update template status');
     }
 
     const normalized = templateId.trim();
-    if (this.disabledTemplateIds.has(normalized)) {
-      return;
+    const template = this.getTemplate(normalized, { includeDisabled: true });
+    if (!template) {
+      throw new Error(`Template ${normalized} not found`);
     }
 
-    this.disabledTemplateIds.add(normalized);
-    await this.persistDisabledTemplateIds();
-    this.templates = this.templates.filter((template) => template.id !== normalized);
+    const updated = await this.db.templates.setTemplateEnabled(normalized, enabled);
+    if (!updated) {
+      await this.registerTemplate(template);
+      await this.db.templates.setTemplateEnabled(normalized, enabled);
+    }
+
+    if (enabled) {
+      this.disabledTemplateIds.delete(normalized);
+    } else {
+      this.disabledTemplateIds.add(normalized);
+    }
+    this.rebuildTemplateLists();
   }
 
-  getTemplates(): StrategyTemplate[] {
-    return this.templates;
+  async refreshTemplateAvailability(): Promise<void> {
+    await this.loadDisabledTemplateIds();
+    this.rebuildTemplateLists();
   }
 
   private async removeDeletedTemplates(): Promise<void> {
-    const templateIds = this.templates.map(t => t.id);
+    const templateIds = this.allTemplates.map(t => t.id);
     try {
       const toRemove = await this.db.templates.getTemplatesNotIn(templateIds);
       if (toRemove.length > 0) {
@@ -392,6 +402,9 @@ export class StrategyRegistry {
     accountId?: string | null
   ): Promise<string> {
     // Validate template exists
+    if (!this.isTemplateEnabled(templateId)) {
+      throw new Error(`Template ${templateId} is disabled`);
+    }
     const template = this.getTemplate(templateId);
     if (!template) {
       throw new Error(`Template ${templateId} not found`);
@@ -434,8 +447,8 @@ export class StrategyRegistry {
       await this.registerTemplate(template);
     }
 
-    const baseTemplates = BASE_TEMPLATES.filter(template => !this.disabledTemplateIds.has(template.id));
-    this.templates = [...baseTemplates, ...lightgbmTemplates];
+    this.lightgbmTemplates = lightgbmTemplates;
+    this.rebuildTemplateLists();
   }
 
   private async ensureLightgbmDefaultStrategies(): Promise<void> {
@@ -457,6 +470,10 @@ export class StrategyRegistry {
         continue;
       }
       const templateId = `lightgbm_${model.id}`;
+      if (!this.isTemplateEnabled(templateId)) {
+        this.logging?.info('StrategyManager', `Skipping default strategy for disabled template ${templateId}`);
+        continue;
+      }
       const parameters = this.buildDefaultParameters(LIGHTGBM_BASE_TEMPLATE);
       const strategyName = `${LIGHTGBM_BASE_TEMPLATE.name} (${model.name})`;
 

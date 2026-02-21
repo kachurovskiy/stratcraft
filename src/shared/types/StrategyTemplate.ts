@@ -56,6 +56,7 @@ export interface StrategyTemplate {
   category: string;
   author: string;
   version: string;
+  enabled?: boolean;
   localOptimizationVersion?: number;
   parameters: StrategyParameter[];
   exampleUsage?: string;

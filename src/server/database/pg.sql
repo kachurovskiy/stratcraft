@@ -40,11 +40,15 @@ CREATE TABLE IF NOT EXISTS templates (
     category TEXT,
     author TEXT,
     version TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
     local_optimization_version INTEGER DEFAULT 0,
     parameters TEXT NOT NULL,
     example_usage TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE templates
+    ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS lightgbm_models (
     id TEXT PRIMARY KEY,

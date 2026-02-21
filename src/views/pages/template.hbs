@@ -5,6 +5,9 @@
       {{#if template.category}}
         <span class="badge bg-secondary">{{template.category}}</span>
       {{/if}}
+      {{#unless template.enabled}}
+        <span class="badge bg-secondary">Disabled</span>
+      {{/unless}}
     </div>
     <p class="text-muted mb-2">{{template.description}}</p>
     <div class="small text-muted">
@@ -14,15 +17,29 @@
     </div>
   </div>
   <div class="d-flex flex-wrap gap-2">
-    <a href="/templates" class="btn btn-outline-secondary">
-      <i class="fas fa-arrow-left me-1"></i>
-      Back to Templates
-    </a>
-    <a href="/strategies/create?template={{template.id}}" class="btn btn-primary">
-      <i class="fas fa-plus me-1"></i>
-      Create Strategy
-    </a>
+    {{#if template.enabled}}
+      <a href="/strategies/create?template={{template.id}}" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i>
+        Create Strategy
+      </a>
+    {{else}}
+      <span class="btn btn-outline-secondary disabled" aria-disabled="true">
+        <i class="fas fa-ban me-1"></i>
+        Disabled
+      </span>
+    {{/if}}
     {{#if isAdmin}}
+      <form
+        method="POST"
+        action="/templates/{{template.id}}/toggle-enabled"
+        class="d-inline"
+      >
+        {{> csrf-field}}
+        <input type="hidden" name="enabled" value="{{#if template.enabled}}false{{else}}true{{/if}}">
+        <button type="submit" class="btn btn-outline-{{#if template.enabled}}secondary{{else}}success{{/if}}">
+          {{#if template.enabled}}Disable Template{{else}}Enable Template{{/if}}
+        </button>
+      </form>
       <form
         method="POST"
         action="/templates/{{template.id}}/delete"

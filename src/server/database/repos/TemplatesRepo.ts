@@ -11,6 +11,7 @@ type TemplateRow = QueryResultRow & {
   category: string | null;
   author: string | null;
   version: string | null;
+  enabled: boolean | null;
   parameters: string;
   example_usage: string | null;
 };
@@ -36,6 +37,8 @@ export class TemplatesRepo {
       parameters = [];
     }
 
+    const enabled = typeof row.enabled === 'boolean' ? row.enabled : row.enabled !== null ? Boolean(row.enabled) : true;
+
     return {
       id: row.id,
       name: row.name,
@@ -43,6 +46,7 @@ export class TemplatesRepo {
       category: row.category ?? '',
       author: row.author ?? '',
       version: row.version ?? '',
+      enabled,
       parameters: Array.isArray(parameters)
         ? (parameters as StrategyTemplate['parameters'])
         : ([] as StrategyTemplate['parameters']),
@@ -91,6 +95,7 @@ export class TemplatesRepo {
         LEFT JOIN strategies s ON s.template_id = t.id
         LEFT JOIN latest_results lr ON lr.strategy_id = s.id
         WHERE t.id != 'buy_and_hold'
+          AND t.enabled = TRUE
           AND (
             COALESCE(t.local_optimization_version, 0) < ?
             OR NOT EXISTS (
@@ -111,6 +116,7 @@ export class TemplatesRepo {
       FROM templates t
       LEFT JOIN template_metrics tm ON tm.id = t.id
       WHERE t.id != 'buy_and_hold'
+        AND t.enabled = TRUE
         AND (
           COALESCE(t.local_optimization_version, 0) < ?
           OR NOT EXISTS (
@@ -153,11 +159,39 @@ export class TemplatesRepo {
     return versions;
   }
 
+  async getDisabledTemplateIds(): Promise<string[]> {
+    const rows = await this.db.all<IdRow>(
+      `
+      SELECT id
+      FROM templates
+      WHERE enabled = FALSE
+    `
+    );
+    return rows
+      .map((row) => (typeof row.id === 'string' ? row.id.trim() : ''))
+      .filter((id) => id.length > 0);
+  }
+
+  async setTemplateEnabled(templateId: string, enabled: boolean): Promise<boolean> {
+    if (typeof templateId !== 'string' || templateId.trim().length === 0) {
+      throw new Error('templateId is required to update template enabled state');
+    }
+    const normalized = templateId.trim();
+    const result = await this.db.run(
+      `UPDATE templates
+       SET enabled = ?
+       WHERE id = ?`,
+      [enabled, normalized]
+    );
+    return result.rowCount > 0;
+  }
+
   async getAllTemplateIds(): Promise<string[]> {
     const rows = await this.db.all<IdRow>(
       `
       SELECT id
       FROM templates
+      WHERE enabled = TRUE
       ORDER BY LOWER(id) ASC, id ASC
     `
     );
@@ -258,6 +292,19 @@ export class TemplatesRepo {
       client
     );
     await this.db.run(`DELETE FROM signals WHERE strategy_id IN (${placeholders})`, normalizedIds, client);
+  }
+
+  async disableTemplatesByIds(remove: string[]): Promise<string[]> {
+    const normalized = (remove ?? [])
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter((id) => id.length > 0);
+    if (!normalized.length) {
+      return [];
+    }
+
+    const tpl = normalized.map(() => '?').join(', ');
+    await this.db.run(`UPDATE templates SET enabled = FALSE WHERE id IN (${tpl})`, normalized);
+    return normalized;
   }
 
   async removeTemplatesByIds(remove: string[]): Promise<string[]> {

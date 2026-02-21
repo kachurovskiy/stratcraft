@@ -68,6 +68,9 @@
                 <td>
                   <div class="fw-semibold">
                     <a href="/templates/{{id}}" class="text-decoration-none">{{name}}</a>
+                    {{#unless enabled}}
+                      <span class="badge bg-secondary ms-2">Disabled</span>
+                    {{/unless}}
                   </div>
                   <div class="text-muted small">{{description}}</div>
                 </td>
@@ -156,16 +159,13 @@
                     <span class="text-muted">N/A</span>
                   {{/if}}
                 </td>
-                <td class="text-start">
+                <td class="text-end">
                   <div class="d-inline-flex gap-2 align-items-center">
-                    <a href="/templates/{{id}}" class="btn btn-outline-primary btn-sm">
-                      <i class="fas fa-eye me-1"></i>
-                      View
-                    </a>
-                    <a href="/strategies/create?template={{id}}" class="btn btn-primary btn-sm">
-                      <i class="fas fa-plus me-1"></i>
-                      Create
-                    </a>
+                    {{#if enabled}}
+                      <a href="/strategies/create?template={{id}}" class="btn btn-primary btn-sm">
+                        Create
+                      </a>
+                    {{/if}}
                     {{#if ../isAdmin}}
                       {{#if remoteOptimization.isActive}}
                         <form
@@ -181,26 +181,42 @@
                             {{#unless remoteOptimization.activeJobId}}disabled{{/unless}}
                             title="Status: {{#if remoteOptimization.activeStatusLabel}}{{remoteOptimization.activeStatusLabel}}{{else}}In Progress{{/if}}{{#if remoteOptimization.activeServerId}} (Hetzner #{{remoteOptimization.activeServerId}}{{#if remoteOptimization.activeServerIp}} / {{remoteOptimization.activeServerIp}}{{/if}}){{/if}}. Delete the remote server for job {{remoteOptimization.activeJobId}} and stop remote optimization."
                           >
-                            Stop Optimize
+                            Stop&nbsp;Optimize
                           </button>
                         </form>
                       {{else}}
-                        <form
-                          method="POST"
-                          action="/templates/{{id}}/remote-optimize"
-                          class="d-inline"
-                        >
-                            {{> csrf-field}}
-                          <button
-                            type="submit"
-                            class="btn btn-warning btn-sm"
-                            {{#unless remoteOptimization.hasRemoteOptimizer}}disabled{{/unless}}
-                            {{#if remoteOptimization.tooltip}}title="{{remoteOptimization.tooltip}}"{{/if}}
+                        {{#if enabled}}
+                          <form
+                            method="POST"
+                            action="/templates/{{id}}/remote-optimize"
+                            class="d-inline"
                           >
-                            Remote Optimize
-                          </button>
-                        </form>
+                              {{> csrf-field}}
+                            <button
+                              type="submit"
+                              class="btn btn-warning btn-sm"
+                              {{#unless remoteOptimization.hasRemoteOptimizer}}disabled{{/unless}}
+                              {{#if remoteOptimization.tooltip}}title="{{remoteOptimization.tooltip}}"{{/if}}
+                            >
+                              Remote&nbsp;Optimize
+                            </button>
+                          </form>
+                        {{/if}}
                       {{/if}}
+                      <form
+                        method="POST"
+                        action="/templates/{{id}}/toggle-enabled"
+                        class="d-inline"
+                      >
+                        {{> csrf-field}}
+                        <input type="hidden" name="enabled" value="{{#if enabled}}false{{else}}true{{/if}}">
+                        <button
+                          type="submit"
+                          class="btn btn-outline-{{#if enabled}}secondary{{else}}success{{/if}} btn-sm"
+                        >
+                          {{#if enabled}}Disable{{else}}Enable{{/if}}
+                        </button>
+                      </form>
                     {{/if}}
                   </div>
                 </td>
