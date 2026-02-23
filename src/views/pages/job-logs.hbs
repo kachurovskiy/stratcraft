@@ -1,0 +1,202 @@
+<style>
+  .job-log-container {
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+
+  .job-log-message {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+          <h1 class="mb-0">Job Logs</h1>
+          <div class="text-muted small text-uppercase">
+            {{job.type}} <span class="text-muted text-lowercase">·</span> Job {{job.id}}
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-info-circle"></i>
+            Job Details
+          </h5>
+          <span class="badge bg-{{jobStatusBadge job.status}} text-uppercase">{{job.status}}</span>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Scheduled</div>
+              <div>{{#if job.scheduledFor}}{{formatDateTime job.scheduledFor}}{{else}}&mdash;{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Started</div>
+              <div>{{#if job.startedAt}}{{formatDateTime job.startedAt}}{{else}}&mdash;{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Finished</div>
+              <div>{{#if job.finishedAt}}{{formatDateTime job.finishedAt}}{{else}}&mdash;{{/if}}</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <div class="text-muted small">Attempts</div>
+              <div>{{job.attempts}}{{#if job.maxRetries}} / {{job.maxRetries}}{{/if}}</div>
+            </div>
+          </div>
+
+          {{#if job.description}}
+            <div class="mt-3">
+              <div class="text-muted small">Description</div>
+              <div>{{job.description}}</div>
+            </div>
+          {{/if}}
+
+          {{#if job.result.message}}
+            <div class="mt-3">
+              <div class="text-muted small">Result</div>
+              <div>{{job.result.message}}</div>
+            </div>
+          {{/if}}
+
+          {{#if job.lastError}}
+            <div class="mt-3">
+              <div class="text-muted small">Error</div>
+              <div class="text-danger">{{job.lastError}}</div>
+            </div>
+          {{/if}}
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <h5 class="mb-0">
+              <i class="fas fa-file-alt"></i>
+              Logs
+            </h5>
+            <div class="text-white-50 small">
+              Showing {{jobLogs.length}} log{{#if (ne jobLogs.length 1)}}s{{/if}} (newest first)
+            </div>
+          </div>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            {{#if hasPrev}}
+              <a class="btn btn-sm btn-outline-light text-uppercase" href="/admin/jobs/{{job.id}}/logs?limit={{pageLimit}}&offset={{prevOffset}}">
+                <i class="fas fa-chevron-left"></i>
+                Newer
+              </a>
+            {{/if}}
+            {{#if hasNext}}
+              <a class="btn btn-sm btn-outline-light text-uppercase" href="/admin/jobs/{{job.id}}/logs?limit={{pageLimit}}&offset={{nextOffset}}">
+                Older
+                <i class="fas fa-chevron-right"></i>
+              </a>
+            {{/if}}
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="job-log-container">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th style="width: 90px;" class="ps-3">Time</th>
+                    <th style="width: 150px;">Source</th>
+                    <th style="width: 70px;">Level</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{#if jobLogs.length}}
+                    {{#each jobLogs}}
+                      <tr>
+                        <td class="text-muted ps-3">{{formatLogTime created_at}}</td>
+                        <td><code>{{source}}</code></td>
+                        <td>
+                          <span class="badge
+                            {{#if (eq level 'error')}}bg-danger
+                            {{else if (eq level 'warn')}}bg-warning text-dark
+                            {{else if (eq level 'info')}}bg-info
+                            {{else}}bg-secondary{{/if}}">
+                            {{level}}
+                          </span>
+                        </td>
+                        <td>
+                          <span class="job-log-message">{{message}}</span>
+                          {{#if metadata}}
+                            <button type="button" class="btn btn-link p-0 ms-1"
+                              onclick="copyMetadata('{{json metadata}}', this)" title="Copy metadata"
+                              style="border: none; background: none; color: #6c757d; text-decoration: none; font-size: inherit; line-height: inherit;">
+                              <i class="fas fa-copy"></i>
+                            </button>
+                          {{/if}}
+                        </td>
+                      </tr>
+                    {{/each}}
+                  {{else}}
+                    <tr>
+                      <td colspan="4" class="text-center text-muted py-4">
+                        No logs found for this job yet.
+                      </td>
+                    </tr>
+                  {{/if}}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function copyMetadata(metadataJson, button) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(metadataJson).then(() => {
+        showCopySuccess(button);
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+        fallbackCopyTextToClipboard(metadataJson, button);
+      });
+    } else {
+      fallbackCopyTextToClipboard(metadataJson, button);
+    }
+  }
+
+  function fallbackCopyTextToClipboard(text, button) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      document.execCommand('copy');
+      showCopySuccess(button);
+    } catch (err) {
+      console.error('Fallback: Oops, unable to copy', err);
+    }
+
+    document.body.removeChild(textArea);
+  }
+
+  function showCopySuccess(button) {
+    const originalHtml = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i>';
+    button.style.color = '#198754';
+    setTimeout(() => {
+      button.innerHTML = originalHtml;
+      button.style.color = '#6c757d';
+    }, 1000);
+  }
+</script>

@@ -1,0 +1,103 @@
+{{#if trades}}
+<div class="card">
+  <div class="card-header">
+    <h6 class="card-title mb-0">
+      <i class="fas fa-exchange-alt me-2"></i>
+      {{#if title}}{{title}}{{else}}Recent Trades{{/if}}
+      <span class="badge bg-secondary ms-2">{{trades.length}}</span>
+    </h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="border-0">Date</th>
+            <th class="border-0">Symbol</th>
+            <th class="border-0 text-end">Price</th>
+            <th class="border-0 text-end">Qty</th>
+            <th class="border-0 text-end">Exit Price</th>
+            <th class="border-0">Exit Date</th>
+            <th class="border-0 text-end">Fee</th>
+            <th class="border-0 text-end">Stop Loss</th>
+            <th class="border-0 text-end">P&L %</th>
+            <th class="border-0 text-center">Status</th>
+            <th class="border-0">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each trades}}
+          <tr class="clickable-row" data-href="/trades/{{id}}" style="cursor: pointer;">
+            <td class="border-0 small">{{formatDate date}}</td>
+            <td class="border-0">
+              <span class="fw-bold">{{ticker}}</span>
+            </td>
+            <td class="border-0 text-end small">${{formatPrice price}}</td>
+            <td class="border-0 text-end small">{{quantity}}</td>
+            <td class="border-0 text-end small">
+              {{#if exitPrice}}
+              ${{formatPrice exitPrice}}
+              {{else}}
+              <span class="text-muted">N/A</span>
+              {{/if}}
+            </td>
+            <td class="border-0 small">
+              {{#if exitDate}}
+              {{formatDate exitDate}}
+              {{else}}
+              <span class="text-muted">N/A</span>
+              {{/if}}
+            </td>
+            <td class="border-0 text-end small">
+              {{#if (or fee (eq fee 0))}}
+              {{formatCurrency fee}}
+              {{else}}
+              <span class="text-muted">N/A</span>
+              {{/if}}
+            </td>
+            <td class="border-0 text-end small">
+              {{#if stopLoss}}
+              ${{formatPrice stopLoss}}
+              {{#if stopLossTriggered}}
+              <i class="fas fa-exclamation-triangle text-warning ms-1" title="Stop Loss Triggered"></i>
+              {{/if}}
+              {{else}}
+              <span class="text-muted">N/A</span>
+              {{/if}}
+            </td>
+            <td class="border-0 text-end {{#if (gt pnl 0)}}text-success{{else if (lt pnl 0)}}text-danger{{/if}}">
+              {{#if pnl}}
+              <span class="fw-bold small">
+                {{formatPnlPercent pnl quantity price}}
+              </span>
+              {{else}}
+              <span class="text-muted small">N/A</span>
+              {{/if}}
+            </td>
+            <td class="border-0 text-center">
+              <span
+                class="badge bg-{{#if (eq status 'active')}}success{{else if (eq status 'closed')}}info{{else if (eq status 'cancelled')}}danger{{else}}warning{{/if}} badge-sm">{{status}}</span>
+            </td>
+            <td class="border-0 small">{{formatDate createdAt}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{else}}
+<div class="card">
+  <div class="card-header">
+    <h6 class="card-title mb-0">
+      <i class="fas fa-exchange-alt me-2"></i>
+      {{#if title}}{{title}}{{else}}Recent Trades{{/if}}
+    </h6>
+  </div>
+  <div class="card-body p-0">
+    <div class="text-center text-muted p-4">
+      No trades here.
+    </div>
+  </div>
+</div>
+{{/if}}

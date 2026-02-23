@@ -1,0 +1,9 @@
+default_adx|adx|start=2021-01-04|end=2023-01-03|final=91236.53|total_return=-8763.470947|sharpe=-0.379135|trades=279|tickers=6
+default_atr|atr|start=2021-01-04|end=2023-01-03|final=136338.33|total_return=36338.329344|sharpe=0.467300|trades=47|tickers=6
+default_buy_and_hold|buy_and_hold|start=2021-01-04|end=2023-01-03|final=199535.47|total_return=99535.471634|sharpe=0.569728|trades=1|tickers=6
+default_lightgbm|lightgbm|start=2021-01-04|end=2023-01-03|final=100000.00|total_return=0.000000|sharpe=0.000000|trades=0|tickers=6
+default_macd|macd|start=2021-01-04|end=2023-01-03|final=112593.24|total_return=12593.243015|sharpe=0.214042|trades=113|tickers=6
+default_psar|psar|start=2021-01-04|end=2023-01-03|final=98616.31|total_return=-1383.688955|sharpe=-0.197071|trades=461|tickers=6
+default_rsi|rsi|start=2021-01-04|end=2023-01-03|final=189128.66|total_return=89128.658031|sharpe=0.568048|trades=1332|tickers=6
+default_weighted_momentum|weighted_momentum|start=2021-01-04|end=2023-01-03|final=186648.86|total_return=86648.863409|sharpe=0.443527|trades=1159|tickers=6
+default_williams_r|williams_r|start=2021-01-04|end=2023-01-03|final=225017.19|total_return=125017.186030|sharpe=0.547285|trades=279|tickers=6

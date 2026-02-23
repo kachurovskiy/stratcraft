@@ -1,0 +1,508 @@
+<style>
+  .lightgbm-textarea {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 0.85rem;
+  }
+</style>
+
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <h1 class="mb-0">LightGBM</h1>
+      </div>
+
+      <div class="alert alert-light border d-flex flex-wrap gap-3 align-items-center mb-4">
+        <div class="text-muted small">
+          Training window:
+          {{#if lightgbmTrainingStartDate}}{{lightgbmTrainingStartDate}}{{else}}n/a{{/if}}
+          &rarr;
+          {{#if lightgbmTrainingEndDate}}{{lightgbmTrainingEndDate}}{{else}}n/a{{/if}}
+        </div>
+        <div class="text-muted small">
+          Tickers: {{totalTickerCount}} total ({{trainingTickerCount}} training / {{validationTickerCount}} validation)
+        </div>
+        <a href="/admin/jobs" class="small">View training jobs</a>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-12 col-lg-6">
+          <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0">
+                <i class="fas fa-play"></i>
+                Train a new model
+              </h5>
+            </div>
+            <div class="card-body">
+              <p class="text-muted small mb-3">
+                Queue a training run that saves the output to the database and creates a default strategy.
+              </p>
+              <form method="POST" action="/admin/lightgbm/train">
+                {{> csrf-field}}
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Model name</label>
+                  <input
+                    type="text"
+                    name="modelName"
+                    class="form-control"
+                    id="trainLightgbmModelName"
+                    value="{{defaultLightgbmModelName}}"
+                    required
+                  />
+                  <div class="form-text">Defaults to a parameter string; override it if you want a custom label.</div>
+                  <div class="d-flex flex-wrap gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="lightgbmGenerateName">
+                      Use current params as name
+                    </button>
+                  </div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Num iterations</label>
+                  <input
+                    type="number"
+                    name="numIterations"
+                    class="form-control"
+                    min="1"
+                    step="1"
+                    placeholder="{{defaultLightgbmNumIterations}}"
+                  />
+                  <div class="form-text">Leave blank for the default of {{defaultLightgbmNumIterations}}.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Learning rate</label>
+                  <input
+                    type="number"
+                    name="learningRate"
+                    class="form-control"
+                    min="0.001"
+                    max="1"
+                    step="0.001"
+                    placeholder="{{defaultLightgbmLearningRate}}"
+                  />
+                  <div class="form-text">Leave blank for the default of {{defaultLightgbmLearningRate}}.</div>
+                </div>
+                <div class="mb-3">
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <div class="text-muted small">Leave blank to use the engine defaults.</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="lightgbmClearAdvanced">
+                      Clear optional fields
+                    </button>
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Num leaves</label>
+                      <input type="number" name="numLeaves" class="form-control" min="2" step="1"
+                        placeholder="{{defaultLightgbmNumLeaves}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Max depth</label>
+                      <input type="number" name="maxDepth" class="form-control" min="-1" step="1"
+                        placeholder="{{defaultLightgbmMaxDepth}}" />
+                      <div class="form-text">Use -1 for no limit.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Min data in leaf</label>
+                      <input type="number" name="minDataInLeaf" class="form-control" min="1" step="1"
+                        placeholder="{{defaultLightgbmMinDataInLeaf}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Min gain to split</label>
+                      <input type="number" name="minGainToSplit" class="form-control" min="0" step="0.001"
+                        placeholder="{{defaultLightgbmMinGainToSplit}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Lambda L1</label>
+                      <input type="number" name="lambdaL1" class="form-control" min="0" step="0.01"
+                        placeholder="{{defaultLightgbmLambdaL1}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Lambda L2</label>
+                      <input type="number" name="lambdaL2" class="form-control" min="0" step="0.01"
+                        placeholder="{{defaultLightgbmLambdaL2}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Feature fraction</label>
+                      <input type="number" name="featureFraction" class="form-control" min="0.01" max="1" step="0.01"
+                        placeholder="{{defaultLightgbmFeatureFraction}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Bagging fraction</label>
+                      <input type="number" name="baggingFraction" class="form-control" min="0.01" max="1" step="0.01"
+                        placeholder="{{defaultLightgbmBaggingFraction}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Bagging freq</label>
+                      <input type="number" name="baggingFreq" class="form-control" min="0" step="1"
+                        placeholder="{{defaultLightgbmBaggingFreq}}" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label fw-semibold">Early stopping round</label>
+                      <input type="number" name="earlyStoppingRound" class="form-control" min="0" step="1"
+                        placeholder="{{defaultLightgbmEarlyStoppingRound}}" />
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-play me-1"></i>
+                  Queue Training Job
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card h-100">
+            <div class="card-header bg-secondary text-white">
+              <h5 class="mb-0">
+                <i class="fas fa-save"></i>
+                Save a model tree text
+              </h5>
+            </div>
+            <div class="card-body">
+              <p class="text-muted small mb-3">
+                Paste an exported LightGBM tree definition to keep it in the database.
+              </p>
+              <form method="POST" action="/admin/lightgbm/models">
+                {{> csrf-field}}
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Model name</label>
+                  <input
+                    type="text"
+                    name="modelName"
+                    class="form-control"
+                    required
+                  />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold">Tree text</label>
+                  <textarea
+                    name="treeText"
+                    class="form-control lightgbm-textarea"
+                    rows="8"
+                    placeholder="Paste LightGBM model text here"
+                    required
+                  ></textarea>
+                </div>
+                <button type="submit" class="btn btn-outline-primary">
+                  <i class="fas fa-save me-1"></i>
+                  Save Model
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header bg-dark text-white d-flex flex-wrap gap-3 justify-content-between align-items-center">
+          <h5 class="mb-0">
+            <i class="fas fa-sitemap"></i>
+            LightGBM Models
+          </h5>
+          <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            <span class="badge bg-light text-dark text-uppercase">
+              {{lightgbmModels.length}} stored
+            </span>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          {{#if lightgbmModels.length}}
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-3">Model</th>
+                    <th>Source</th>
+                    <th>Created</th>
+                    <th>Updated</th>
+                    <th class="text-end pe-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{#each lightgbmModels}}
+                    <tr>
+                      <td class="ps-3">
+                        <div class="fw-semibold">{{name}}</div>
+                        <div class="text-muted small">ID {{id}}</div>
+                        {{#if numIterations}}
+                          <div class="text-muted small">Iterations: {{numIterations}}</div>
+                        {{/if}}
+                        {{#if learningRate}}
+                          <div class="text-muted small">Learning rate: {{learningRate}}</div>
+                        {{/if}}
+                        {{#if trainingParams}}
+                          <div class="text-muted small"><code>{{trainingParams}}</code></div>
+                        {{/if}}
+                        {{#if validationMetrics}}
+                          <div class="text-muted small">
+                            Validation (k={{validationMetrics.topK}}):
+                            precision={{toFixed validationMetrics.precisionAtK 4}}
+                            hit={{toFixed validationMetrics.hitRateAtK 4}}
+                            ndcg={{toFixed validationMetrics.ndcgAtK 4}}
+                          </div>
+                        {{/if}}
+                        {{#if (and trainDatasetStats validationDatasetStats)}}
+                          <div class="text-muted small">
+                            Dataset rows: train {{formatNumber trainDatasetStats.rowCount}}
+                            / valid {{formatNumber validationDatasetStats.rowCount}}
+                          </div>
+                        {{/if}}
+                      </td>
+                      <td class="text-uppercase">{{source}}</td>
+                      <td>{{formatDateTime createdAt}}</td>
+                      <td>{{formatDateTime updatedAt}}</td>
+                      <td class="text-end pe-3">
+                        <form method="POST" action="/admin/lightgbm/models/delete" class="d-inline">
+                          {{> csrf-field}}
+                          <input type="hidden" name="modelId" value="{{id}}">
+                          <button type="submit" class="btn btn-sm btn-outline-danger text-uppercase"
+                            onclick="return confirm('Delete LightGBM model {{name}}? This will remove its strategies too.');">
+                            Delete
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colspan="5" class="px-3 pb-3 pt-0">
+                        <details>
+                          <summary class="text-muted small">Edit tree text</summary>
+                          <form method="POST" action="/admin/lightgbm/models/update" class="mt-2">
+                            {{> csrf-field}}
+                            <input type="hidden" name="modelId" value="{{id}}">
+                            <textarea
+                              name="treeText"
+                              class="form-control lightgbm-textarea mb-2"
+                              rows="6"
+                            >{{treeText}}</textarea>
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                              Save Updates
+                            </button>
+                          </form>
+                        </details>
+                        <details class="mt-2">
+                          <summary class="text-muted small">Training details</summary>
+                          <div class="mt-2">
+                            {{#if trainingParams}}
+                              <div class="text-muted small fw-semibold">Hyperparameters</div>
+                              <div class="text-muted small"><code>{{trainingParams}}</code></div>
+                            {{else}}
+                              <div class="text-muted small">No hyperparameters stored.</div>
+                            {{/if}}
+
+                            {{#if (and trainDatasetStats validationDatasetStats)}}
+                              <div class="row g-3 mt-1">
+                                <div class="col-12 col-lg-6">
+                                  <div class="text-muted small fw-semibold">Training dataset</div>
+                                  <div class="text-muted small">
+                                    Rows {{formatNumber trainDatasetStats.rowCount}}
+                                    / Features {{formatNumber trainDatasetStats.featureCount}}
+                                  </div>
+                                  <div class="text-muted small">
+                                    Range {{trainDatasetStats.startDate}} &rarr; {{trainDatasetStats.endDate}}
+                                  </div>
+                                  <div class="text-muted small">
+                                    Labels:
+                                    {{#each trainDatasetStats.labelCounts}}
+                                      {{@key}}={{this}}
+                                    {{/each}}
+                                  </div>
+                                </div>
+                                <div class="col-12 col-lg-6">
+                                  <div class="text-muted small fw-semibold">Validation dataset</div>
+                                  <div class="text-muted small">
+                                    Rows {{formatNumber validationDatasetStats.rowCount}}
+                                    / Features {{formatNumber validationDatasetStats.featureCount}}
+                                  </div>
+                                  <div class="text-muted small">
+                                    Range {{validationDatasetStats.startDate}} &rarr; {{validationDatasetStats.endDate}}
+                                  </div>
+                                  <div class="text-muted small">
+                                    Labels:
+                                    {{#each validationDatasetStats.labelCounts}}
+                                      {{@key}}={{this}}
+                                    {{/each}}
+                                  </div>
+                                </div>
+                              </div>
+                            {{else}}
+                              <div class="text-muted small mt-2">No dataset statistics stored.</div>
+                            {{/if}}
+
+                            {{#if validationMetrics}}
+                              <div class="mt-2">
+                                <div class="text-muted small fw-semibold">Validation metrics</div>
+                                <div class="text-muted small">
+                                  Positive rate {{toFixed validationMetrics.positiveRate 6}}
+                                  ({{validationMetrics.positives}} / {{validationMetrics.totalRows}} rows)
+                                </div>
+                                <div class="text-muted small">
+                                  Precision@{{validationMetrics.topK}} {{toFixed validationMetrics.precisionAtK 6}}
+                                  / Hit-rate@{{validationMetrics.topK}} {{toFixed validationMetrics.hitRateAtK 6}}
+                                  / NDCG@{{validationMetrics.topK}} {{toFixed validationMetrics.ndcgAtK 6}}
+                                </div>
+                                <div class="text-muted small">
+                                  Avg max multiple (top {{validationMetrics.topK}}): {{toFixed validationMetrics.avgMaxMultiple 4}}x
+                                  (days={{validationMetrics.dayCount}})
+                                </div>
+                              </div>
+                            {{else}}
+                              <div class="text-muted small mt-2">No validation metrics stored.</div>
+                            {{/if}}
+
+                            <div class="mt-2">
+                              <button type="button" class="btn btn-sm btn-outline-secondary" data-lightgbm-load-output="{{id}}">
+                                Load engine output
+                              </button>
+                            </div>
+                            <div class="mt-2 d-none" data-lightgbm-output-container="{{id}}">
+                              <div class="text-muted small fw-semibold">STDOUT</div>
+                              <textarea class="form-control lightgbm-textarea" rows="10" readonly data-lightgbm-stdout="{{id}}"></textarea>
+                              <div class="text-muted small fw-semibold mt-2">STDERR</div>
+                              <textarea class="form-control lightgbm-textarea" rows="6" readonly data-lightgbm-stderr="{{id}}"></textarea>
+                            </div>
+                          </div>
+                        </details>
+                      </td>
+                    </tr>
+                  {{/each}}
+                </tbody>
+              </table>
+            </div>
+          {{else}}
+            <div class="p-4 text-center text-muted">
+              No LightGBM models saved yet.
+            </div>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const trainForm = document.querySelector('form[action="/admin/lightgbm/train"]');
+    if (!trainForm) return;
+
+    const modelNameInput = trainForm.querySelector('#trainLightgbmModelName');
+
+    const buildNameFromParams = () => {
+      const fields = [
+        { name: 'numIterations', key: 'num_iterations' },
+        { name: 'learningRate', key: 'learning_rate' },
+        { name: 'numLeaves', key: 'num_leaves' },
+        { name: 'maxDepth', key: 'max_depth' },
+        { name: 'minDataInLeaf', key: 'min_data_in_leaf' },
+        { name: 'minGainToSplit', key: 'min_gain_to_split' },
+        { name: 'lambdaL1', key: 'lambda_l1' },
+        { name: 'lambdaL2', key: 'lambda_l2' },
+        { name: 'featureFraction', key: 'feature_fraction' },
+        { name: 'baggingFraction', key: 'bagging_fraction' },
+        { name: 'baggingFreq', key: 'bagging_freq' },
+        { name: 'earlyStoppingRound', key: 'early_stopping_round' },
+      ];
+
+      const parseOptionalNumber = (raw) => {
+        if (typeof raw !== 'string') return null;
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        const value = Number(trimmed);
+        return Number.isFinite(value) ? value : null;
+      };
+
+      const parts = [];
+      for (const field of fields) {
+        const input = trainForm.querySelector(`[name="${field.name}"]`);
+        if (!input) continue;
+        const raw = typeof input.value === 'string' ? input.value.trim() : '';
+        if (!raw) continue;
+        const value = parseOptionalNumber(raw);
+        if (value === null) continue;
+
+        const placeholder = parseOptionalNumber(input.getAttribute('placeholder') ?? '');
+        if (placeholder !== null && value === placeholder) {
+          continue;
+        }
+
+        parts.push(`${field.key}=${value}`);
+      }
+      return parts.length > 0 ? parts.join(' ') : 'defaults=true';
+    };
+
+    const generateButton = trainForm.querySelector('#lightgbmGenerateName');
+    generateButton?.addEventListener('click', () => {
+      if (!modelNameInput) return;
+      const value = buildNameFromParams();
+      if (!value) return;
+      modelNameInput.value = value;
+      modelNameInput.focus();
+    });
+
+    const clearAdvancedButton = trainForm.querySelector('#lightgbmClearAdvanced');
+    clearAdvancedButton?.addEventListener('click', () => {
+      const advancedFields = [
+        'numLeaves',
+        'maxDepth',
+        'minDataInLeaf',
+        'minGainToSplit',
+        'lambdaL1',
+        'lambdaL2',
+        'featureFraction',
+        'baggingFraction',
+        'baggingFreq',
+        'earlyStoppingRound',
+      ];
+      for (const name of advancedFields) {
+        const input = trainForm.querySelector(`[name="${name}"]`);
+        if (input) {
+          input.value = '';
+        }
+      }
+    });
+
+    const outputButtons = document.querySelectorAll('[data-lightgbm-load-output]');
+    outputButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const modelId = button.getAttribute('data-lightgbm-load-output') || '';
+        if (!modelId) return;
+
+        button.setAttribute('disabled', 'disabled');
+        const originalLabel = button.textContent;
+        button.textContent = 'Loading...';
+
+        try {
+          const resp = await fetch(`/admin/lightgbm/models/output?modelId=${encodeURIComponent(modelId)}`, {
+            credentials: 'same-origin'
+          });
+          if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+          }
+          const payload = await resp.json();
+          const stdout = typeof payload.engineStdout === 'string' ? payload.engineStdout : '';
+          const stderr = typeof payload.engineStderr === 'string' ? payload.engineStderr : '';
+
+          const container = document.querySelector(`[data-lightgbm-output-container="${modelId}"]`);
+          if (container) {
+            container.classList.remove('d-none');
+          }
+          const stdoutEl = document.querySelector(`[data-lightgbm-stdout="${modelId}"]`);
+          if (stdoutEl) {
+            stdoutEl.value = stdout;
+          }
+          const stderrEl = document.querySelector(`[data-lightgbm-stderr="${modelId}"]`);
+          if (stderrEl) {
+            stderrEl.value = stderr;
+          }
+
+          button.textContent = 'Output loaded';
+        } catch (error) {
+          console.error('Failed to load LightGBM engine output:', error);
+          button.removeAttribute('disabled');
+          button.textContent = originalLabel || 'Load engine output';
+          alert('Failed to load engine output.');
+        }
+      });
+    });
+  })();
+</script>

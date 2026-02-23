@@ -1,0 +1,9 @@
+StratCraft Commercial License
+
+Commercial use of StratCraft requires a separate commercial license agreement
+with the maintainers.
+
+This repository does not grant commercial rights. If you intend to use
+StratCraft for Commercial Use (as defined in the Personal Use license),
+please contact stratcrafttrade@gmail.com to obtain commercial terms. The commercial
+license terms are provided separately and supersede this notice.

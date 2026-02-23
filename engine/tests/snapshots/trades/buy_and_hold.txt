@@ -1,0 +1,1 @@
+default_buy_and_hold|2021-01-08|DDD|long|qty=46609|entry=2.15@2021-01-08|exit=2.15@-|pnl=99535.47|fee=0.0000|status=active
