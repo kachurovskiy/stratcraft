@@ -32,7 +32,7 @@ export class CandleClient {
     if (noData) {
       this.tickersWithNoData.add(symbol);
     }
-    return candles;
+    return this.removeWeekendCandles(candles);
   }
 
   async updateTickerData(symbol: string, includeToday = false): Promise<Candle[]> {
@@ -171,6 +171,10 @@ export class CandleClient {
   private isWeekend(date: Date): boolean {
     const day = date.getDay();
     return day === 0 || day === 6;
+  }
+
+  private removeWeekendCandles(candles: Candle[]): Candle[] {
+    return candles.filter(candle => !this.isWeekend(candle.date));
   }
 
   private async updateTickerVolumeFromLastCandle(symbol: string): Promise<void> {
