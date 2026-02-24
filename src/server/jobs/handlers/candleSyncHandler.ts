@@ -306,13 +306,18 @@ function classifyAssetFromName(
 export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandler {
   return async (ctx) => {
     const logMetadata = { jobId: ctx.job.id };
-    const [alwaysValidationTickersRaw, candleSyncSettings, autoDailyCandleSyncRaw] = await Promise.all([
+    const [alwaysValidationTickersRaw, candleSyncSettings, autoDailyCandleSyncRaw, ignoredTickersRaw] = await Promise.all([
       deps.db.settings.getSettingArray(SETTING_KEYS.ALWAYS_VALIDATION_TICKERS),
       loadCandleSyncSettings(deps.db),
       deps.db.settings.getSettingValue(SETTING_KEYS.AUTO_DAILY_CANDLE_SYNC_ENABLED),
+      deps.db.settings.getSettingArray(SETTING_KEYS.IGNORED_TICKERS),
     ]);
     const alwaysValidationTickers = new Set(alwaysValidationTickersRaw);
     const autoDailyCandleSyncEnabled = autoDailyCandleSyncRaw === 'true';
+    const ignoredTickers = new Set(ignoredTickersRaw);
+    const filterIgnoredTickers = <T extends { symbol: string }>(items: T[]) =>
+      ignoredTickers.size === 0 ? items : items.filter(item => !ignoredTickers.has(item.symbol));
+    const loadFilteredTickers = async () => filterIgnoredTickers(await deps.db.tickers.getTickers());
     const marketClock = await resolveMarketClock(ctx, deps);
     if (marketClock.isOpen) {
       const hasExistingCandles = !!(await deps.db.candles.getLatestGlobalCandleDate());
@@ -337,7 +342,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
       }
     }
 
-    let tickers = await deps.db.tickers.getTickers();
+    let tickers = await loadFilteredTickers();
     if (!tickers.length) {
       const seeded = await refreshTickersFromAlpaca(
         ctx,
@@ -347,7 +352,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
         candleSyncSettings
       );
       if (seeded) {
-        tickers = await deps.db.tickers.getTickers();
+        tickers = await loadFilteredTickers();
       }
     }
 
@@ -392,7 +397,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
         candleSyncSettings
       );
       if (refreshed) {
-        tickers = await deps.db.tickers.getTickers();
+        tickers = await loadFilteredTickers();
         symbols = buildSymbolList(tickers);
         totalTickers = symbols.length;
       }
