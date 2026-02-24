@@ -611,7 +611,7 @@ function renderBalanceComparisonClouds() {
     const chartPoints = points.map(point => {
       const x = chart.xValue(point);
       const y = chart.yValue(point);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
         return null;
       }
       const markerColor = colorForId ? colorForId(String(point.templateId)) : '#0d6efd';
