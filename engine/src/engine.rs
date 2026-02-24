@@ -333,6 +333,8 @@ impl Engine {
 
         self.remove_future_dated_trades(&mut active_trades, &mut cash, final_date);
 
+        self.mark_active_trades_to_market(&mut active_trades, &candles_by_ticker, final_date);
+
         let positions_value = self.calculate_positions_value(&active_trades);
         let final_portfolio_value = cash + positions_value;
 
@@ -388,6 +390,187 @@ impl Engine {
         })
     }
 
+    fn apply_signal_decision(
+        &self,
+        ticker: &String,
+        index: usize,
+        signal_date: DateTime<Utc>,
+        ticker_candles: &Vec<&Candle>,
+        signal: SignalDecision,
+        active_trades: &mut Vec<Trade>,
+        closed_trades: &mut Vec<Trade>,
+        cash: &mut f64,
+        generated_signals: &mut Vec<GeneratedSignal>,
+        signal_skips: &mut Vec<AccountSignalSkip>,
+        track_signal_skips: bool,
+        missed_trades_due_to_cash_today: &mut i32,
+    ) {
+        let SignalDecision { action, confidence } = signal;
+
+        if let Some(generated) =
+            maybe_create_generated_signal(signal_date, ticker.as_str(), &action, confidence)
+        {
+            generated_signals.push(generated);
+        }
+
+        match action {
+            SignalAction::Buy => {
+                let next_candle = ticker_candles.get(index + 1).copied();
+                if self.config.allow_short_selling {
+                    self.close_short_positions(
+                        active_trades,
+                        closed_trades,
+                        cash,
+                        ticker,
+                        next_candle,
+                    );
+                }
+                let outcome = self.execute_buy_signal(
+                    active_trades,
+                    cash,
+                    ticker,
+                    ticker_candles[index],
+                    next_candle,
+                    ticker_candles,
+                    index,
+                    confidence,
+                );
+                if let EntrySignalOutcome::Skipped { reason, details } = outcome {
+                    if reason == "insufficient_cash" {
+                        *missed_trades_due_to_cash_today += 1;
+                    }
+                    if track_signal_skips {
+                        signal_skips.push(AccountSignalSkip {
+                            ticker: ticker.clone(),
+                            signal_date,
+                            action: SignalAction::Buy,
+                            reason: reason.to_string(),
+                            details,
+                        });
+                    }
+                }
+            }
+            SignalAction::Sell => {
+                let sell_outcome = self.execute_sell_signal(
+                    active_trades,
+                    closed_trades,
+                    cash,
+                    ticker,
+                    ticker_candles[index],
+                    confidence,
+                );
+                let sell_executed = match &sell_outcome {
+                    SellSignalOutcome::Executed { closed_count } => *closed_count > 0,
+                    _ => false,
+                };
+                let mut short_outcome = None;
+                if self.config.allow_short_selling
+                    && !Self::has_active_long_position(active_trades, ticker)
+                {
+                    let outcome = self.execute_short_entry(
+                        active_trades,
+                        cash,
+                        ticker,
+                        ticker_candles[index],
+                        ticker_candles.get(index + 1).copied(),
+                        ticker_candles,
+                        index,
+                        confidence,
+                    );
+                    if let EntrySignalOutcome::Skipped { reason, .. } = &outcome {
+                        if *reason == "insufficient_cash" {
+                            *missed_trades_due_to_cash_today += 1;
+                        }
+                    }
+                    short_outcome = Some(outcome);
+                }
+
+                let acted = sell_executed
+                    || matches!(short_outcome.as_ref(), Some(EntrySignalOutcome::Executed));
+                if !acted && track_signal_skips {
+                    let reason_details = match short_outcome {
+                        Some(EntrySignalOutcome::Skipped { reason, details }) => {
+                            Some((reason, details))
+                        }
+                        _ => match sell_outcome {
+                            SellSignalOutcome::Skipped { reason } => Some((reason, None)),
+                            _ => None,
+                        },
+                    };
+
+                    if let Some((reason, details)) = reason_details {
+                        signal_skips.push(AccountSignalSkip {
+                            ticker: ticker.clone(),
+                            signal_date,
+                            action: SignalAction::Sell,
+                            reason: reason.to_string(),
+                            details,
+                        });
+                    }
+                }
+            }
+            SignalAction::Hold => {}
+        }
+    }
+
+    fn run_signals_for_date<'a, F>(
+        &self,
+        tickers: &[String],
+        signal_date: DateTime<Utc>,
+        candles_by_ticker: &HashMap<String, Vec<&'a Candle>>,
+        mut ticker_cursors: Option<&mut HashMap<&String, usize>>,
+        signal_provider: &mut F,
+        active_trades: &mut Vec<Trade>,
+        closed_trades: &mut Vec<Trade>,
+        cash: &mut f64,
+        generated_signals: &mut Vec<GeneratedSignal>,
+        signal_skips: &mut Vec<AccountSignalSkip>,
+        track_signal_skips: bool,
+        missed_trades_due_to_cash_today: &mut i32,
+    ) where
+        F: FnMut(&String, usize, DateTime<Utc>, &Vec<&'a Candle>) -> Option<SignalDecision>,
+    {
+        let ordered_tickers = Self::ordered_tickers_for_date(tickers, signal_date);
+        for ticker in ordered_tickers {
+            let Some(ticker_candles) = candles_by_ticker.get(ticker) else {
+                continue;
+            };
+            let index = if let Some(cursors) = ticker_cursors.as_deref_mut() {
+                let cursor = cursors.get_mut(ticker).expect("ticker cursor missing");
+                while *cursor < ticker_candles.len() && ticker_candles[*cursor].date < signal_date {
+                    *cursor += 1;
+                }
+                if *cursor < ticker_candles.len() && ticker_candles[*cursor].date == signal_date {
+                    Some(*cursor)
+                } else {
+                    None
+                }
+            } else {
+                ticker_candles.iter().position(|c| c.date == signal_date)
+            };
+
+            let Some(index) = index else {
+                continue;
+            };
+            if let Some(signal) = signal_provider(ticker, index, signal_date, ticker_candles) {
+                self.apply_signal_decision(
+                    ticker,
+                    index,
+                    signal_date,
+                    ticker_candles,
+                    signal,
+                    active_trades,
+                    closed_trades,
+                    cash,
+                    generated_signals,
+                    signal_skips,
+                    track_signal_skips,
+                    missed_trades_due_to_cash_today,
+                );
+            }
+        }
+    }
+
     fn run_backtest_loop<'a, F>(
         &self,
         tickers: &[String],
@@ -409,6 +592,14 @@ impl Engine {
         let mut signal_skips: Vec<AccountSignalSkip> = Vec::new();
         let mut cash;
         let mut max_portfolio_value;
+        let has_resume = resume_state.is_some();
+        let mut pending_signal_date = if has_resume && loop_start_index > 0 {
+            unique_dates
+                .get(loop_start_index.saturating_sub(1))
+                .copied()
+        } else {
+            None
+        };
         let mut ticker_cursors: HashMap<&String, usize> =
             tickers.iter().map(|ticker| (ticker, 0)).collect();
 
@@ -440,152 +631,45 @@ impl Engine {
 
             // Only create snapshots and check trading signals once we've reached trading_start_index
             if date_index >= trading_start_index {
-                let ordered_tickers = Self::ordered_tickers_for_date(tickers, current_date);
-                for ticker in ordered_tickers {
-                    if let Some(ticker_candles) = candles_by_ticker.get(ticker) {
-                        let cursor = ticker_cursors
-                            .get_mut(ticker)
-                            .expect("ticker cursor missing");
-                        while *cursor < ticker_candles.len()
-                            && ticker_candles[*cursor].date < current_date
-                        {
-                            *cursor += 1;
-                        }
-                        if *cursor < ticker_candles.len()
-                            && ticker_candles[*cursor].date == current_date
-                        {
-                            let index = *cursor;
-                            if let Some(signal) =
-                                signal_provider(ticker, index, current_date, ticker_candles)
-                            {
-                                let SignalDecision { action, confidence } = signal;
-
-                                if let Some(generated) = maybe_create_generated_signal(
-                                    current_date,
-                                    ticker.as_str(),
-                                    &action,
-                                    confidence,
-                                ) {
-                                    generated_signals.push(generated);
-                                }
-
-                                match action {
-                                    SignalAction::Buy => {
-                                        let next_candle = ticker_candles.get(index + 1).copied();
-                                        if self.config.allow_short_selling {
-                                            self.close_short_positions(
-                                                &mut active_trades,
-                                                &mut closed_trades,
-                                                &mut cash,
-                                                ticker,
-                                                next_candle,
-                                            );
-                                        }
-                                        let outcome = self.execute_buy_signal(
-                                            &mut active_trades,
-                                            &mut cash,
-                                            ticker,
-                                            ticker_candles[index],
-                                            next_candle,
-                                            ticker_candles,
-                                            index,
-                                            confidence,
-                                        );
-                                        if let EntrySignalOutcome::Skipped { reason, details } =
-                                            outcome
-                                        {
-                                            if reason == "insufficient_cash" {
-                                                missed_trades_due_to_cash_today += 1;
-                                            }
-                                            if track_signal_skips {
-                                                signal_skips.push(AccountSignalSkip {
-                                                    ticker: ticker.clone(),
-                                                    signal_date: current_date,
-                                                    action: SignalAction::Buy,
-                                                    reason: reason.to_string(),
-                                                    details,
-                                                });
-                                            }
-                                        }
-                                    }
-                                    SignalAction::Sell => {
-                                        let sell_outcome = self.execute_sell_signal(
-                                            &mut active_trades,
-                                            &mut closed_trades,
-                                            &mut cash,
-                                            ticker,
-                                            ticker_candles[index],
-                                            confidence,
-                                        );
-                                        let sell_executed = match &sell_outcome {
-                                            SellSignalOutcome::Executed { closed_count } => {
-                                                *closed_count > 0
-                                            }
-                                            _ => false,
-                                        };
-                                        let mut short_outcome = None;
-                                        if self.config.allow_short_selling
-                                            && !Self::has_active_long_position(
-                                                &active_trades,
-                                                ticker,
-                                            )
-                                        {
-                                            let outcome = self.execute_short_entry(
-                                                &mut active_trades,
-                                                &mut cash,
-                                                ticker,
-                                                ticker_candles[index],
-                                                ticker_candles.get(index + 1).copied(),
-                                                ticker_candles,
-                                                index,
-                                                confidence,
-                                            );
-                                            if let EntrySignalOutcome::Skipped { reason, .. } =
-                                                &outcome
-                                            {
-                                                if *reason == "insufficient_cash" {
-                                                    missed_trades_due_to_cash_today += 1;
-                                                }
-                                            }
-                                            short_outcome = Some(outcome);
-                                        }
-
-                                        let acted = sell_executed
-                                            || matches!(
-                                                short_outcome.as_ref(),
-                                                Some(EntrySignalOutcome::Executed)
-                                            );
-                                        if !acted && track_signal_skips {
-                                            let reason_details = match short_outcome {
-                                                Some(EntrySignalOutcome::Skipped {
-                                                    reason,
-                                                    details,
-                                                }) => Some((reason, details)),
-                                                _ => match sell_outcome {
-                                                    SellSignalOutcome::Skipped { reason } => {
-                                                        Some((reason, None))
-                                                    }
-                                                    _ => None,
-                                                },
-                                            };
-
-                                            if let Some((reason, details)) = reason_details {
-                                                signal_skips.push(AccountSignalSkip {
-                                                    ticker: ticker.clone(),
-                                                    signal_date: current_date,
-                                                    action: SignalAction::Sell,
-                                                    reason: reason.to_string(),
-                                                    details,
-                                                });
-                                            }
-                                        }
-                                    }
-                                    SignalAction::Hold => {}
+                if date_index == loop_start_index {
+                    if let Some(pending_date) = pending_signal_date.take() {
+                        if pending_date < current_date {
+                            if let Some(min_date) = unique_dates.get(trading_start_index) {
+                                if pending_date >= *min_date {
+                                    self.run_signals_for_date(
+                                        tickers,
+                                        pending_date,
+                                        candles_by_ticker,
+                                        None,
+                                        &mut signal_provider,
+                                        &mut active_trades,
+                                        &mut closed_trades,
+                                        &mut cash,
+                                        &mut generated_signals,
+                                        &mut signal_skips,
+                                        track_signal_skips,
+                                        &mut missed_trades_due_to_cash_today,
+                                    );
                                 }
                             }
                         }
                     }
                 }
+
+                self.run_signals_for_date(
+                    tickers,
+                    current_date,
+                    candles_by_ticker,
+                    Some(&mut ticker_cursors),
+                    &mut signal_provider,
+                    &mut active_trades,
+                    &mut closed_trades,
+                    &mut cash,
+                    &mut generated_signals,
+                    &mut signal_skips,
+                    track_signal_skips,
+                    &mut missed_trades_due_to_cash_today,
+                );
             }
 
             let mut positions_value = self.calculate_positions_value(&active_trades);
@@ -1372,6 +1456,25 @@ impl Engine {
                 *cash += trade.price * trade.quantity as f64;
             } else {
                 index += 1;
+            }
+        }
+    }
+
+    fn mark_active_trades_to_market(
+        &self,
+        active_trades: &mut Vec<Trade>,
+        candles_by_ticker: &HashMap<String, Vec<&Candle>>,
+        mark_date: DateTime<Utc>,
+    ) {
+        for trade in active_trades.iter_mut() {
+            if trade.status != TradeStatus::Active || trade.date > mark_date {
+                continue;
+            }
+            if let Some(ticker_candles) = candles_by_ticker.get(&trade.ticker) {
+                if let Some(mark_candle) = ticker_candles.iter().rev().find(|c| c.date <= mark_date)
+                {
+                    trade.pnl = Some((mark_candle.close - trade.price) * trade.quantity as f64);
+                }
             }
         }
     }
@@ -2952,6 +3055,68 @@ mod tests {
                 .any(|snapshot| snapshot.date == unique_dates_full[history_offset + 2]),
             "resume should append new daily snapshot"
         );
+    }
+
+    #[test]
+    fn test_backtest_resumes_last_signal_with_new_candle() {
+        let engine = Engine::new(test_runtime_settings());
+        let ticker = "PEND".to_string();
+        let spy = "SPY".to_string();
+        let prices = vec![100.0, 105.0];
+        let (candles_full, unique_dates_full, history_offset) =
+            generate_candles_with_history(&ticker, prices);
+        let split_index = history_offset + 1;
+        let candles_initial: Vec<Candle> = candles_full[..split_index].to_vec();
+        let unique_dates_initial: Vec<DateTime<Utc>> = unique_dates_full[..split_index].to_vec();
+        let candles_initial_with_spy = with_spy_reference(&candles_initial);
+        let candles_full_with_spy = with_spy_reference(&candles_full);
+
+        let buy_signal = GeneratedSignal {
+            date: unique_dates_full[history_offset],
+            ticker: ticker.clone(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        };
+        let signals = vec![buy_signal];
+
+        let BacktestRun {
+            result: initial_result,
+            ..
+        } = engine
+            .backtest(
+                None,
+                "pending_signal_template",
+                &[ticker.clone(), spy.clone()],
+                &candles_initial_with_spy,
+                &unique_dates_initial,
+                Some(&signals),
+                Some(unique_dates_initial[0]),
+                None,
+            )
+            .unwrap();
+
+        assert!(initial_result.trades.is_empty());
+
+        let BacktestRun {
+            result: resumed_result,
+            ..
+        } = engine
+            .backtest(
+                None,
+                "pending_signal_template",
+                &[ticker.clone(), spy.clone()],
+                &candles_full_with_spy,
+                &unique_dates_full,
+                Some(&signals),
+                Some(unique_dates_full[0]),
+                Some(&initial_result),
+            )
+            .unwrap();
+
+        assert_eq!(resumed_result.trades.len(), 1);
+        let trade = &resumed_result.trades[0];
+        assert_eq!(trade.status, TradeStatus::Active);
+        assert_eq!(trade.date, unique_dates_full[history_offset + 1]);
     }
 
     #[test]
