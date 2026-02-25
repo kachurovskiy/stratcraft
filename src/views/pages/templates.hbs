@@ -633,8 +633,23 @@ function renderBalanceComparisonClouds() {
       values.push(point.x, point.y);
       return values;
     }, []);
-    const sharedRange = computeRange(rangeValues);
-    const axisRange = sharedRange ? [sharedRange.min, sharedRange.max] : undefined;
+    const finiteValues = rangeValues.filter(value => Number.isFinite(value));
+    const maxValue = finiteValues.length ? Math.max(...finiteValues) : 0;
+    const diagonalMax = maxValue > 0 ? maxValue : 0.01;
+    const axisRange = [0, diagonalMax];
+
+    const diagonalTrace = {
+      type: 'scatter',
+      mode: 'lines',
+      x: [0, diagonalMax],
+      y: [0, diagonalMax],
+      hoverinfo: 'skip',
+      showlegend: false,
+      line: {
+        color: 'rgba(108,117,125,0.35)',
+        width: 2
+      }
+    };
 
     const trace = {
       type: 'scatter',
@@ -669,7 +684,7 @@ function renderBalanceComparisonClouds() {
       }
     };
 
-    Plotly.react(target, [trace], layout, defaultPlotlyConfig);
+    Plotly.react(target, [diagonalTrace, trace], layout, defaultPlotlyConfig);
   });
 }
 
