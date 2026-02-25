@@ -967,15 +967,18 @@ impl Engine {
                 details: None,
             };
         }
+        let planning_close = guard_price;
         let mut price = next_candle.open;
         let mut is_limit_entry = false;
         let trade_date = next_candle.date;
+        let mut sizing_price = planning_close;
 
         if self.config.buy_discount_ratio > 0.0 {
-            let discounted_price = candle.close * (1.0 - self.config.buy_discount_ratio);
+            let discounted_price = planning_close * (1.0 - self.config.buy_discount_ratio);
             if next_candle.low <= discounted_price {
                 price = next_candle.open.min(discounted_price);
                 is_limit_entry = true;
+                sizing_price = discounted_price;
             } else {
                 return EntrySignalOutcome::Skipped {
                     reason: "discount_not_reached",
@@ -1012,7 +1015,7 @@ impl Engine {
         };
 
         let allocation = match determine_position_size(PositionSizingParams {
-            price,
+            price: sizing_price,
             available_cash: *cash,
             trade_size_ratio: self.config.trade_size_ratio,
             minimum_trade_size: self.config.minimum_trade_size,
@@ -1036,7 +1039,8 @@ impl Engine {
             }
         };
 
-        *cash -= allocation.trade_value;
+        let trade_value = price * allocation.quantity as f64;
+        *cash -= trade_value;
 
         let stop_loss = initial_stop_loss(
             self.config.stop_loss.mode,
@@ -1129,8 +1133,10 @@ impl Engine {
                 details: None,
             };
         }
+        let planning_close = guard_price;
         let mut price = next_candle.open;
         let trade_date = next_candle.date;
+        let sizing_price = planning_close;
 
         if Self::has_active_long_position(active_trades, ticker)
             || Self::has_active_short_position(active_trades, ticker)
@@ -1167,7 +1173,7 @@ impl Engine {
         };
 
         let allocation = match determine_position_size(PositionSizingParams {
-            price,
+            price: sizing_price,
             available_cash: *cash,
             trade_size_ratio: self.config.trade_size_ratio,
             minimum_trade_size: self.config.minimum_trade_size,
@@ -1191,7 +1197,8 @@ impl Engine {
             }
         };
 
-        *cash += allocation.trade_value;
+        let trade_value = price * allocation.quantity as f64;
+        *cash += trade_value;
 
         let stop_loss = initial_stop_loss(
             self.config.stop_loss.mode,
