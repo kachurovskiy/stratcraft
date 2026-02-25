@@ -958,7 +958,7 @@ impl Engine {
         }
         if !has_minimum_dollar_volume(
             ticker_candles,
-            next_index,
+            index,
             self.runtime_settings.minimum_dollar_volume_lookback,
             self.runtime_settings.minimum_dollar_volume_for_entry,
         ) {
@@ -1120,7 +1120,7 @@ impl Engine {
         }
         if !has_minimum_dollar_volume(
             ticker_candles,
-            next_index,
+            index,
             self.runtime_settings.minimum_dollar_volume_lookback,
             self.runtime_settings.minimum_dollar_volume_for_entry,
         ) {
@@ -2859,11 +2859,12 @@ mod tests {
     fn test_execute_buy_signal_enforces_minimum_dollar_volume() {
         let engine = Engine::new(test_runtime_settings());
         let ticker = "ILLQ".to_string();
-        let total_candles = engine
+        let lookback = engine
             .runtime_settings
             .minimum_dollar_volume_lookback
-            .max(2);
-        let signal_index = total_candles - 2;
+            .max(1);
+        let total_candles = lookback + 1;
+        let signal_index = lookback - 1;
         let entry_index = signal_index + 1;
         let make_candles = |volumes: Vec<i64>| -> Vec<Candle> {
             assert!(
@@ -2889,7 +2890,7 @@ mod tests {
             ((engine.runtime_settings.minimum_dollar_volume_for_entry / 10.0).ceil() as i64).max(1);
 
         let mut illiquid_volumes = vec![required_volume_shares; total_candles];
-        illiquid_volumes[entry_index] = 100; // below requirement in the most recent candle
+        illiquid_volumes[signal_index] = 100; // below requirement in the signal window
         let illiquid = make_candles(illiquid_volumes);
         let illiquid_refs: Vec<&Candle> = illiquid.iter().collect();
         let mut cash = engine.config.initial_capital;
