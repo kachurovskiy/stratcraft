@@ -1977,13 +1977,6 @@ impl Engine {
         let existing_buy_ops = existing_buy_operations_today > 0;
         if existing_buy_ops {
             notes.push("buy_operations_already_planned_for_day".to_string());
-            for (_, ticker, _signal) in actionable_signals {
-                if ticker.is_empty() {
-                    notes.push("signal_missing_ticker".to_string());
-                    continue;
-                }
-                record_skip(&ticker, SignalAction::Buy, "buy_ops_already_planned", None);
-            }
         } else {
             for (_, ticker, signal) in actionable_signals {
                 if ticker.is_empty() {
