@@ -37,6 +37,13 @@ export class MaintenanceRepo {
       );
       const backtestTradesDeleted = tradesResult.changes || 0;
 
+      await this.db.run(
+        `UPDATE trades
+            SET backtest_result_id = NULL
+          WHERE entry_order_id IS NOT NULL
+            AND backtest_result_id IS NOT NULL`
+      );
+
       const backtestResultsResult = await this.db.run('DELETE FROM backtest_results');
       const backtestResultsDeleted = backtestResultsResult.changes || 0;
 
