@@ -967,7 +967,7 @@ impl Engine {
                 details: None,
             };
         }
-        let planning_close = guard_price;
+        let planning_close = Self::sizing_price_from_candle(candle).unwrap_or(guard_price);
         let mut price = next_candle.open;
         let mut is_limit_entry = false;
         let trade_date = next_candle.date;
@@ -1133,7 +1133,7 @@ impl Engine {
                 details: None,
             };
         }
-        let planning_close = guard_price;
+        let planning_close = Self::sizing_price_from_candle(candle).unwrap_or(guard_price);
         let mut price = next_candle.open;
         let trade_date = next_candle.date;
         let sizing_price = planning_close;
@@ -1591,12 +1591,33 @@ impl Engine {
     }
 
     fn guard_price_from_candle(candle: &Candle) -> Option<f64> {
-        let price = candle.unadjusted_close.unwrap_or(candle.close);
-        if price.is_finite() && price > 0.0 {
-            Some(price)
-        } else {
-            None
+        if let Some(unadjusted) = candle.unadjusted_close {
+            if unadjusted.is_finite() && unadjusted > 0.0 {
+                return Some(unadjusted);
+            }
         }
+
+        let adjusted = candle.close;
+        if adjusted.is_finite() && adjusted > 0.0 {
+            return Some(adjusted);
+        }
+
+        None
+    }
+
+    fn sizing_price_from_candle(candle: &Candle) -> Option<f64> {
+        let adjusted = candle.close;
+        if adjusted.is_finite() && adjusted > 0.0 {
+            return Some(adjusted);
+        }
+
+        if let Some(unadjusted) = candle.unadjusted_close {
+            if unadjusted.is_finite() && unadjusted > 0.0 {
+                return Some(unadjusted);
+            }
+        }
+
+        None
     }
 
     fn validate_trades(
@@ -2768,6 +2789,50 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_buy_signal_sizes_with_adjusted_close() {
+        let engine = Engine::new(test_runtime_settings());
+        let ticker = "RSPLT".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![1000.0, 1000.0]);
+        candles[history_offset].unadjusted_close = Some(10.0);
+        candles[history_offset + 1].unadjusted_close = Some(10.0);
+
+        let candle_refs: Vec<&Candle> = candles.iter().collect();
+        let mut active_trades = Vec::new();
+        let mut cash = engine.config.initial_capital;
+
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            candle_refs[history_offset],
+            Some(candle_refs[history_offset + 1]),
+            &candle_refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(outcome, EntrySignalOutcome::Executed));
+        assert_eq!(active_trades.len(), 1);
+        let trade = active_trades.last().unwrap();
+        let expected = match determine_position_size(PositionSizingParams {
+            price: candles[history_offset].close,
+            available_cash: engine.config.initial_capital,
+            trade_size_ratio: engine.config.trade_size_ratio,
+            minimum_trade_size: engine.config.minimum_trade_size,
+            position_sizing_mode: engine.config.position_sizing.mode,
+            confidence: 1.0,
+            vol_target_annual: engine.config.position_sizing.vol_target_annual,
+            realized_vol: None,
+        }) {
+            PositionSizingOutcome::Sized(allocation) => allocation,
+            _ => panic!("expected sizing allocation"),
+        };
+
+        assert_eq!(trade.quantity, expected.quantity);
+    }
+
+    #[test]
     fn test_backtest_skips_low_volume_entries_but_keeps_signal() {
         let engine = Engine::new(test_runtime_settings());
 
@@ -2971,6 +3036,39 @@ mod tests {
         );
         assert!(matches!(skipped_low, EntrySignalOutcome::Skipped { .. }));
         assert!(cheap_trades.is_empty());
+    }
+
+    #[test]
+    fn test_execute_buy_signal_guards_with_unadjusted_close() {
+        let engine = Engine::new(test_runtime_settings());
+        let ticker = "UGRD".to_string();
+
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 100.0]);
+        candles[history_offset].unadjusted_close = Some(5_000.0);
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut cash = engine.config.initial_capital;
+        let mut active_trades = Vec::new();
+        let skipped = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            refs.get(history_offset + 1).copied(),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(
+            skipped,
+            EntrySignalOutcome::Skipped {
+                reason: "price_out_of_range",
+                ..
+            }
+        ));
+        assert!(active_trades.is_empty());
     }
 
     #[test]
