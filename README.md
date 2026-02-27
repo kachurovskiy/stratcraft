@@ -65,6 +65,10 @@ These are empirical observations from my dataset, assumptions, and execution mod
 - `dist/` Compiled server output (generated).
 - `target/` Rust build output (generated).
 
+## Overview
+
+https://youtu.be/LMWcJGPedQY
+
 ## Setup
 
 Prereqs: Node.js + npm, Rust toolchain (for `engine`), and a Postgres instance.
