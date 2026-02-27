@@ -589,30 +589,26 @@ async function scheduleNext(deps: JobHandlerDependencies, ctx: JobHandlerContext
     return;
   }
 
-  const nextMidnight = getNextMidnightUtc();
+  const nextCandleSyncAt = getNextDailyCandleSyncUtc();
   const alreadyScheduled = ctx.scheduler.hasPendingJob(job =>
     job.type === 'candle-sync' &&
-    Math.abs(job.scheduledFor.getTime() - nextMidnight.getTime()) < 60 * 1000
+    Math.abs(job.scheduledFor.getTime() - nextCandleSyncAt.getTime()) < 60 * 1000
   );
 
   if (!alreadyScheduled) {
     ctx.scheduler.scheduleJob('candle-sync', {
-      startAt: nextMidnight,
-      description: 'Daily midnight candle sync pass',
+      startAt: nextCandleSyncAt,
+      description: 'Daily 2am London candle sync pass',
       metadata: { trigger: 'daily' }
     });
   }
 }
 
-function getNextMidnightUtc(): Date {
+function getNextDailyCandleSyncUtc(): Date {
   const now = new Date();
   const next = new Date(now);
-  next.setUTCHours(23, 59, 0, 0);
-
-  const timeUntilNext = next.getTime() - now.getTime();
-  if (timeUntilNext < 60 * 60 * 1000) {
-    next.setUTCDate(next.getUTCDate() + 1);
-  }
+  next.setUTCHours(3, 59, 0, 0);
+  next.setUTCDate(next.getUTCDate() + 1);
 
   return next;
 }
