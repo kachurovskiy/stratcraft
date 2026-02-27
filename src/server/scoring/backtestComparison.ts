@@ -39,6 +39,9 @@ type TradeTickerLink = {
   tradeUrl: string;
   badgeClass: string;
   isExclusive: boolean;
+  reasonLabel: string | null;
+  reasonDetail: string | null;
+  reasonBadge: string | null;
 };
 
 type TradeEntrySampleDay = {
@@ -47,20 +50,6 @@ type TradeEntrySampleDay = {
   liveCount: number;
   engineTrades: TradeTickerLink[];
   liveTrades: TradeTickerLink[];
-};
-
-type TradeDifferenceSample = {
-  id: string;
-  ticker: string;
-  tradeUrl: string;
-  date: Date;
-  quantity: number;
-  price: number;
-  sideLabel: string;
-  sideBadge: string;
-  reasonLabel: string;
-  reasonDetail: string | null;
-  reasonBadge: string;
 };
 
 export type BacktestComparisonView = {
@@ -73,12 +62,10 @@ export type BacktestComparisonView = {
   slippage?: BacktestComparisonSlippage;
   expenseRatio?: BacktestComparisonExpenseRatio;
   sampleDays: TradeEntrySampleDay[];
-  sampleTrades: TradeDifferenceSample[];
 };
 
 const SLIPPAGE_DEFAULT = 0.003;
 const SAMPLE_DAY_LIMIT = 5;
-const SAMPLE_TRADE_LIMIT = 10;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -179,59 +166,6 @@ type TradeDifferenceReason = {
   badge: string;
 };
 
-const SKIP_REASON_LABELS: Record<string, string> = {
-  buy_ops_already_planned: 'Buy already planned',
-  signal_excluded: 'Excluded',
-  signal_not_tradable: 'Not tradable',
-  signal_pending_buy_order: 'Buy order pending',
-  signal_already_traded: 'Already traded',
-  missing_candles: 'Missing candles',
-  missing_candle_for_date: 'Missing candle for date',
-  price_out_of_range: 'Price out of range',
-  insufficient_volume: 'Insufficient volume',
-  price_unavailable: 'Price unavailable',
-  insufficient_size: 'Position too small',
-  insufficient_cash: 'Insufficient cash',
-  discount_not_reached: 'Discount not reached',
-  trade_already_open: 'Trade already open',
-  missing_next_candle: 'Missing next candle',
-  short_selling_disabled: 'Short selling disabled',
-  position_exists: 'Position already open',
-  sell_fraction_zero: 'Sell disabled',
-  sell_no_active_position: 'No active position',
-  sell_exit_order_pending: 'Exit order pending',
-  sell_trade_after_latest_candle: 'Trade after latest candle',
-  sell_missing_candles: 'Missing candles',
-  sell_missing_candle_for_date: 'Missing candle for date',
-  sell_latest_candle_precedes_trade: 'Candle before trade'
-};
-
-const SKIP_REASON_BADGES: Record<string, string> = {
-  buy_ops_already_planned: 'bg-secondary',
-  signal_excluded: 'bg-secondary',
-  signal_not_tradable: 'bg-secondary',
-  signal_pending_buy_order: 'bg-secondary',
-  signal_already_traded: 'bg-secondary',
-  trade_already_open: 'bg-secondary',
-  short_selling_disabled: 'bg-dark text-light',
-  sell_fraction_zero: 'bg-dark text-light',
-  insufficient_cash: 'bg-warning text-dark',
-  insufficient_size: 'bg-warning text-dark',
-  insufficient_volume: 'bg-warning text-dark',
-  price_out_of_range: 'bg-warning text-dark',
-  price_unavailable: 'bg-warning text-dark',
-  discount_not_reached: 'bg-warning text-dark',
-  missing_candles: 'bg-warning text-dark',
-  missing_candle_for_date: 'bg-warning text-dark',
-  missing_next_candle: 'bg-warning text-dark',
-  sell_exit_order_pending: 'bg-secondary',
-  sell_trade_after_latest_candle: 'bg-warning text-dark',
-  sell_missing_candles: 'bg-warning text-dark',
-  sell_missing_candle_for_date: 'bg-warning text-dark',
-  sell_latest_candle_precedes_trade: 'bg-warning text-dark',
-  sell_no_active_position: 'bg-secondary'
-};
-
 const SKIP_SOURCE_LABELS: Record<string, string> = {
   backtest: 'Engine backtest',
   plan_operations: 'Operation planning'
@@ -312,24 +246,36 @@ const buildExclusiveTradeSets = (buckets: Map<string, TradeBucket>): ExclusiveTr
   return { engineOnlyIds, liveOnlyIds, differenceDates };
 };
 
-const buildTradeLink = (trade: Trade, isExclusive: boolean, side: 'engine' | 'live'): TradeTickerLink => ({
-  id: trade.id,
-  ticker: trade.ticker,
-  tradeUrl: `/trades/${trade.id}`,
-  isExclusive,
-  badgeClass: isExclusive
-    ? side === 'engine'
-      ? 'bg-danger'
-      : 'bg-success'
-    : 'bg-light text-dark'
-});
+const buildTradeLink = (
+  trade: Trade,
+  isExclusive: boolean,
+  side: 'engine' | 'live',
+  reasonByTradeId?: Map<string, TradeDifferenceReason>
+): TradeTickerLink => {
+  const reason = isExclusive ? reasonByTradeId?.get(trade.id) ?? null : null;
+  return {
+    id: trade.id,
+    ticker: trade.ticker,
+    tradeUrl: `/trades/${trade.id}`,
+    isExclusive,
+    badgeClass: isExclusive
+      ? side === 'engine'
+        ? 'bg-danger'
+        : 'bg-success'
+      : 'bg-light text-dark',
+    reasonLabel: reason?.label ?? null,
+    reasonDetail: reason?.detail ?? null,
+    reasonBadge: reason?.badge ?? null
+  };
+};
 
 const buildSampleDays = (
   engineByDate: Map<string, Trade[]>,
   liveByDate: Map<string, Trade[]>,
   engineOnlyIds: Set<string>,
   liveOnlyIds: Set<string>,
-  differenceDates: Set<string>
+  differenceDates: Set<string>,
+  reasonByTradeId: Map<string, TradeDifferenceReason>
 ): TradeEntrySampleDay[] => {
   const dateKeys = Array.from(differenceDates).sort();
   const sampleDays: TradeEntrySampleDay[] = [];
@@ -346,10 +292,10 @@ const buildSampleDays = (
       engineCount: engineTrades.length,
       liveCount: liveTrades.length,
       engineTrades: engineTrades.map(trade =>
-        buildTradeLink(trade, engineOnlyIds.has(trade.id), 'engine')
+        buildTradeLink(trade, engineOnlyIds.has(trade.id), 'engine', reasonByTradeId)
       ),
       liveTrades: liveTrades.map(trade =>
-        buildTradeLink(trade, liveOnlyIds.has(trade.id), 'live')
+        buildTradeLink(trade, liveOnlyIds.has(trade.id), 'live', reasonByTradeId)
       )
     });
 
@@ -415,16 +361,15 @@ const matchSignalSkip = (
 
 const buildSignalSkipReason = (skip: AccountSignalSkipRow, source: string): TradeDifferenceReason => {
   const sourceLabel = SKIP_SOURCE_LABELS[source] ?? source;
-  const reasonLabel = SKIP_REASON_LABELS[skip.reason] ?? skip.reason.replace(/_/g, ' ');
   const detailParts = [`Skipped in ${sourceLabel}`];
   if (skip.details) {
     detailParts.push(skip.details);
   }
 
   return {
-    label: reasonLabel,
+    label: skip.reason,
     detail: detailParts.join(' • '),
-    badge: SKIP_REASON_BADGES[skip.reason] ?? 'bg-secondary'
+    badge: 'bg-secondary'
   };
 };
 
@@ -486,7 +431,7 @@ const buildExclusiveTradeReason = ({
   };
 };
 
-const buildExclusiveTradeSamples = ({
+const buildExclusiveTradeReasonMap = ({
   engineTrades,
   liveTrades,
   engineOnlyIds,
@@ -502,64 +447,35 @@ const buildExclusiveTradeSamples = ({
   engineBacktest: BacktestResultRecord;
   liveBacktest: BacktestResultRecord;
   skipIndex: Map<string, AccountSignalSkipRow[]>;
-}): TradeDifferenceSample[] => {
+}): Map<string, TradeDifferenceReason> => {
   const engineTickersTraded = new Set(engineTrades.map(trade => trade.ticker));
   const liveTickersTraded = new Set(liveTrades.map(trade => trade.ticker));
   const engineSnapshotsByDate = buildSnapshotMap(engineBacktest.dailySnapshots);
   const liveSnapshotsByDate = buildSnapshotMap(liveBacktest.dailySnapshots);
+  const reasonByTradeId = new Map<string, TradeDifferenceReason>();
 
-  const candidates: Array<{ trade: Trade; side: 'engine' | 'live' }> = [
-    ...engineTrades
-      .filter(trade => engineOnlyIds.has(trade.id))
-      .map(trade => ({ trade, side: 'engine' as const })),
-    ...liveTrades
-      .filter(trade => liveOnlyIds.has(trade.id))
-      .map(trade => ({ trade, side: 'live' as const }))
-  ];
-
-  const sortedCandidates = candidates.sort((a, b) => {
-    const dateDiff = b.trade.date.getTime() - a.trade.date.getTime();
-    if (dateDiff !== 0) {
-      return dateDiff;
-    }
-    const tickerDiff = a.trade.ticker.localeCompare(b.trade.ticker);
-    if (tickerDiff !== 0) {
-      return tickerDiff;
-    }
-    return a.trade.id.localeCompare(b.trade.id);
-  });
-
-  return sortedCandidates.slice(0, SAMPLE_TRADE_LIMIT).map(({ trade, side }) => {
+  const addReason = (trade: Trade, side: 'engine' | 'live') => {
     const isEngine = side === 'engine';
-    const otherBacktest = isEngine ? liveBacktest : engineBacktest;
-    const otherBacktestLabel = isEngine ? 'live trades backtest' : 'engine backtest';
-    const otherTickersTraded = isEngine ? liveTickersTraded : engineTickersTraded;
-    const otherSnapshotsByDate = isEngine ? liveSnapshotsByDate : engineSnapshotsByDate;
-    const skipSource = isEngine ? 'plan_operations' : 'backtest';
     const reason = buildExclusiveTradeReason({
       trade,
-      otherBacktest,
-      otherBacktestLabel,
-      otherTickersTraded,
-      otherSnapshotsByDate,
+      otherBacktest: isEngine ? liveBacktest : engineBacktest,
+      otherBacktestLabel: isEngine ? 'live trades backtest' : 'engine backtest',
+      otherTickersTraded: isEngine ? liveTickersTraded : engineTickersTraded,
+      otherSnapshotsByDate: isEngine ? liveSnapshotsByDate : engineSnapshotsByDate,
       skipIndex,
-      skipSource
+      skipSource: isEngine ? 'plan_operations' : 'backtest'
     });
+    reasonByTradeId.set(trade.id, reason);
+  };
 
-    return {
-      id: trade.id,
-      ticker: trade.ticker,
-      tradeUrl: `/trades/${trade.id}`,
-      date: trade.date,
-      quantity: trade.quantity,
-      price: trade.price,
-      sideLabel: isEngine ? 'Engine only' : 'Live only',
-      sideBadge: isEngine ? 'bg-danger' : 'bg-success',
-      reasonLabel: reason.label,
-      reasonDetail: reason.detail,
-      reasonBadge: reason.badge
-    };
-  });
+  engineTrades
+    .filter(trade => engineOnlyIds.has(trade.id))
+    .forEach(trade => addReason(trade, 'engine'));
+  liveTrades
+    .filter(trade => liveOnlyIds.has(trade.id))
+    .forEach(trade => addReason(trade, 'live'));
+
+  return reasonByTradeId;
 };
 
 const computeSlippage = (
@@ -703,8 +619,7 @@ export const buildBacktestComparisonView = async ({
       isEligible: false,
       hasEngine: false,
       hasLive: false,
-      sampleDays: [],
-      sampleTrades: []
+      sampleDays: []
     };
   }
 
@@ -724,8 +639,7 @@ export const buildBacktestComparisonView = async ({
       notice: missing.length > 0
         ? `Need ${missing.join(' and ')} results to compare entries.`
         : 'Need live and engine backtests to compare entries.',
-      sampleDays: [],
-      sampleTrades: []
+      sampleDays: []
     };
   }
 
@@ -745,13 +659,6 @@ export const buildBacktestComparisonView = async ({
   const { engineOnlyIds, liveOnlyIds, differenceDates } = buildExclusiveTradeSets(tradeBuckets);
   const engineTradesByDate = buildTradesByDate(engineTrades);
   const liveTradesByDate = buildTradesByDate(liveTrades);
-  const sampleDays = buildSampleDays(
-    engineTradesByDate,
-    liveTradesByDate,
-    engineOnlyIds,
-    liveOnlyIds,
-    differenceDates
-  );
   const exclusiveCandidates = [
     ...engineTrades.filter(trade => engineOnlyIds.has(trade.id)),
     ...liveTrades.filter(trade => liveOnlyIds.has(trade.id))
@@ -770,15 +677,26 @@ export const buildBacktestComparisonView = async ({
     skipIndex = buildSignalSkipIndex(skips);
   }
 
-  const sampleTrades = buildExclusiveTradeSamples({
-    engineTrades,
-    liveTrades,
+  let reasonByTradeId = new Map<string, TradeDifferenceReason>();
+  if (exclusiveCandidates.length > 0) {
+    reasonByTradeId = buildExclusiveTradeReasonMap({
+      engineTrades,
+      liveTrades,
+      engineOnlyIds,
+      liveOnlyIds,
+      engineBacktest: engineBacktest!,
+      liveBacktest: liveBacktest!,
+      skipIndex
+    });
+  }
+  const sampleDays = buildSampleDays(
+    engineTradesByDate,
+    liveTradesByDate,
     engineOnlyIds,
     liveOnlyIds,
-    engineBacktest: engineBacktest!,
-    liveBacktest: liveBacktest!,
-    skipIndex
-  });
+    differenceDates,
+    reasonByTradeId
+  );
   const slippage = computeSlippage(engineAggregation.entriesByKey, liveAggregation.entriesByKey, slippageSetting);
 
   const tickers = [
@@ -814,7 +732,6 @@ export const buildBacktestComparisonView = async ({
       engineNotional: engineExpense.notional,
       liveNotional: liveExpense.notional
     },
-    sampleDays,
-    sampleTrades
+    sampleDays
   };
 };
