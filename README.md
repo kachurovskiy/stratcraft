@@ -35,6 +35,22 @@ These are empirical observations from my dataset, assumptions, and execution mod
 - Selecting tickers where a strategy performed well in the past did not outperform in my tests
 - Raising stops did not outperform in my tests
 
+## User interface screenshots
+
+![StratCraft /templates screenshot](stratcraft-templates.png)
+
+![StratCraft /templates/adx screenshot](stratcraft-adx-template.png)
+
+![StratCraft adx 5 year backtest screenshot](stratcraft-adx-5y.png)
+
+![StratCraft /templates/atr screenshot](stratcraft-atr-template.png)
+
+![StratCraft atr 5 year backtest screenshot](stratcraft-atr-5y.png)
+
+![StratCraft atr best win](stratcraft-atr-win.png)
+
+![StratCraft atr worst loss](stratcraft-atr-loss.png)
+
 ## Repo layout
 
 - `engine/` Rust CLI engine for optimization, verification, signal generation, backtests, trade planning (see `engine/README.md`).
