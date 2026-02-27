@@ -37,19 +37,21 @@ These are empirical observations from my dataset, assumptions, and execution mod
 
 ## User interface screenshots
 
-![StratCraft /templates screenshot](stratcraft-templates.png)
-
-![StratCraft /templates/adx screenshot](stratcraft-adx-template.png)
-
-![StratCraft adx 5 year backtest screenshot](stratcraft-adx-5y.png)
-
-![StratCraft /templates/atr screenshot](stratcraft-atr-template.png)
-
-![StratCraft atr 5 year backtest screenshot](stratcraft-atr-5y.png)
-
-![StratCraft atr best win](stratcraft-atr-win.png)
-
-![StratCraft atr worst loss](stratcraft-atr-loss.png)
+<table>
+  <tr>
+    <td><img src="stratcraft-adx-template.png" alt="StratCraft /templates/adx screenshot" width="320"></td>
+    <td><img src="stratcraft-atr-template.png" alt="StratCraft /templates/atr screenshot" width="320"></td>
+    <td><img src="stratcraft-atr-win.png" alt="StratCraft atr best win" width="320"></td>
+  </tr>
+  <tr>
+    <td><img src="stratcraft-adx-5y.png" alt="StratCraft adx 5 year backtest screenshot" width="320"></td>
+    <td><img src="stratcraft-atr-5y.png" alt="StratCraft atr 5 year backtest screenshot" width="320"></td>
+    <td><img src="stratcraft-templates.png" alt="StratCraft /templates screenshot" width="320"></td>
+  </tr>
+  <tr>
+    <td><img src="stratcraft-atr-loss.png" alt="StratCraft atr worst loss" width="320"></td>
+  </tr>
+</table>
 
 ## Repo layout
 
