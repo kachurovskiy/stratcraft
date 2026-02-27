@@ -25,6 +25,14 @@
                 Trades
             </a>
             {{/if}}
+            <form method="GET" action="/strategies/{{strategy.id}}/tickers" class="d-inline">
+                <div class="input-group input-group-sm" style="width: 180px;">
+                    <input type="text" class="form-control text-uppercase" name="ticker" placeholder="Ticker (AAPL)" required>
+                    <button type="submit" class="btn btn-outline-primary" title="View ticker activity">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </form>
             <a href="/strategies/{{strategy.id}}/skips" class="btn btn-outline-primary btn-sm">
                 <i class="fas fa-filter me-1"></i>
                 Skips

@@ -42,6 +42,11 @@ export interface StrategyIdParams extends Record<string, string> {
   strategyId: string;
 }
 
+export interface StrategyTickerParams extends Record<string, string> {
+  strategyId: string;
+  ticker: string;
+}
+
 export interface TemplateParams extends Record<string, string> {
   templateId: string;
 }

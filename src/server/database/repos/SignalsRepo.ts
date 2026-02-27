@@ -87,6 +87,33 @@ export class SignalsRepo {
     }));
   }
 
+  async getSignalsForStrategyTicker(
+    strategyId: string,
+    ticker: string,
+    userId: number
+  ): Promise<Array<{ date: Date; ticker: string; strategyId: string; action: 'buy' | 'sell'; confidence: number | null }>> {
+    const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
+    if (!normalizedTicker) {
+      return [];
+    }
+    const rows = await this.db.all<SignalRow>(
+      `SELECT sig.date, sig.ticker, sig.strategy_id, sig.action, sig.confidence
+       FROM signals sig
+       WHERE sig.strategy_id = ?
+         AND sig.ticker = ?
+         AND (sig.user_id = ? OR sig.user_id IS NULL)
+       ORDER BY sig.date DESC`,
+      [strategyId, normalizedTicker, userId]
+    );
+    return rows.map((row) => ({
+      date: new Date(row.date),
+      ticker: row.ticker,
+      strategyId: row.strategy_id,
+      action: row.action,
+      confidence: row.confidence ?? null,
+    }));
+  }
+
   async getSignalsForStrategy(
     strategyId: string,
     maxSignalDays: number = 7

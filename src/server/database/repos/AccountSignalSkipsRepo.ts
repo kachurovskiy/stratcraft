@@ -59,4 +59,40 @@ export class AccountSignalSkipsRepo {
 
     return this.db.all<AccountSignalSkipRow>(sql, params);
   }
+
+  async getAccountSignalSkipsForStrategyTicker(
+    strategyId: string,
+    ticker: string,
+    sources?: string[]
+  ): Promise<AccountSignalSkipRow[]> {
+    const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
+    if (!normalizedTicker) {
+      return [];
+    }
+    const params: Array<string | string[]> = [strategyId, normalizedTicker];
+    let sql = `
+      SELECT id,
+             strategy_id,
+             account_id,
+             ticker,
+             signal_date,
+             action,
+             source,
+             reason,
+             details,
+             created_at
+        FROM account_signal_skips
+       WHERE strategy_id = ?
+         AND UPPER(ticker) = ?
+    `;
+
+    if (sources && sources.length > 0) {
+      sql += ' AND source = ANY(?::text[])';
+      params.push(sources);
+    }
+
+    sql += ' ORDER BY signal_date DESC, created_at DESC';
+
+    return this.db.all<AccountSignalSkipRow>(sql, params);
+  }
 }

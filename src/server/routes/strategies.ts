@@ -1,5 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { BacktestParams, StrategyIdParams, StrategyParams } from '../../shared/types/Express';
+import { BacktestParams, StrategyIdParams, StrategyParams, StrategyTickerParams } from '../../shared/types/Express';
 import {
   StrategyTemplate,
   StrategyParameter,
@@ -90,6 +90,8 @@ const MAX_PARAMETER_DECIMALS = 15;
 
 const trimTrailingZeros = (value: string): string =>
   value.replace(/(\.\d*?[1-9])0+$/u, '$1').replace(/\.0+$/u, '');
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const formatNumericValue = (value: number): string => {
   if (!Number.isFinite(value)) {
@@ -458,6 +460,14 @@ function normalizeOperationTickerFilter(raw: unknown): string | undefined {
   return value.length > 0 ? value : undefined;
 }
 
+function normalizeTickerParam(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const value = raw.trim().toUpperCase();
+  return value.length > 0 ? value : null;
+}
+
 function normalizeOperationPageSize(raw: unknown): number {
   const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number(raw);
   if (Number.isFinite(parsed) && STRATEGY_OPERATION_PAGE_SIZE_OPTIONS.includes(parsed)) {
@@ -529,6 +539,27 @@ type SkipSummaryView = {
 const SKIP_SOURCE_META: Record<SkipSourceKey, { label: string; source: string }> = {
   backtest: { label: 'Engine backtest', source: 'backtest' },
   planOperations: { label: 'Operation planning', source: 'plan_operations' }
+};
+
+const ACTION_META: Record<string, { label: string; badge: string }> = {
+  buy: { label: 'Buy', badge: 'success' },
+  sell: { label: 'Sell', badge: 'danger' }
+};
+
+const resolveSignalActionMeta = (action: string | null | undefined): { label: string; badge: string } => {
+  const normalized = typeof action === 'string' ? action.toLowerCase() : '';
+  if (ACTION_META[normalized]) {
+    return ACTION_META[normalized];
+  }
+  if (!normalized) {
+    return { label: 'Unknown', badge: 'secondary' };
+  }
+  return { label: normalized.toUpperCase(), badge: 'secondary' };
+};
+
+const SKIP_SOURCE_VIEW: Record<string, { label: string; badge: string }> = {
+  [SKIP_SOURCE_META.backtest.source]: { label: SKIP_SOURCE_META.backtest.label, badge: 'secondary' },
+  [SKIP_SOURCE_META.planOperations.source]: { label: SKIP_SOURCE_META.planOperations.label, badge: 'info' }
 };
 
 
@@ -1580,6 +1611,256 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
     res.status(500).render('pages/error', {
       title: 'Error',
       error: 'Failed to load strategy overview'
+    });
+  }
+});
+
+router.get<StrategyIdParams>('/strategies/:strategyId/tickers', requireAuth, async (req, res) => {
+  try {
+    const { strategyId } = req.params;
+    const userId = getReqUserId(req);
+    const strategy = await req.db.strategies.getStrategy(strategyId, userId);
+    if (!strategy) {
+      return res.status(404).render('pages/error', {
+        title: 'Strategy Not Found',
+        error: `Strategy ${strategyId} not found`
+      });
+    }
+
+    const ticker = normalizeTickerParam(req.query.ticker);
+    if (!ticker) {
+      return res.redirect(`/strategies/${strategyId}?error=${encodeURIComponent('Ticker is required')}`);
+    }
+
+    res.redirect(`/strategies/${strategyId}/tickers/${encodeURIComponent(ticker)}`);
+  } catch (error) {
+    console.error('Error resolving strategy ticker redirect:', error);
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: 'Failed to resolve strategy ticker'
+    });
+  }
+});
+
+router.get<StrategyTickerParams>('/strategies/:strategyId/tickers/:ticker', requireAuth, async (req, res) => {
+  try {
+    const { strategyId, ticker: tickerParam } = req.params;
+    const userId = getReqUserId(req);
+    const strategy = await req.db.strategies.getStrategy(strategyId, userId);
+    if (!strategy) {
+      return res.status(404).render('pages/error', {
+        title: 'Strategy Not Found',
+        error: `Strategy ${strategyId} not found`
+      });
+    }
+
+    const ticker = normalizeTickerParam(tickerParam);
+    if (!ticker) {
+      return res.status(400).render('pages/error', {
+        title: 'Invalid Ticker',
+        error: 'A valid ticker is required'
+      });
+    }
+
+    const skipSources = [SKIP_SOURCE_META.backtest.source, SKIP_SOURCE_META.planOperations.source];
+    const [signals, operations, trades, skips] = await Promise.all([
+      req.db.signals.getSignalsForStrategyTicker(strategyId, ticker, userId),
+      req.db.accountOperations.getAccountOperationsForStrategy(strategyId, undefined, {
+        ticker,
+        sortBy: 'triggeredAt',
+        order: 'desc'
+      }),
+      req.db.trades.getTrades(strategyId, undefined, ticker, undefined, undefined, undefined, userId),
+      req.db.accountSignalSkips.getAccountSignalSkipsForStrategyTicker(strategyId, ticker, skipSources)
+    ]);
+
+    const signalViews = signals.map((signal) => {
+      const actionMeta = resolveSignalActionMeta(signal.action);
+      return {
+        ...signal,
+        actionLabel: actionMeta.label,
+        actionBadge: actionMeta.badge
+      };
+    });
+
+    const signalSummary = {
+      total: signalViews.length,
+      buy: signalViews.filter((signal) => signal.action === 'buy').length,
+      sell: signalViews.filter((signal) => signal.action === 'sell').length,
+      latestDate: signalViews[0]?.date ?? null
+    };
+
+    const tradeViews = trades.map((trade) => {
+      const sourceMeta = trade.entryOrderId
+        ? { label: 'Live', badge: 'success' }
+        : trade.backtestResultId
+          ? { label: 'Backtest', badge: 'secondary' }
+          : { label: 'Simulated', badge: 'warning' };
+      const tradeValue = Math.abs(trade.price * trade.quantity);
+      const pnl = typeof trade.pnl === 'number' ? trade.pnl : null;
+      const pnlPercent = pnl !== null && tradeValue > 0 ? (pnl / tradeValue) * 100 : null;
+      const pnlClass =
+        pnlPercent === null
+          ? 'text-muted'
+          : pnlPercent > 0
+            ? 'text-success'
+            : pnlPercent < 0
+              ? 'text-danger'
+              : 'text-muted';
+
+      return {
+        ...trade,
+        sourceLabel: sourceMeta.label,
+        sourceBadge: sourceMeta.badge,
+        pnlPercent,
+        pnlClass,
+        tradeUrl: `/trades/${trade.id}`,
+        backtestUrl: trade.backtestResultId ? `/backtests/${trade.backtestResultId}` : null
+      };
+    });
+
+    const tradeSummary = {
+      total: tradeViews.length,
+      live: tradeViews.filter((trade) => trade.sourceLabel === 'Live').length,
+      backtest: tradeViews.filter((trade) => trade.sourceLabel === 'Backtest').length,
+      simulated: tradeViews.filter((trade) => trade.sourceLabel === 'Simulated').length,
+      latestDate: tradeViews[0]?.date ?? null
+    };
+
+    const operationSummary = operations.reduce(
+      (acc, operation) => {
+        acc.total += 1;
+        if (operation.status === 'pending') {
+          acc.pending += 1;
+        } else if (operation.status === 'sent') {
+          acc.sent += 1;
+        } else if (operation.status === 'skipped') {
+          acc.skipped += 1;
+        } else if (operation.status === 'failed') {
+          acc.failed += 1;
+        }
+        return acc;
+      },
+      {
+        total: 0,
+        pending: 0,
+        sent: 0,
+        skipped: 0,
+        failed: 0,
+        latestDate: operations[0]?.triggeredAt ?? null
+      }
+    );
+
+    const operationViews = operations.map((operation) => ({
+      ...operation,
+      tradeUrl: operation.tradeId ? `/trades/${operation.tradeId}` : null
+    }));
+
+    const skipViews = skips.map((skip) => {
+      const actionMeta = resolveSignalActionMeta(skip.action);
+      const sourceMeta = SKIP_SOURCE_VIEW[String(skip.source ?? '').toLowerCase()] ?? {
+        label: String(skip.source ?? 'Unknown'),
+        badge: 'secondary'
+      };
+      const signalDate = skip.signal_date ? new Date(`${skip.signal_date}T00:00:00Z`) : null;
+      return {
+        id: skip.id,
+        action: skip.action,
+        source: skip.source,
+        reason: skip.reason,
+        details: skip.details,
+        signalDate,
+        createdAt: skip.created_at,
+        actionLabel: actionMeta.label,
+        actionBadge: actionMeta.badge,
+        sourceLabel: sourceMeta.label,
+        sourceBadge: sourceMeta.badge
+      };
+    });
+
+    const skipSummary = {
+      total: skipViews.length,
+      backtest: skipViews.filter((skip) => String(skip.source ?? '').toLowerCase() === SKIP_SOURCE_META.backtest.source)
+        .length,
+      planOperations: skipViews.filter(
+        (skip) => String(skip.source ?? '').toLowerCase() === SKIP_SOURCE_META.planOperations.source
+      ).length,
+      latestDate: skipViews[0]?.signalDate ?? null
+    };
+
+    let strategyAccountSummary: { id: string; name: string; provider: string; environment: string } | null = null;
+    if (strategy.accountId) {
+      const account = await req.db.accounts.getAccountById(strategy.accountId, userId);
+      if (account) {
+        strategyAccountSummary = {
+          id: account.id,
+          name: account.name,
+          provider: account.provider,
+          environment: account.environment
+        };
+      }
+    }
+
+    const isAdmin = req.user?.role === 'admin';
+    let tickerLogViews: StrategyLogView[] = [];
+    let tickerLogMetadataColumns: string[] = [];
+    if (isAdmin && typeof req.loggingService?.getStrategyLogs === 'function') {
+      const matcher = new RegExp(`\\b${escapeRegExp(ticker)}\\b`, 'i');
+      const rawLogs = await req.loggingService.getStrategyLogs(strategyId, 200);
+      tickerLogViews = rawLogs
+        .filter((entry: LogEntry) => {
+          if (typeof entry.message === 'string' && matcher.test(entry.message)) {
+            return true;
+          }
+          if (entry.metadata) {
+            try {
+              const metadataText = JSON.stringify(entry.metadata);
+              if (matcher.test(metadataText)) {
+                return true;
+              }
+            } catch {
+              // ignore metadata serialization errors
+            }
+          }
+          return false;
+        })
+        .map((entry: LogEntry) => buildStrategyLogView(entry));
+      tickerLogMetadataColumns = Array.from(
+        new Set(
+          tickerLogViews.flatMap((entry: StrategyLogView) => entry.metadataPairs.map((pair) => pair.label))
+        )
+      ).sort((a, b) => a.localeCompare(b));
+    }
+
+    res.render('pages/strategy-ticker', {
+      title: `${strategy.name} ${ticker} - Ticker Activity`,
+      page: 'dashboard',
+      user: req.user,
+      strategy,
+      ticker,
+      signals: signalViews,
+      hasSignals: signalViews.length > 0,
+      signalSummary,
+      trades: tradeViews,
+      hasTrades: tradeViews.length > 0,
+      tradeSummary,
+      operations: operationViews,
+      hasOperations: operationViews.length > 0,
+      operationSummary,
+      skips: skipViews,
+      hasSkips: skipViews.length > 0,
+      skipSummary,
+      strategyAccountSummary,
+      tickerLogs: tickerLogViews,
+      hasTickerLogs: tickerLogViews.length > 0,
+      tickerLogMetadataColumns,
+      currentUrl: getCurrentUrl(req)
+    });
+  } catch (error) {
+    console.error('Error rendering strategy ticker page:', error);
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: 'Failed to load strategy ticker details'
     });
   }
 });
