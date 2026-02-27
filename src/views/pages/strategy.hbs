@@ -290,68 +290,80 @@
                             <h6 class="fw-bold mb-0">Entry Samples (5 Days)</h6>
                             <span class="text-muted small">Up to 5 days</span>
                         </div>
-                        <div class="text-muted small mt-1">Highlights show entries unique to one run; skip reasons appear under exclusive tickers.</div>
+                        <div class="text-muted small mt-1">Each day lists traded tickers; badges highlight exclusive entries and empty cells show skip reasons.</div>
                         {{#if backtestComparison.sampleDays.length}}
-                        <div class="table-responsive mt-2">
-                            <table class="table table-sm align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th scope="col" class="ps-3">Date</th>
-                                        <th scope="col">Engine entries</th>
-                                        <th scope="col">Live entries</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {{#each backtestComparison.sampleDays}}
-                                    <tr>
-                                        <td class="fw-semibold ps-3">
-                                            {{formatDate date}}
-                                            <div class="text-muted small">
-                                                {{engineCount}} engine &bull; {{liveCount}} live
-                                            </div>
-                                        </td>
-                                        <td>
-                                            {{#if engineTrades.length}}
-                                            <div class="d-flex flex-wrap gap-2">
-                                                {{#each engineTrades}}
-                                                <div class="d-flex flex-column gap-1">
-                                                    <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">{{ticker}}</a>
-                                                    {{#if reasonLabel}}
-                                                    <span class="badge {{reasonBadge}}">{{reasonLabel}}</span>
-                                                    {{#if reasonDetail}}
-                                                    <div class="text-muted small">{{reasonDetail}}</div>
-                                                    {{/if}}
-                                                    {{/if}}
-                                                </div>
+                        <div class="row g-3 mt-2">
+                            {{#each backtestComparison.sampleDays}}
+                            <div class="col-12 col-md-6 col-xl-4 col-xxl-3">
+                                <div class="card h-100">
+                                    <div class="card-header d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                        <div class="fw-semibold">{{formatDate date}}</div>
+                                        <div class="text-muted small">{{engineCount}} engine &bull; {{liveCount}} live</div>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th scope="col" class="ps-3">Ticker</th>
+                                                    <th scope="col">Engine</th>
+                                                    <th scope="col">Live</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {{#each rows}}
+                                                <tr>
+                                                    <td class="ps-3">
+                                                        <a href="/strategies/{{../../strategy.id}}/tickers?ticker={{ticker}}"
+                                                            class="text-decoration-none fw-semibold">{{ticker}}</a>
+                                                    </td>
+                                                    <td>
+                                                        {{#if engine.trades.length}}
+                                                        <div class="d-flex flex-wrap gap-2">
+                                                            {{#each engine.trades}}
+                                                            <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">Trade</a>
+                                                            {{/each}}
+                                                        </div>
+                                                        {{else if engine.reasons.length}}
+                                                        <div class="d-flex flex-column gap-1">
+                                                            {{#each engine.reasons}}
+                                                            <span class="badge {{badge}}">{{label}}</span>
+                                                            {{#if detail}}
+                                                            <div class="text-muted small">{{detail}}</div>
+                                                            {{/if}}
+                                                            {{/each}}
+                                                        </div>
+                                                        {{else}}
+                                                        <span class="text-muted small">&mdash;</span>
+                                                        {{/if}}
+                                                    </td>
+                                                    <td>
+                                                        {{#if live.trades.length}}
+                                                        <div class="d-flex flex-wrap gap-2">
+                                                            {{#each live.trades}}
+                                                            <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">Trade</a>
+                                                            {{/each}}
+                                                        </div>
+                                                        {{else if live.reasons.length}}
+                                                        <div class="d-flex flex-column gap-1">
+                                                            {{#each live.reasons}}
+                                                            <span class="badge {{badge}}">{{label}}</span>
+                                                            {{#if detail}}
+                                                            <div class="text-muted small">{{detail}}</div>
+                                                            {{/if}}
+                                                            {{/each}}
+                                                        </div>
+                                                        {{else}}
+                                                        <span class="text-muted small">&mdash;</span>
+                                                        {{/if}}
+                                                    </td>
+                                                </tr>
                                                 {{/each}}
-                                            </div>
-                                            {{else}}
-                                            <span class="text-muted small">None</span>
-                                            {{/if}}
-                                        </td>
-                                        <td>
-                                            {{#if liveTrades.length}}
-                                            <div class="d-flex flex-wrap gap-2">
-                                                {{#each liveTrades}}
-                                                <div class="d-flex flex-column gap-1">
-                                                    <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">{{ticker}}</a>
-                                                    {{#if reasonLabel}}
-                                                    <span class="badge {{reasonBadge}}">{{reasonLabel}}</span>
-                                                    {{#if reasonDetail}}
-                                                    <div class="text-muted small">{{reasonDetail}}</div>
-                                                    {{/if}}
-                                                    {{/if}}
-                                                </div>
-                                                {{/each}}
-                                            </div>
-                                            {{else}}
-                                            <span class="text-muted small">None</span>
-                                            {{/if}}
-                                        </td>
-                                    </tr>
-                                    {{/each}}
-                                </tbody>
-                            </table>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            {{/each}}
                         </div>
                         <div class="text-muted small mt-2">Showing the first {{backtestComparison.sampleDays.length}} day{{#if (ne backtestComparison.sampleDays.length 1)}}s{{/if}} with entry differences.</div>
                         {{else}}

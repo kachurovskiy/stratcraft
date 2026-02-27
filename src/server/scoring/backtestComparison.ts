@@ -38,18 +38,24 @@ type TradeTickerLink = {
   ticker: string;
   tradeUrl: string;
   badgeClass: string;
-  isExclusive: boolean;
-  reasonLabel: string | null;
-  reasonDetail: string | null;
-  reasonBadge: string | null;
+};
+
+type TradeEntrySampleCell = {
+  trades: TradeTickerLink[];
+  reasons: TradeDifferenceReason[];
+};
+
+type TradeEntrySampleRow = {
+  ticker: string;
+  engine: TradeEntrySampleCell;
+  live: TradeEntrySampleCell;
 };
 
 type TradeEntrySampleDay = {
   date: Date;
   engineCount: number;
   liveCount: number;
-  engineTrades: TradeTickerLink[];
-  liveTrades: TradeTickerLink[];
+  rows: TradeEntrySampleRow[];
 };
 
 export type BacktestComparisonView = {
@@ -219,6 +225,47 @@ const buildTradeBuckets = (engineTrades: Trade[], liveTrades: Trade[]): Map<stri
   return buckets;
 };
 
+const groupTradeLinksByTicker = (tradeLinks: TradeTickerLink[]): Map<string, TradeTickerLink[]> => {
+  const index = new Map<string, TradeTickerLink[]>();
+
+  for (const trade of tradeLinks) {
+    const bucket = index.get(trade.ticker);
+    if (bucket) {
+      bucket.push(trade);
+    } else {
+      index.set(trade.ticker, [trade]);
+    }
+  }
+
+  return index;
+};
+
+const buildExclusiveReasonIndex = (
+  trades: Trade[],
+  exclusiveIds: Set<string>,
+  reasonByTradeId: Map<string, TradeDifferenceReason>
+): Map<string, TradeDifferenceReason[]> => {
+  const index = new Map<string, TradeDifferenceReason[]>();
+
+  for (const trade of trades) {
+    if (!exclusiveIds.has(trade.id)) {
+      continue;
+    }
+    const reason = reasonByTradeId.get(trade.id);
+    if (!reason) {
+      continue;
+    }
+    const bucket = index.get(trade.ticker);
+    if (bucket) {
+      bucket.push(reason);
+    } else {
+      index.set(trade.ticker, [reason]);
+    }
+  }
+
+  return index;
+};
+
 const buildExclusiveTradeSets = (buckets: Map<string, TradeBucket>): ExclusiveTradeSets => {
   const engineOnlyIds = new Set<string>();
   const liveOnlyIds = new Set<string>();
@@ -249,23 +296,17 @@ const buildExclusiveTradeSets = (buckets: Map<string, TradeBucket>): ExclusiveTr
 const buildTradeLink = (
   trade: Trade,
   isExclusive: boolean,
-  side: 'engine' | 'live',
-  reasonByTradeId?: Map<string, TradeDifferenceReason>
+  side: 'engine' | 'live'
 ): TradeTickerLink => {
-  const reason = isExclusive ? reasonByTradeId?.get(trade.id) ?? null : null;
   return {
     id: trade.id,
     ticker: trade.ticker,
     tradeUrl: `/trades/${trade.id}`,
-    isExclusive,
     badgeClass: isExclusive
       ? side === 'engine'
         ? 'bg-danger'
         : 'bg-success'
-      : 'bg-light text-dark',
-    reasonLabel: reason?.label ?? null,
-    reasonDetail: reason?.detail ?? null,
-    reasonBadge: reason?.badge ?? null
+      : 'bg-light text-dark'
   };
 };
 
@@ -287,16 +328,36 @@ const buildSampleDays = (
       continue;
     }
 
+    const engineTradeLinks = engineTrades.map(trade =>
+      buildTradeLink(trade, engineOnlyIds.has(trade.id), 'engine')
+    );
+    const liveTradeLinks = liveTrades.map(trade =>
+      buildTradeLink(trade, liveOnlyIds.has(trade.id), 'live')
+    );
+    const engineTradesByTicker = groupTradeLinksByTicker(engineTradeLinks);
+    const liveTradesByTicker = groupTradeLinksByTicker(liveTradeLinks);
+    const engineReasonsByTicker = buildExclusiveReasonIndex(engineTrades, engineOnlyIds, reasonByTradeId);
+    const liveReasonsByTicker = buildExclusiveReasonIndex(liveTrades, liveOnlyIds, reasonByTradeId);
+    const tickers = Array.from(
+      new Set<string>([...engineTradesByTicker.keys(), ...liveTradesByTicker.keys()])
+    ).sort((a, b) => a.localeCompare(b));
+    const rows: TradeEntrySampleRow[] = tickers.map(ticker => ({
+      ticker,
+      engine: {
+        trades: engineTradesByTicker.get(ticker) ?? [],
+        reasons: liveReasonsByTicker.get(ticker) ?? []
+      },
+      live: {
+        trades: liveTradesByTicker.get(ticker) ?? [],
+        reasons: engineReasonsByTicker.get(ticker) ?? []
+      }
+    }));
+
     sampleDays.push({
       date: new Date(`${dateKey}T00:00:00Z`),
       engineCount: engineTrades.length,
       liveCount: liveTrades.length,
-      engineTrades: engineTrades.map(trade =>
-        buildTradeLink(trade, engineOnlyIds.has(trade.id), 'engine', reasonByTradeId)
-      ),
-      liveTrades: liveTrades.map(trade =>
-        buildTradeLink(trade, liveOnlyIds.has(trade.id), 'live', reasonByTradeId)
-      )
+      rows
     });
 
     if (sampleDays.length >= SAMPLE_DAY_LIMIT) {
