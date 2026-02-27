@@ -2,6 +2,7 @@ use crate::alpaca::AlpacaClient;
 use crate::config::EngineRuntimeSettings;
 use crate::context::AppContext;
 use crate::engine::Engine;
+use crate::models::{AccountSignalSkip, SignalAction};
 use anyhow::{Context, Result};
 use log::{info, warn};
 use reqwest::Client;
@@ -194,13 +195,29 @@ pub async fn run(app: &AppContext) -> Result<()> {
             &ticker_metadata,
         );
 
-        if !plan.skipped_signals.is_empty() {
+        let mut signal_skips: Vec<AccountSignalSkip> = plan.skipped_signals.clone();
+        for operation in &plan.operations {
+            let action = match operation.reason.as_deref() {
+                Some("buy_signal_sync") => SignalAction::Buy,
+                Some("sell_signal_sync") => SignalAction::Sell,
+                _ => continue,
+            };
+            signal_skips.push(AccountSignalSkip {
+                ticker: operation.ticker.clone(),
+                signal_date: target_date,
+                action,
+                reason: "operation_requested".to_string(),
+                details: operation.reason.clone(),
+            });
+        }
+
+        if !signal_skips.is_empty() {
             if let Err(err) = db
                 .insert_account_signal_skips(
                     &strategy.id,
                     Some(&account_id),
                     "plan_operations",
-                    &plan.skipped_signals,
+                    &signal_skips,
                 )
                 .await
             {
