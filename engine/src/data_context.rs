@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 const MARKET_DATA_SNAPSHOT_VERSION: u32 = 5;
-const SNAPSHOT_ALLOWED_SETTINGS: [&str; 22] = [
+const SNAPSHOT_ALLOWED_SETTINGS: [&str; 24] = [
     "BACKTEST_INITIAL_CAPITAL",
     "BACKTEST_API_SECRET",
     "BALANCE_WINDOW_END_DATE",
@@ -26,6 +26,8 @@ const SNAPSHOT_ALLOWED_SETTINGS: [&str; 22] = [
     "MAX_ALLOWED_DRAWDOWN_RATIO",
     "MINIMUM_DOLLAR_VOLUME_FOR_ENTRY",
     "MINIMUM_DOLLAR_VOLUME_LOOKBACK",
+    "MIN_TICKER_FLUCTUATION_RATIO",
+    "MAX_TICKER_FLUCTUATION_RATIO",
     "OPTIMIZATION_OBJECTIVE",
     "OPTIMIZER_TRAINING_END_DATE",
     "OPTIMIZER_TRAINING_START_DATE",
@@ -37,6 +39,10 @@ const SNAPSHOT_ALLOWED_SETTINGS: [&str; 22] = [
     "VERIFY_WINDOW_END_DATE",
     "VERIFY_WINDOW_START_DATE",
 ];
+const MIN_TICKER_FLUCTUATION_RATIO_SETTING: &str = "MIN_TICKER_FLUCTUATION_RATIO";
+const MAX_TICKER_FLUCTUATION_RATIO_SETTING: &str = "MAX_TICKER_FLUCTUATION_RATIO";
+const DEFAULT_MIN_TICKER_FLUCTUATION_RATIO: f64 = 0.03;
+const DEFAULT_MAX_TICKER_FLUCTUATION_RATIO: f64 = 10.0;
 
 #[derive(Clone, Copy)]
 pub enum TickerScope {
@@ -193,6 +199,63 @@ fn scrub_snapshot_settings(settings: &HashMap<String, String>) -> HashMap<String
         .collect()
 }
 
+fn parse_optional_f64_setting(
+    settings: &HashMap<String, String>,
+    key: &str,
+) -> Result<Option<f64>> {
+    let Some(raw) = settings.get(key) else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let value = trimmed
+        .parse::<f64>()
+        .map_err(|_| anyhow!("Setting {} must be a number (value: {})", key, trimmed))?;
+    if !value.is_finite() {
+        return Err(anyhow!(
+            "Setting {} must be finite (value: {})",
+            key,
+            trimmed
+        ));
+    }
+    Ok(Some(value))
+}
+
+fn resolve_fluctuation_ratio_bounds(settings: &HashMap<String, String>) -> Result<(f64, f64)> {
+    let min = parse_optional_f64_setting(settings, MIN_TICKER_FLUCTUATION_RATIO_SETTING)?
+        .unwrap_or(DEFAULT_MIN_TICKER_FLUCTUATION_RATIO);
+    let max = parse_optional_f64_setting(settings, MAX_TICKER_FLUCTUATION_RATIO_SETTING)?
+        .unwrap_or(DEFAULT_MAX_TICKER_FLUCTUATION_RATIO);
+
+    if min < 0.0 {
+        return Err(anyhow!(
+            "Setting {} must be >= 0 (value: {})",
+            MIN_TICKER_FLUCTUATION_RATIO_SETTING,
+            min
+        ));
+    }
+    if max < 0.0 {
+        return Err(anyhow!(
+            "Setting {} must be >= 0 (value: {})",
+            MAX_TICKER_FLUCTUATION_RATIO_SETTING,
+            max
+        ));
+    }
+    if max < min {
+        return Err(anyhow!(
+            "{} ({}) must be >= {} ({})",
+            MAX_TICKER_FLUCTUATION_RATIO_SETTING,
+            max,
+            MIN_TICKER_FLUCTUATION_RATIO_SETTING,
+            min
+        ));
+    }
+
+    Ok((min, max))
+}
+
 pub struct MarketData {
     all_candles: Arc<Vec<Candle>>,
     unique_dates: Arc<Vec<DateTime<Utc>>>,
@@ -207,12 +270,15 @@ impl MarketData {
     pub async fn load(db: &Database, scope: TickerScope) -> Result<Self> {
         info!("Getting tickers with candle data...");
         let ticker_infos = db.get_tickers_with_candle_counts().await?;
+        let settings = db.get_all_settings().await?;
+        let (min_fluctuation_ratio, max_fluctuation_ratio) =
+            resolve_fluctuation_ratio_bounds(&settings)?;
 
         let meets_requirements = |info: &TickerInfo| {
             let has_candles = info.candle_count.unwrap_or(0) > 0;
             let within_limit = info
                 .max_fluctuation_ratio
-                .map(|r| (0.03..10.0).contains(&r))
+                .map(|r| r >= min_fluctuation_ratio && r <= max_fluctuation_ratio)
                 .unwrap_or(true);
             (has_candles, within_limit)
         };
@@ -286,8 +352,6 @@ impl MarketData {
             .into_iter()
             .map(|template| (template.id.clone(), template))
             .collect();
-
-        let settings = db.get_all_settings().await?;
 
         Self::from_components(
             tickers,

@@ -360,6 +360,24 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     min: '0'
   },
   {
+    key: SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO,
+    group: 'engine',
+    label: 'Min Ticker Fluctuation Ratio',
+    description: 'Minimum max daily fluctuation ratio allowed for tickers (e.g. 0.03 = 3%).',
+    placeholder: '0.03',
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.MAX_TICKER_FLUCTUATION_RATIO,
+    group: 'engine',
+    label: 'Max Ticker Fluctuation Ratio',
+    description: 'Maximum max daily fluctuation ratio allowed for tickers (e.g. 10 = 1000%).',
+    placeholder: '10',
+    inputType: 'number',
+    min: '0'
+  },
+  {
     key: SETTING_KEYS.BACKTEST_ACTIVE_MONTHS,
     group: 'engine',
     label: 'Backtest Active Months',
