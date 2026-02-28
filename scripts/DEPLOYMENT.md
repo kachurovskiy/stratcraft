@@ -14,7 +14,10 @@ Quick deployment guide for StratCraft on a Hetzner Cloud Ubuntu server with HTTP
    - Any registrar works (e.g. Namecheap)
    - Budget TLDs like `.click` are $2-$3/year
 
-3. Create an `A` record for your domain in Namecheap Advanced DNS
+3. In Namecheap Advanced DNS settings:
+   - Remove all records
+   - Add Type `A Record`, Host `@`, Value `hetzner-ip-address`
+   - Wait 1 hour or Certbot will fail later
 
 ## No SSH key? (Password login)
 
@@ -55,6 +58,8 @@ After you're in, consider adding an SSH key and disabling password auth for bett
    - Enter your domain name (e.g. `example.com`; no protocol or port)
    - Enter your GitHub username (default: `kachurovskiy`)
    - Enter your GitHub repository name (default: `stratcraft`)
+
+6. It's safe to re-run `./deploy.sh` if e.g. Certbot failed due to DNS propagation delay
 
 ## What the Script Does
 
