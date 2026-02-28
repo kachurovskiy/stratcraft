@@ -19,6 +19,20 @@ Quick deployment guide for StratCraft on a Hetzner Cloud Ubuntu server with HTTP
    - Add Type `A Record`, Host `@`, Value `hetzner-ip-address`
    - Wait 1 hour or Certbot will fail later
 
+## Resend Email Setup (DNS)
+
+StratCraft uses Resend for outbound email (OTP, notifications).
+
+1. Create a https://resend.com account and add your domain.
+2. In your registrar's **Advanced DNS**, add the records provided by Resend:
+   - **3 TXT records**
+   - **1 MX record**
+3. Save and wait for DNS propagation.
+4. Generate a Resend API key.
+5. In StratCraft, go to `Admin -> Settings -> Email` and save the API key.
+
+![Resend DNS records in Advanced DNS](stratcraft-dns.png)
+
 ## No SSH key? (Password login)
 
 If you don't have an SSH key yet, you can still deploy using Hetzner's password-based root login:
