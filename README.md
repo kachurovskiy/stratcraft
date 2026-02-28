@@ -69,6 +69,10 @@ These are empirical observations from my dataset, assumptions, and execution mod
 
 https://youtu.be/LMWcJGPedQY
 
+## Community, discussions, Q&A
+
+https://t.me/TeamOutOfSample
+
 ## Setup
 
 Prereqs: Node.js + npm, Rust toolchain (for `engine`), and a Postgres instance.
