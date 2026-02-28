@@ -1040,6 +1040,15 @@ impl Engine {
         };
 
         let trade_value = price * allocation.quantity as f64;
+        if trade_value > *cash + PRICE_EPSILON {
+            return EntrySignalOutcome::Skipped {
+                reason: "insufficient_cash",
+                details: Some(format!(
+                    "need {:.2} after slippage, have {:.2}",
+                    trade_value, *cash
+                )),
+            };
+        }
         *cash -= trade_value;
 
         let stop_loss = initial_stop_loss(
@@ -2833,6 +2842,44 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_buy_signal_rejects_after_slippage_when_cash_insufficient() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.trade_size_ratio = 1.0;
+        engine.config.minimum_trade_size = 0.0;
+
+        let ticker = "SLIP".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 100.0]);
+        let entry_index = history_offset + 1;
+        candles[entry_index].high = 110.0;
+        candles[entry_index].low = 90.0;
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut cash = 100.0;
+        let mut active_trades = Vec::new();
+
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            refs.get(history_offset + 1).copied(),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(
+            outcome,
+            EntrySignalOutcome::Skipped {
+                reason: "insufficient_cash",
+                ..
+            }
+        ));
+        assert!(active_trades.is_empty());
+        assert!((cash - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn test_backtest_skips_low_volume_entries_but_keeps_signal() {
         let engine = Engine::new(test_runtime_settings());
 
@@ -3291,7 +3338,7 @@ mod tests {
         let ticker = "OPEN".to_string();
         let spy = "SPY".to_string();
         let (candles, unique_dates, history_offset) =
-            generate_candles_with_history(&ticker, vec![100.0, 105.0, 110.0]);
+            generate_candles_with_history(&ticker, vec![100.0, 99.0, 110.0]);
         let all_candles = with_spy_reference(&candles);
 
         let mut signals = HashMap::new();
