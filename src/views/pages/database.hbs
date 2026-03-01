@@ -352,6 +352,38 @@
         </div>
       </div>
     </section>
+
+    <section class="card database-card">
+      <div class="card-header">
+        <h5 class="mb-0">Backup & Restore</h5>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">Create a full SQL backup or restore from a previous export. Restores overwrite existing data.</p>
+        <div class="d-grid gap-3">
+          <form method="POST" action="/admin/database/backup">
+              {{> csrf-field}}
+            <button type="submit" class="btn btn-outline-secondary">
+              <i class="fas fa-download"></i>
+              Download backup
+            </button>
+          </form>
+          <form method="POST" action="/admin/database/restore" enctype="multipart/form-data">
+              {{> csrf-field}}
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-upload"></i>
+                <span class="ms-2">Restore backup</span>
+              </span>
+              <input type="file" name="backupFile" class="form-control" accept=".sql" required>
+              <button type="submit" class="btn btn-outline-danger"
+                onclick="return confirm('Restoring a backup will overwrite the entire database. Continue?');">
+                Restore
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 

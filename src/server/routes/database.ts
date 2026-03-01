@@ -1,5 +1,9 @@
+import { spawn } from 'child_process';
 import express, { NextFunction, Request, Response } from 'express';
+import fs from 'fs';
 import multer from 'multer';
+import os from 'os';
+import path from 'path';
 import { JobScheduler, JobType } from '../jobs/JobScheduler';
 import { handleCsrfFailure, isCsrfRequestValid } from '../middleware/csrf';
 
@@ -19,6 +23,11 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024
   }
 });
+
+const PG_DUMP_BIN = 'pg_dump';
+const PSQL_BIN = 'psql';
+const DATABASE_BACKUP_PREFIX = 'stratcraft-db-backup';
+const PG_ERROR_MAX_LENGTH = 4000;
 
 const BACKTEST_CACHE_EXPORT_HEADER = '-- StratCraft Backtest Cache Export';
 const BACKTEST_CACHE_PAYLOAD_START = '/*BACKTEST_CACHE_EXPORT:START';
@@ -99,6 +108,112 @@ async function cancelAllJobsForMaintenance(
   return { cancelled, idle: pendingJobs === 0, pendingJobs };
 }
 
+function getDatabaseUrl(): URL {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString || connectionString.trim().length === 0) {
+    throw new Error('Database connection is not configured.');
+  }
+  return new URL(connectionString);
+}
+
+function buildPgEnv(databaseUrl: URL): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const databaseNameRaw = databaseUrl.pathname.replace(/^\//, '');
+  const databaseName = databaseNameRaw ? decodeURIComponent(databaseNameRaw) : 'postgres';
+
+  if (databaseUrl.username) {
+    env.PGUSER = decodeURIComponent(databaseUrl.username);
+  }
+  if (databaseUrl.password) {
+    env.PGPASSWORD = decodeURIComponent(databaseUrl.password);
+  }
+  if (databaseUrl.hostname) {
+    env.PGHOST = databaseUrl.hostname;
+  }
+  if (databaseUrl.port) {
+    env.PGPORT = databaseUrl.port;
+  }
+  env.PGDATABASE = databaseName;
+
+  const sslmode = databaseUrl.searchParams.get('sslmode');
+  if (sslmode) {
+    env.PGSSLMODE = sslmode;
+  } else {
+    const ssl = databaseUrl.searchParams.get('ssl');
+    if (ssl && ssl !== '0' && ssl.toLowerCase() !== 'false') {
+      env.PGSSLMODE = 'require';
+    }
+  }
+
+  return env;
+}
+
+function getPgToolErrorMessage(error: unknown, toolName: 'pg_dump' | 'psql'): string {
+  const err = error as NodeJS.ErrnoException;
+  if (err?.code === 'ENOENT') {
+    const envHint = toolName === 'pg_dump' ? 'PG_DUMP_PATH' : 'PSQL_PATH';
+    return `${toolName} was not found on the server. Install PostgreSQL client tools or set ${envHint}.`;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return `Failed to run ${toolName}.`;
+}
+
+async function runPgCommand(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  input?: Buffer
+): Promise<{ code: number; stderr: string; }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { env });
+    let stderr = '';
+
+    child.stderr.on('data', (chunk) => {
+      if (stderr.length >= PG_ERROR_MAX_LENGTH) {
+        return;
+      }
+      stderr += chunk.toString('utf8');
+      if (stderr.length > PG_ERROR_MAX_LENGTH) {
+        stderr = stderr.slice(0, PG_ERROR_MAX_LENGTH);
+      }
+    });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({ code: code ?? -1, stderr: stderr.trim() });
+    });
+
+    if (input) {
+      child.stdin.on('error', (error) => {
+        const err = error as NodeJS.ErrnoException;
+        if (err?.code !== 'EPIPE') {
+          console.error('Error writing to database tool stdin:', error);
+        }
+      });
+      child.stdin.end(input);
+    }
+  });
+}
+
+async function createBackupTarget(): Promise<{ directory: string; filePath: string; }> {
+  const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'stratcraft-db-backup-'));
+  const filePath = path.join(directory, 'backup.sql');
+  return { directory, filePath };
+}
+
+async function cleanupBackupTarget(directory?: string): Promise<void> {
+  if (!directory) {
+    return;
+  }
+  try {
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  } catch (error) {
+    console.error('Failed to clean up database backup temp directory:', error);
+  }
+}
+
 router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {
     const [allUsers, backtestCacheStats, backtestCacheTemplateCounts, signalSummary, adminEntityCounts] = await Promise.all([
@@ -133,6 +248,100 @@ router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) =
       title: 'Error',
       error: 'Failed to load database overview'
     });
+  }
+});
+
+// Database backup (admin only)
+router.post('/backup', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  let backupDir: string | undefined;
+
+  try {
+    const databaseUrl = getDatabaseUrl();
+    const pgEnv = buildPgEnv(databaseUrl);
+    const target = await createBackupTarget();
+    backupDir = target.directory;
+
+    const { code, stderr } = await runPgCommand(
+      PG_DUMP_BIN,
+      ['--clean', '--if-exists', '--no-owner', '--no-privileges', '--file', target.filePath],
+      pgEnv
+    );
+
+    if (code !== 0) {
+      if (stderr) {
+        console.error('pg_dump failed:', stderr);
+      }
+      throw new Error('Database backup failed. Ensure pg_dump is available on the server.');
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:]/g, '-');
+    const filename = `${DATABASE_BACKUP_PREFIX}-${timestamp}.sql`;
+    res.download(target.filePath, filename, (error) => {
+      void cleanupBackupTarget(backupDir);
+      if (error) {
+        console.error('Error sending database backup:', error);
+      }
+    });
+  } catch (error) {
+    await cleanupBackupTarget(backupDir);
+    console.error('Error creating database backup:', error);
+    const message = getPgToolErrorMessage(error, 'pg_dump');
+    res.redirect(`/admin/database?error=${encodeURIComponent(message)}`);
+  }
+});
+
+// Database restore (admin only)
+router.post('/restore', requireAuth, requireAdmin, upload.single('backupFile'), async (req: Request, res: Response) => {
+  try {
+    if (!isCsrfRequestValid(req)) {
+      handleCsrfFailure(req, res);
+      return;
+    }
+
+    if (!req.file || !req.file.buffer || req.file.size === 0) {
+      return res.redirect('/admin/database?error=No backup file provided');
+    }
+
+    const cancelResult = await cancelAllJobsForMaintenance(
+      req.jobScheduler,
+      'Admin requested database restore'
+    );
+
+    if (!cancelResult.idle) {
+      const reason = cancelResult.pendingJobs > 0
+        ? `Unable to stop ${cancelResult.pendingJobs} background job(s).`
+        : 'Unable to stop background jobs.';
+      return res.redirect(`/admin/database?error=${encodeURIComponent(`${reason} Try again once jobs finish.`)}`);
+    }
+
+    const databaseUrl = getDatabaseUrl();
+    const pgEnv = buildPgEnv(databaseUrl);
+    const { code, stderr } = await runPgCommand(
+      PSQL_BIN,
+      ['--single-transaction', '--set', 'ON_ERROR_STOP=1'],
+      pgEnv,
+      req.file.buffer
+    );
+
+    if (code !== 0) {
+      if (stderr) {
+        console.error('psql restore failed:', stderr);
+      }
+      return res.redirect('/admin/database?error=Database restore failed. Check server logs for details.');
+    }
+
+    const triggeredBy = req.user?.email || req.user?.userId || 'unknown';
+    req.loggingService.warn('system', 'Admin restored database from backup', {
+      triggeredBy,
+      fileName: req.file.originalname,
+      fileSize: req.file.size
+    });
+
+    res.redirect('/admin/database?success=Database restore completed. Refresh the page and re-login if needed.');
+  } catch (error) {
+    console.error('Error restoring database:', error);
+    const message = getPgToolErrorMessage(error, 'psql');
+    res.redirect(`/admin/database?error=${encodeURIComponent(message)}`);
   }
 });
 

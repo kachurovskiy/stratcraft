@@ -96,7 +96,7 @@ export function csrfMiddleware(req: Request, res: Response, next: NextFunction):
       return;
     }
 
-    if (req.path === '/admin/database/backtest-cache/import') {
+    if (req.path === '/admin/database/backtest-cache/import' || req.path === '/admin/database/restore') {
       next();
       return;
     }
