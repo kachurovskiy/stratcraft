@@ -587,6 +587,7 @@ impl<'a> OptimizationEngine<'a> {
             });
             handles.push(handle);
         }
+        drop(result_tx);
 
         for (i, parameters) in variations.iter().enumerate() {
             let mut parameters = parameters.clone();
@@ -604,6 +605,7 @@ impl<'a> OptimizationEngine<'a> {
         let mut results = Vec::new();
         let mut completed = 0;
         let mut failed_workers = 0;
+        let mut missing_results = 0;
         let pb = ProgressBar::new(variation_count as u64);
         pb.set_style(
             ProgressStyle::default_bar()
@@ -628,16 +630,26 @@ impl<'a> OptimizationEngine<'a> {
                 }
                 Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
                 Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                    warn!("Result channel closed unexpectedly. Some results may be lost.");
+                    missing_results = variation_count.saturating_sub(completed);
+                    if missing_results > 0 {
+                        warn!(
+                            "Result channel closed unexpectedly. {} backtest(s) did not report results.",
+                            missing_results
+                        );
+                    } else {
+                        warn!("Result channel closed unexpectedly.");
+                    }
                     break;
                 }
             }
         }
 
-        if failed_workers > 0 {
+        let total_failures = failed_workers + missing_results;
+        if total_failures > 0 {
             warn!(
-                "Backtesting completed with {} worker errors",
-                failed_workers
+                "Backtesting completed with {} worker error{}",
+                total_failures,
+                if total_failures == 1 { "" } else { "s" }
             );
             pb.finish_with_message("Backtesting completed with errors");
         } else {
@@ -645,7 +657,9 @@ impl<'a> OptimizationEngine<'a> {
         }
 
         for handle in handles {
-            handle.join().unwrap();
+            if let Err(join_err) = handle.join() {
+                warn!("Optimization worker panicked: {:?}", join_err);
+            }
         }
         Ok(results)
     }
