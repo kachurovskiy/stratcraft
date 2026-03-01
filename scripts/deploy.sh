@@ -742,7 +742,7 @@ server {
         image/svg+xml;
 
     # Client settings
-    client_max_body_size 10M;
+    client_max_body_size 10G;
     client_body_timeout 30s;
     client_header_timeout 30s;
     send_timeout 30s;
