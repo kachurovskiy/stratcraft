@@ -197,21 +197,23 @@ export class CandleClient {
     }
 
     const sorted = [...candles].sort((a, b) => a.date.getTime() - b.date.getTime());
-    const [settings, tickerInfo] = await Promise.all([
-      this.loadCandleDisableSettings(),
-      this.db.tickers.getTicker(symbol)
-    ]);
-    let maxFluctuation = useExistingHistory ? (tickerInfo?.maxFluctuationRatio ?? 0) : 0;
-    if (!Number.isFinite(maxFluctuation)) {
-      maxFluctuation = 0;
-    }
-
+    const settings = await this.loadCandleDisableSettings();
     const maxWindow = Math.max(0, settings.minimumDollarVolumeLookback - 1);
     const historyLimit = useExistingHistory ? Math.max(1, maxWindow + 1) : 0;
-    const history = historyLimit > 0 ? await this.db.candles.getRecentCandles(symbol, historyLimit) : [];
-    const firstCandleDate = sorted[0].date.getTime();
-    const filteredHistory = history.filter((candle) => candle.date.getTime() < firstCandleDate);
+    const firstCandleDate = sorted[0].date;
+    const [history, maxFluctuationBefore] = await Promise.all([
+      historyLimit > 0 ? this.db.candles.getRecentCandles(symbol, historyLimit) : Promise.resolve([]),
+      useExistingHistory ? this.db.candles.getMaxFluctuationBeforeDate(symbol, firstCandleDate) : Promise.resolve(0)
+    ]);
+    let maxFluctuation = Number.isFinite(maxFluctuationBefore) ? maxFluctuationBefore : 0;
+
+    const firstCandleTime = firstCandleDate.getTime();
+    const filteredHistory = history.filter((candle) => candle.date.getTime() < firstCandleTime);
     let lastClose = filteredHistory.length > 0 ? filteredHistory[filteredHistory.length - 1].close : null;
+    if (lastClose === null && useExistingHistory) {
+      const lastCandle = await this.db.candles.getLastCandleBeforeDate(symbol, firstCandleDate);
+      lastClose = lastCandle?.close ?? null;
+    }
     const volumeWindow = filteredHistory.map((candle) => this.calculateDollarVolume(candle));
     if (volumeWindow.length > maxWindow) {
       volumeWindow.splice(0, volumeWindow.length - maxWindow);

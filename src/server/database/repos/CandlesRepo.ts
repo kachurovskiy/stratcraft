@@ -58,6 +58,7 @@ type SymbolRow = QueryResultRow & {
 };
 
 type CloseRow = QueryResultRow & { close: number | null };
+type MaxFluctuationRow = QueryResultRow & { max_fluctuation: number | null };
 
 export class CandlesRepo {
   constructor(private readonly db: DbClient) {}
@@ -86,6 +87,25 @@ export class CandlesRepo {
         LIMIT 1
       `,
       [ticker]
+    );
+
+    if (!row) {
+      return null;
+    }
+
+    return this.mapCandleRow(row);
+  }
+
+  async getLastCandleBeforeDate(ticker: string, beforeDate: Date): Promise<Candle | null> {
+    const row = await this.db.get<CandleRow>(
+      `
+        SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled
+        FROM candles
+        WHERE ticker = ? AND date < ?
+        ORDER BY date DESC
+        LIMIT 1
+      `,
+      [ticker, beforeDate.toISOString().split('T')[0]]
     );
 
     if (!row) {
@@ -331,6 +351,23 @@ export class CandlesRepo {
     );
 
     return rows.map((row) => this.mapCandleRow(row)).reverse();
+  }
+
+  async getMaxFluctuationBeforeDate(ticker: string, beforeDate: Date): Promise<number> {
+    const row = await this.db.get<MaxFluctuationRow>(
+      `
+        SELECT MAX(ABS(close - prev_close) / NULLIF(prev_close, 0)) AS max_fluctuation
+        FROM (
+          SELECT close, LAG(close) OVER (ORDER BY date) AS prev_close
+          FROM candles
+          WHERE ticker = ? AND date < ?
+        ) ranked
+        WHERE prev_close IS NOT NULL
+      `,
+      [ticker, beforeDate.toISOString().split('T')[0]]
+    );
+
+    return Math.max(0, toNumber(row?.max_fluctuation, 0));
   }
 
   async upsertCandlesForTicker(symbol: string, candles: Candle[]): Promise<void> {
