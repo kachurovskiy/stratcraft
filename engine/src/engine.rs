@@ -929,6 +929,12 @@ impl Engine {
         index: usize,
         confidence: f64,
     ) -> EntrySignalOutcome {
+        if let Some(reason) = Self::candle_disabled_reason(candle) {
+            return EntrySignalOutcome::Skipped {
+                reason: "candle_disabled",
+                details: Some(reason.to_string()),
+            };
+        }
         let guard_price = match Self::guard_price_from_candle(candle) {
             Some(price) if self.entry_price_supported(price) => price,
             _ => {
@@ -1098,6 +1104,12 @@ impl Engine {
         index: usize,
         confidence: f64,
     ) -> EntrySignalOutcome {
+        if let Some(reason) = Self::candle_disabled_reason(candle) {
+            return EntrySignalOutcome::Skipped {
+                reason: "candle_disabled",
+                details: Some(reason.to_string()),
+            };
+        }
         let guard_price = match Self::guard_price_from_candle(candle) {
             Some(price) if self.entry_price_supported(price) => price,
             _ => {
@@ -1614,6 +1626,14 @@ impl Engine {
         None
     }
 
+    fn candle_disabled_reason(candle: &Candle) -> Option<&str> {
+        candle
+            .disabled
+            .as_deref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+    }
+
     fn sizing_price_from_candle(candle: &Candle) -> Option<f64> {
         let adjusted = candle.close;
         if adjusted.is_finite() && adjusted > 0.0 {
@@ -2065,6 +2085,16 @@ impl Engine {
                     record_skip(&ticker, SignalAction::Buy, "missing_candle_for_date", None);
                     continue;
                 };
+                if let Some(reason) = Self::candle_disabled_reason(current_candle) {
+                    notes.push(format!("signal_{}_candle_disabled", ticker));
+                    record_skip(
+                        &ticker,
+                        SignalAction::Buy,
+                        "candle_disabled",
+                        Some(reason.to_string()),
+                    );
+                    continue;
+                }
                 let planning_close = Self::planning_reference_price(current_candle);
                 if !self.entry_price_supported(planning_close) {
                     notes.push(format!("signal_{}_price_out_of_range", ticker));
@@ -3052,6 +3082,38 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_buy_signal_skips_when_candle_disabled() {
+        let engine = Engine::new(test_runtime_settings());
+        let ticker = "DSBL".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![50.0, 55.0]);
+        let signal_index = history_offset;
+        candles[signal_index].disabled = Some("v".to_string());
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut active_trades = Vec::new();
+        let mut cash = engine.config.initial_capital;
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[signal_index],
+            refs.get(signal_index + 1).copied(),
+            &refs,
+            signal_index,
+            1.0,
+        );
+        match outcome {
+            EntrySignalOutcome::Skipped { reason, details } => {
+                assert_eq!(reason, "candle_disabled");
+                assert_eq!(details.as_deref(), Some("v"));
+            }
+            _ => panic!("expected candle_disabled skip"),
+        }
+        assert!(active_trades.is_empty());
+    }
+
+    #[test]
     fn test_execute_buy_signal_rejects_price_outside_supported_range() {
         let engine = Engine::new(test_runtime_settings());
         let ticker = "PRNG".to_string();
@@ -3616,6 +3678,50 @@ mod tests {
     }
 
     #[test]
+    fn test_plan_account_operations_skips_when_candle_disabled() {
+        let engine = Engine::new(test_runtime_settings());
+        let (mut candles, dates, history_offset) =
+            generate_candles_with_history("DISB", vec![100.0, 105.0]);
+        let signal_date = dates[history_offset];
+        candles[history_offset].disabled = Some("p".to_string());
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "DISB".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+        let state = sample_account_state(100_000.0);
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            &HashSet::new(),
+            &[],
+            0,
+            &HashMap::new(),
+        );
+
+        assert!(
+            plan.operations.is_empty(),
+            "disabled candles should skip generating buy orders"
+        );
+        assert!(plan
+            .notes
+            .iter()
+            .any(|note| note == "signal_DISB_candle_disabled"));
+        assert!(plan.skipped_signals.iter().any(|skip| {
+            skip.ticker == "DISB"
+                && matches!(skip.action, SignalAction::Buy)
+                && skip.reason == "candle_disabled"
+                && skip.details.as_deref() == Some("p")
+        }));
+    }
+
+    #[test]
     fn test_plan_account_operations_skips_when_volume_insufficient() {
         let mut engine = Engine::new(test_runtime_settings());
         engine.config.buy_discount_ratio = 0.0;
@@ -4145,6 +4251,39 @@ mod tests {
         );
         assert!(matches!(skipped_low, EntrySignalOutcome::Skipped { .. }));
         assert!(cheap_trades.is_empty());
+    }
+
+    #[test]
+    fn test_execute_short_entry_skips_when_candle_disabled() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.allow_short_selling = true;
+        let ticker = "SHDB".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 98.0]);
+        let signal_index = history_offset;
+        candles[signal_index].disabled = Some("f".to_string());
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut active_trades = Vec::new();
+        let mut cash = engine.config.initial_capital;
+
+        let outcome = engine.execute_short_entry(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[signal_index],
+            refs.get(signal_index + 1).copied(),
+            &refs,
+            signal_index,
+            1.0,
+        );
+        match outcome {
+            EntrySignalOutcome::Skipped { reason, details } => {
+                assert_eq!(reason, "candle_disabled");
+                assert_eq!(details.as_deref(), Some("f"));
+            }
+            _ => panic!("expected candle_disabled skip"),
+        }
+        assert!(active_trades.is_empty());
     }
 
     #[test]
