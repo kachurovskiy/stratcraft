@@ -827,7 +827,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.MTLS_ACCESS_CERT_PASSWORD,
     group: 'user-access',
     label: 'Access Certificate Password',
-    description: `Password used when exporting stratcraft-access.p12 (Android requires a non-empty password). Default: ${DEFAULT_MTLS_ACCESS_CERT_PASSWORD}.`,
+    description: `Password used when exporting access.p12 (Android requires a non-empty password). Default: ${DEFAULT_MTLS_ACCESS_CERT_PASSWORD}.`,
     placeholder: DEFAULT_MTLS_ACCESS_CERT_PASSWORD,
     inputType: 'password'
   },

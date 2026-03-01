@@ -133,7 +133,7 @@ router.get('/access-lockdown/download-client-cert', (req: Request, res: Response
       return res.redirect('/admin/users?error=Client certificate bundle is missing. Generate it first.');
     }
 
-    res.download(req.mtlsLockdownService.clientP12Path, 'stratcraft-access.p12');
+    res.download(req.mtlsLockdownService.clientP12Path, 'access.p12');
   } catch (error) {
     console.error('Error downloading client certificate bundle:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to download client certificate bundle';

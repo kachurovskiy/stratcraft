@@ -142,7 +142,7 @@ export class EmailService {
             This ${escapedSiteName} server is protected by an nginx client certificate (mTLS) gate.
             Before importing, remove any previously installed ${escapedSiteName} access certificate from your certificate store
             (Windows: open <strong>"Manage user certificates"</strong> / <code>certmgr.msc</code>).
-            Then download the attached <code>stratcraft-access.p12</code> (password: <code>${escapeHtml(accessGate.p12Password)}</code>) and import it into your browser/OS certificate store.
+            Then download the attached <code>access.p12</code> (password: <code>${escapeHtml(accessGate.p12Password)}</code>) and import it into your browser/OS certificate store.
             After import, fully restart your browser (or reboot your PC), then return to this email and click <strong>Accept Invitation</strong>.
           </div>
         </div>
@@ -172,7 +172,7 @@ export class EmailService {
       html,
       attachments: accessGate?.certificateBundle
         ? [{
-          filename: 'stratcraft-access.p12',
+          filename: 'access.p12',
           content: accessGate.certificateBundle,
           contentType: 'application/x-pkcs12'
         }]
@@ -377,7 +377,7 @@ export class EmailService {
     }
 
     const attachment = {
-      filename: 'stratcraft-access.p12',
+      filename: 'access.p12',
       content: params.certificateBundle,
       contentType: 'application/x-pkcs12'
     };
@@ -491,7 +491,7 @@ export class EmailService {
     p12Password: string;
     siteName: string;
   }): { subject: string; html: string; } {
-    const attachmentName = 'stratcraft-access.p12';
+    const attachmentName = 'access.p12';
     const subject = `${params.siteName} access certificate (required)`;
 
     const adminSnippet = params.isAdmin

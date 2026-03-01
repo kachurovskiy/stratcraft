@@ -95,7 +95,7 @@ export class MtlsLockdownService {
     this.clientCsrPath = path.join(this.mtlsDir, 'client.csr');
     this.clientCertPath = path.join(this.mtlsDir, 'client.crt');
     this.clientExtPath = path.join(this.mtlsDir, 'client.ext');
-    this.clientP12Path = path.join(this.mtlsDir, 'stratcraft-access.p12');
+    this.clientP12Path = path.join(this.mtlsDir, 'access.p12');
     this.helperPath = options?.helperPath ?? DEFAULT_HELPER_PATH;
     this.nginxConfPath = options?.nginxConfPath ?? DEFAULT_NGINX_MTLS_CONF_PATH;
     this.commandTimeoutMs = options?.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
