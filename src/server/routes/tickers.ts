@@ -405,6 +405,63 @@ router.get<TickerParams>('/:symbol', requireAuth, async (req, res) => {
       }
     }
 
+    const disableReasonLabels: Record<string, string> = {
+      f: 'Max fluctuation out of bounds',
+      p: 'Unadjusted price out of bounds',
+      v: 'Insufficient volume in lookback'
+    };
+
+    const candleDisablePeriods: Array<{
+      startDate: Date;
+      endDate: Date;
+      status: 'enabled' | 'disabled';
+      reasonCode: string | null;
+      reasonLabel: string;
+      candleCount: number;
+    }> = [];
+
+    if (candles.length > 0) {
+      let currentReason = candles[0].disabled ?? null;
+      let currentStart = candles[0].date;
+      let currentEnd = candles[0].date;
+      let currentCount = 1;
+
+      for (let i = 1; i < candles.length; i += 1) {
+        const candle = candles[i];
+        const reason = candle.disabled ?? null;
+        if (reason === currentReason) {
+          currentEnd = candle.date;
+          currentCount += 1;
+          continue;
+        }
+
+        candleDisablePeriods.push({
+          startDate: currentStart,
+          endDate: currentEnd,
+          status: currentReason ? 'disabled' : 'enabled',
+          reasonCode: currentReason,
+          reasonLabel: currentReason
+            ? disableReasonLabels[currentReason] ?? `Unknown (${currentReason})`
+            : 'Enabled',
+          candleCount: currentCount
+        });
+
+        currentReason = reason;
+        currentStart = candle.date;
+        currentEnd = candle.date;
+        currentCount = 1;
+      }
+
+      candleDisablePeriods.push({
+        startDate: currentStart,
+        endDate: currentEnd,
+        status: currentReason ? 'disabled' : 'enabled',
+        reasonCode: currentReason,
+        reasonLabel: currentReason ? disableReasonLabels[currentReason] ?? `Unknown (${currentReason})` : 'Enabled',
+        candleCount: currentCount
+      });
+    }
+
     const signalSimulationEnd = new Date();
     const signalSimulationStart = new Date(signalSimulationEnd);
     signalSimulationStart.setUTCFullYear(signalSimulationStart.getUTCFullYear() - 1);
@@ -718,6 +775,7 @@ router.get<TickerParams>('/:symbol', requireAuth, async (req, res) => {
       minLow,
       maxHigh,
       hasPriceRangeStats,
+      candleDisablePeriods,
       tickerBacktestTable,
       tickerBacktestScopeLabel,
       tickerSignalSimulations,
