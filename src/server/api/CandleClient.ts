@@ -224,9 +224,17 @@ export class CandleClient {
       const price = this.resolveUnadjustedPrice(candle);
       const maxFluctuationBefore = maxFluctuation;
       const volumeUsd = this.calculateDollarVolume(candle);
+      let maxFluctuationAfter = maxFluctuationBefore;
+
+      if (lastClose !== null && Number.isFinite(lastClose) && Number.isFinite(candle.close) && lastClose !== 0) {
+        const ratio = Math.abs(candle.close - lastClose) / Math.abs(lastClose);
+        if (Number.isFinite(ratio)) {
+          maxFluctuationAfter = Math.max(maxFluctuationBefore, ratio);
+        }
+      }
 
       let disabled: string | null = null;
-      if (!this.isFluctuationWithinBounds(maxFluctuationBefore, settings)) {
+      if (!this.isFluctuationWithinBounds(maxFluctuationAfter, settings)) {
         disabled = 'f';
       } else if (!this.isPriceWithinBounds(price, settings)) {
         disabled = 'p';
@@ -243,12 +251,7 @@ export class CandleClient {
         }
       }
 
-      if (lastClose !== null && Number.isFinite(lastClose) && Number.isFinite(candle.close) && lastClose !== 0) {
-        const ratio = Math.abs(candle.close - lastClose) / Math.abs(lastClose);
-        if (Number.isFinite(ratio)) {
-          maxFluctuation = Math.max(maxFluctuation, ratio);
-        }
-      }
+      maxFluctuation = maxFluctuationAfter;
       lastClose = candle.close;
     }
 
