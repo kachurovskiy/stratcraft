@@ -187,6 +187,7 @@ export interface Candle {
   close: number;
   unadjustedClose?: number;
   volumeShares: number;
+  disabled?: string | null;
 }
 
 export interface TickerInfo {

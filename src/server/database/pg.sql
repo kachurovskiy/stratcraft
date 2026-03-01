@@ -28,10 +28,14 @@ CREATE TABLE IF NOT EXISTS candles (
     close DOUBLE PRECISION NOT NULL,
     unadjusted_close DOUBLE PRECISION,
     volume_shares BIGINT NOT NULL,
+    disabled TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (ticker, date),
     FOREIGN KEY (ticker) REFERENCES tickers(symbol)
 );
+
+ALTER TABLE candles
+    ADD COLUMN IF NOT EXISTS disabled TEXT;
 
 CREATE TABLE IF NOT EXISTS templates (
     id TEXT PRIMARY KEY,

@@ -36,9 +36,10 @@ describe('CandlesRepo', () => {
     expect(runCalls).toHaveLength(1);
     expect(runCalls[0].sql).toContain('COALESCE(?::bigint, 0)');
     expect(runCalls[0].sql).toContain('volume_shares = COALESCE(?::bigint, candles.volume_shares)');
-    expect(runCalls[0].params).toHaveLength(9);
+    expect(runCalls[0].params).toHaveLength(10);
     expect(runCalls[0].params[7]).toBeNull();
     expect(runCalls[0].params[8]).toBeNull();
+    expect(runCalls[0].params[9]).toBeNull();
   });
 
   test('replaceCandlesForTicker tolerates missing volume_shares', async () => {
@@ -74,8 +75,9 @@ describe('CandlesRepo', () => {
     expect(insertCall).toBeDefined();
     expect(insertCall!.sql).toContain('COALESCE(?::bigint, 0)');
     expect(insertCall!.sql).toContain('volume_shares = COALESCE(?::bigint, candles.volume_shares)');
-    expect(insertCall!.params).toHaveLength(9);
+    expect(insertCall!.params).toHaveLength(10);
     expect(insertCall!.params[7]).toBeNull();
     expect(insertCall!.params[8]).toBeNull();
+    expect(insertCall!.params[9]).toBeNull();
   });
 });

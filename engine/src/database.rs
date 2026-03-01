@@ -226,7 +226,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares
+                "SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled
                  FROM candles
                  ORDER BY date, ticker",
                 &[],
@@ -245,6 +245,7 @@ impl Database {
                 close: row.get(5),
                 unadjusted_close: row.get::<_, Option<f64>>(6),
                 volume_shares: row.get(7),
+                disabled: row.get::<_, Option<String>>(8),
             });
         }
 
@@ -260,7 +261,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares
+                "SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled
                  FROM candles
                  WHERE ticker = ANY($1)
                  ORDER BY date, ticker",
@@ -280,6 +281,7 @@ impl Database {
                 close: row.get(5),
                 unadjusted_close: row.get::<_, Option<f64>>(6),
                 volume_shares: row.get(7),
+                disabled: row.get::<_, Option<String>>(8),
             });
         }
 

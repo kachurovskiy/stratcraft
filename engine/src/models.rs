@@ -18,6 +18,8 @@ pub struct Candle {
     pub close: f64,
     pub unadjusted_close: Option<f64>,
     pub volume_shares: i64,
+    #[serde(default)]
+    pub disabled: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

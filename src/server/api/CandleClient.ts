@@ -2,10 +2,22 @@ import { Database } from '../database/Database';
 import { Candle, TickerInfo } from '../../shared/types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { SETTING_KEYS } from '../constants';
+import { parseOptionalNumberSetting } from '../utils/settings';
 import { CandleSource } from './candleSources/CandleSource';
 import { AlpacaCandleSource } from './candleSources/AlpacaCandleSource';
 import { EodhdCandleSource } from './candleSources/EodhdCandleSource';
 import { TiingoCandleSource } from './candleSources/TiingoCandleSource';
+
+const PRICE_EPSILON = 1e-6;
+
+type CandleDisableSettings = {
+  tradeEntryPriceMin: number;
+  tradeEntryPriceMax: number;
+  minimumDollarVolumeForEntry: number;
+  minimumDollarVolumeLookback: number;
+  minFluctuationRatio: number;
+  maxFluctuationRatio: number;
+};
 
 export class CandleClient {
   private db: Database;
@@ -81,10 +93,11 @@ export class CandleClient {
       return this.reloadFullHistory(symbol, fullHistoryStart, endDate);
     }
 
-    await this.db.candles.upsertCandlesForTicker(symbol, candles);
+    const candlesWithDisabled = await this.applyDisabledFlags(symbol, candles, true);
+    await this.db.candles.upsertCandlesForTicker(symbol, candlesWithDisabled);
     this.db.tickers.invalidateCache();
     await this.updateTickerVolumeFromLastCandle(symbol);
-    return candles;
+    return candlesWithDisabled;
   }
 
   private findCandleByDate(candles: Candle[], date: Date): Candle | null {
@@ -98,10 +111,11 @@ export class CandleClient {
       return [];
     }
 
-    await this.db.candles.replaceCandlesForTicker(symbol, candles);
+    const candlesWithDisabled = await this.applyDisabledFlags(symbol, candles, false);
+    await this.db.candles.replaceCandlesForTicker(symbol, candlesWithDisabled);
     this.db.tickers.invalidateCache();
     await this.updateTickerVolumeFromLastCandle(symbol);
-    return candles;
+    return candlesWithDisabled;
   }
 
   private hasSignificantCandleMismatch(existing: Candle, incoming: Candle): boolean {
@@ -175,6 +189,161 @@ export class CandleClient {
 
   private removeWeekendCandles(candles: Candle[]): Candle[] {
     return candles.filter(candle => !this.isWeekend(candle.date));
+  }
+
+  private async applyDisabledFlags(symbol: string, candles: Candle[], useExistingHistory: boolean): Promise<Candle[]> {
+    if (candles.length === 0) {
+      return candles;
+    }
+
+    const sorted = [...candles].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const [settings, tickerInfo] = await Promise.all([
+      this.loadCandleDisableSettings(),
+      this.db.tickers.getTicker(symbol)
+    ]);
+    let maxFluctuation = useExistingHistory ? (tickerInfo?.maxFluctuationRatio ?? 0) : 0;
+    if (!Number.isFinite(maxFluctuation)) {
+      maxFluctuation = 0;
+    }
+
+    const maxWindow = Math.max(0, settings.minimumDollarVolumeLookback - 1);
+    const historyLimit = useExistingHistory ? Math.max(1, maxWindow + 1) : 0;
+    const history = historyLimit > 0 ? await this.db.candles.getRecentCandles(symbol, historyLimit) : [];
+    const firstCandleDate = sorted[0].date.getTime();
+    const filteredHistory = history.filter((candle) => candle.date.getTime() < firstCandleDate);
+    let lastClose = filteredHistory.length > 0 ? filteredHistory[filteredHistory.length - 1].close : null;
+    const volumeWindow = filteredHistory.map((candle) => this.calculateDollarVolume(candle));
+    if (volumeWindow.length > maxWindow) {
+      volumeWindow.splice(0, volumeWindow.length - maxWindow);
+    }
+
+    const results: Candle[] = [];
+    for (const candle of sorted) {
+      const price = this.resolveUnadjustedPrice(candle);
+      const maxFluctuationBefore = maxFluctuation;
+      const volumeUsd = this.calculateDollarVolume(candle);
+
+      let disabled: string | null = null;
+      if (!this.isFluctuationWithinBounds(maxFluctuationBefore, settings)) {
+        disabled = 'f';
+      } else if (!this.isPriceWithinBounds(price, settings)) {
+        disabled = 'p';
+      } else if (!this.hasMinimumDollarVolume(volumeWindow, volumeUsd, settings)) {
+        disabled = 'v';
+      }
+
+      results.push({ ...candle, disabled });
+
+      if (settings.minimumDollarVolumeLookback > 0) {
+        volumeWindow.push(volumeUsd);
+        if (volumeWindow.length > maxWindow) {
+          volumeWindow.splice(0, volumeWindow.length - maxWindow);
+        }
+      }
+
+      if (lastClose !== null && Number.isFinite(lastClose) && Number.isFinite(candle.close) && lastClose !== 0) {
+        const ratio = Math.abs(candle.close - lastClose) / Math.abs(lastClose);
+        if (Number.isFinite(ratio)) {
+          maxFluctuation = Math.max(maxFluctuation, ratio);
+        }
+      }
+      lastClose = candle.close;
+    }
+
+    return results;
+  }
+
+  private async loadCandleDisableSettings(): Promise<CandleDisableSettings> {
+    const settings = await this.db.settings.getSettingsByKeys([
+      SETTING_KEYS.TRADE_ENTRY_PRICE_MIN,
+      SETTING_KEYS.TRADE_ENTRY_PRICE_MAX,
+      SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY,
+      SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK,
+      SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO,
+      SETTING_KEYS.MAX_TICKER_FLUCTUATION_RATIO
+    ]);
+
+    const parseSetting = (settingKey: string, fallback: number) =>
+      parseOptionalNumberSetting(settings[settingKey]) ?? fallback;
+
+    const tradeEntryPriceMin = Math.max(0, parseSetting(SETTING_KEYS.TRADE_ENTRY_PRICE_MIN, 0));
+    let tradeEntryPriceMax = parseSetting(SETTING_KEYS.TRADE_ENTRY_PRICE_MAX, Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(tradeEntryPriceMax) || tradeEntryPriceMax <= 0) {
+      tradeEntryPriceMax = Number.POSITIVE_INFINITY;
+    }
+    if (tradeEntryPriceMax < tradeEntryPriceMin) {
+      tradeEntryPriceMax = tradeEntryPriceMin;
+    }
+
+    const minimumDollarVolumeForEntry = Math.max(0, parseSetting(SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY, 0));
+    const minimumDollarVolumeLookback = Math.max(
+      0,
+      Math.floor(parseSetting(SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK, 0))
+    );
+
+    const minFluctuationRatio = Math.max(0, parseSetting(SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO, 0));
+    let maxFluctuationRatio = parseSetting(SETTING_KEYS.MAX_TICKER_FLUCTUATION_RATIO, Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(maxFluctuationRatio) || maxFluctuationRatio <= 0) {
+      maxFluctuationRatio = Number.POSITIVE_INFINITY;
+    }
+    if (maxFluctuationRatio < minFluctuationRatio) {
+      maxFluctuationRatio = minFluctuationRatio;
+    }
+
+    return {
+      tradeEntryPriceMin,
+      tradeEntryPriceMax,
+      minimumDollarVolumeForEntry,
+      minimumDollarVolumeLookback,
+      minFluctuationRatio,
+      maxFluctuationRatio
+    };
+  }
+
+  private resolveUnadjustedPrice(candle: Candle): number {
+    const price = candle.unadjustedClose ?? candle.close;
+    return Number.isFinite(price) ? price : Number.NaN;
+  }
+
+  private isPriceWithinBounds(price: number, settings: CandleDisableSettings): boolean {
+    if (!Number.isFinite(price)) {
+      return false;
+    }
+    return price >= settings.tradeEntryPriceMin && price <= settings.tradeEntryPriceMax;
+  }
+
+  private calculateDollarVolume(candle: Candle): number {
+    const high = Number.isFinite(candle.high) ? candle.high : 0;
+    const volume = Number.isFinite(candle.volumeShares) ? candle.volumeShares : 0;
+    const usdVolume = high * volume;
+    return Number.isFinite(usdVolume) ? usdVolume : 0;
+  }
+
+  private hasMinimumDollarVolume(
+    volumeWindow: number[],
+    currentUsdVolume: number,
+    settings: CandleDisableSettings
+  ): boolean {
+    if (settings.minimumDollarVolumeForEntry <= 0 || settings.minimumDollarVolumeLookback <= 0) {
+      return true;
+    }
+    if (volumeWindow.length + 1 < settings.minimumDollarVolumeLookback) {
+      return false;
+    }
+    const startIndex = volumeWindow.length + 1 - settings.minimumDollarVolumeLookback;
+    for (let idx = Math.max(0, startIndex); idx < volumeWindow.length; idx += 1) {
+      if (volumeWindow[idx] + PRICE_EPSILON < settings.minimumDollarVolumeForEntry) {
+        return false;
+      }
+    }
+    return currentUsdVolume + PRICE_EPSILON >= settings.minimumDollarVolumeForEntry;
+  }
+
+  private isFluctuationWithinBounds(maxFluctuation: number, settings: CandleDisableSettings): boolean {
+    if (!Number.isFinite(maxFluctuation)) {
+      return false;
+    }
+    return maxFluctuation >= settings.minFluctuationRatio && maxFluctuation <= settings.maxFluctuationRatio;
   }
 
   private async updateTickerVolumeFromLastCandle(symbol: string): Promise<void> {

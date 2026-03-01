@@ -38,6 +38,7 @@ fn build_candles(ticker: &str, count: usize) -> Vec<Candle> {
                 close,
                 unadjusted_close: None,
                 volume_shares: 1_000_000 + idx as i64,
+                disabled: None,
             }
         })
         .collect()

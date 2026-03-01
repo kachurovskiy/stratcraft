@@ -2513,6 +2513,7 @@ mod tests {
                 close: price,
                 unadjusted_close: Some(price),
                 volume_shares: 10_000_000,
+                disabled: None,
             });
         }
         (candles, dates)
@@ -2899,6 +2900,7 @@ mod tests {
                 close: 10.0,
                 unadjusted_close: Some(10.0),
                 volume_shares: 1_000,
+                disabled: None,
             },
             Candle {
                 ticker: ticker.clone(),
@@ -2909,6 +2911,7 @@ mod tests {
                 close: 10.5,
                 unadjusted_close: Some(10.5),
                 volume_shares: 1_000,
+                disabled: None,
             },
             Candle {
                 ticker: spy.clone(),
@@ -2919,6 +2922,7 @@ mod tests {
                 close: 100.0,
                 unadjusted_close: Some(100.0),
                 volume_shares: 5_000_000,
+                disabled: None,
             },
             Candle {
                 ticker: spy.clone(),
@@ -2929,6 +2933,7 @@ mod tests {
                 close: 101.5,
                 unadjusted_close: Some(101.5),
                 volume_shares: 5_000_000,
+                disabled: None,
             },
         ];
 
@@ -3002,6 +3007,7 @@ mod tests {
                     close: 10.0,
                     unadjusted_close: Some(10.0),
                     volume_shares: volume,
+                    disabled: None,
                 })
                 .collect()
         };
@@ -4247,6 +4253,7 @@ mod tests {
             close: exit_price,
             unadjusted_close: Some(exit_price),
             volume_shares: 1_000,
+            disabled: None,
         };
 
         let mut active_trades = vec![Trade {
@@ -4324,6 +4331,7 @@ mod tests {
                 close: *close,
                 unadjusted_close: Some(*close),
                 volume_shares: 10_000_000,
+                disabled: None,
             });
         }
 

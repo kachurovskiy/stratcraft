@@ -270,6 +270,7 @@ mod tests {
             close,
             unadjusted_close: Some(close),
             volume_shares: volume,
+            disabled: None,
         }
     }
 

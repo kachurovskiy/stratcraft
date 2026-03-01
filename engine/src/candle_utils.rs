@@ -100,6 +100,7 @@ mod tests {
                 close: 104.0,
                 unadjusted_close: Some(104.0),
                 volume_shares: 1_000,
+                disabled: None,
             },
             Candle {
                 ticker: "AAA".to_string(),
@@ -110,6 +111,7 @@ mod tests {
                 close: 101.0,
                 unadjusted_close: Some(101.0),
                 volume_shares: 1_000,
+                disabled: None,
             },
             Candle {
                 ticker: "ZZZ".to_string(),
@@ -120,6 +122,7 @@ mod tests {
                 close: 50.5,
                 unadjusted_close: Some(50.5),
                 volume_shares: 500,
+                disabled: None,
             },
         ];
 

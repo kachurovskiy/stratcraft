@@ -12,6 +12,7 @@ type CandleRow = QueryResultRow & {
   close: number;
   unadjusted_close: number | null;
   volume_shares: number;
+  disabled: string | null;
 };
 
 type MaxDateRow = QueryResultRow & {
@@ -70,14 +71,15 @@ export class CandlesRepo {
       low: toNumber(row.low),
       close: toNumber(row.close),
       unadjustedClose: toNumber(row.unadjusted_close ?? row.close),
-      volumeShares: toInteger(row.volume_shares)
+      volumeShares: toInteger(row.volume_shares),
+      disabled: row.disabled ?? null
     };
   }
 
   async getLastCandle(ticker: string): Promise<Candle | null> {
     const row = await this.db.get<CandleRow>(
       `
-        SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares
+        SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled
         FROM candles
         WHERE ticker = ?
         ORDER BY date DESC
@@ -124,7 +126,7 @@ export class CandlesRepo {
 
     const placeholders = tickers.map(() => '?').join(',');
     let sql = `
-      SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares
+      SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled
       FROM candles
       WHERE ticker IN (${placeholders})
     `;
@@ -311,6 +313,26 @@ export class CandlesRepo {
     }));
   }
 
+  async getRecentCandles(ticker: string, limit: number): Promise<Candle[]> {
+    const normalizedLimit = Math.max(0, Math.floor(limit));
+    if (normalizedLimit === 0) {
+      return [];
+    }
+
+    const rows = await this.db.all<CandleRow>(
+      `
+        SELECT ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled
+        FROM candles
+        WHERE ticker = ?
+        ORDER BY date DESC
+        LIMIT ?
+      `,
+      [ticker, normalizedLimit]
+    );
+
+    return rows.map((row) => this.mapCandleRow(row)).reverse();
+  }
+
   async upsertCandlesForTicker(symbol: string, candles: Candle[]): Promise<void> {
     if (candles.length === 0) {
       return;
@@ -325,15 +347,16 @@ export class CandlesRepo {
 
         await this.db.run(
           `
-            INSERT INTO candles (ticker, date, open, high, low, close, unadjusted_close, volume_shares)
-            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::bigint, 0))
+            INSERT INTO candles (ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::bigint, 0), ?)
             ON CONFLICT (ticker, date) DO UPDATE
             SET open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
                 close = EXCLUDED.close,
                 unadjusted_close = EXCLUDED.unadjusted_close,
-                volume_shares = COALESCE(?::bigint, candles.volume_shares)
+                volume_shares = COALESCE(?::bigint, candles.volume_shares),
+                disabled = EXCLUDED.disabled
           `,
           [
             normalizedSymbol,
@@ -344,6 +367,7 @@ export class CandlesRepo {
             candle.close,
             candle.unadjustedClose ?? candle.close,
             normalizedVolumeShares,
+            candle.disabled ?? null,
             normalizedVolumeShares
           ],
           client
@@ -368,15 +392,16 @@ export class CandlesRepo {
 
         await this.db.run(
           `
-            INSERT INTO candles (ticker, date, open, high, low, close, unadjusted_close, volume_shares)
-            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::bigint, 0))
+            INSERT INTO candles (ticker, date, open, high, low, close, unadjusted_close, volume_shares, disabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?::bigint, 0), ?)
             ON CONFLICT (ticker, date) DO UPDATE
             SET open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
                 close = EXCLUDED.close,
                 unadjusted_close = EXCLUDED.unadjusted_close,
-                volume_shares = COALESCE(?::bigint, candles.volume_shares)
+                volume_shares = COALESCE(?::bigint, candles.volume_shares),
+                disabled = EXCLUDED.disabled
           `,
           [
             normalizedSymbol,
@@ -387,6 +412,7 @@ export class CandlesRepo {
             candle.close,
             candle.unadjustedClose ?? candle.close,
             normalizedVolumeShares,
+            candle.disabled ?? null,
             normalizedVolumeShares
           ],
           client
