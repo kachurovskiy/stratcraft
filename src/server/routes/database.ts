@@ -20,7 +20,7 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024
+    fileSize: 10 * 1024 * 1024 * 1024
   }
 });
 
