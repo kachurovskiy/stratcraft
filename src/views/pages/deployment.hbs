@@ -152,6 +152,49 @@
               Deployment controls are only available on Linux hosts running {{siteName}} via <code>deploy.sh</code> under PM2.
             </div>
           {{/if}}
+          <div class="border rounded p-3 mt-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <div class="fw-semibold">Repository Updates</div>
+              {{#if deploymentCommitStatus}}
+                <span class="badge {{#if (gt deploymentCommitStatus.behindCount 0)}}bg-warning text-dark{{else}}bg-success{{/if}}">
+                  {{#if (gt deploymentCommitStatus.behindCount 0)}}
+                    {{deploymentCommitStatus.behindCount}} behind
+                  {{else}}
+                    Up to date
+                  {{/if}}
+                </span>
+              {{/if}}
+            </div>
+            {{#if deploymentCommitStatus}}
+              {{#if deploymentCommitStatus.error}}
+                <div class="alert alert-warning mb-0">{{deploymentCommitStatus.error}}</div>
+              {{else}}
+                <div class="text-muted small mb-2">
+                  Comparing local HEAD against <code>origin/{{deploymentCommitStatus.defaultBranch}}</code> in
+                  <code>{{deploymentCommitStatus.repoPath}}</code>.
+                </div>
+                {{#if (gt deploymentCommitStatus.behindCount 0)}}
+                  <div class="text-muted small mb-2">Latest commits on the remote branch:</div>
+                  <ul class="mb-0 ps-3">
+                    {{#each deploymentCommitStatus.commitMessages}}
+                      <li>{{this}}</li>
+                    {{/each}}
+                  </ul>
+                  {{#if deploymentCommitStatus.truncated}}
+                    <div class="text-muted small mt-2">
+                      Showing {{deploymentCommitStatus.commitMessages.length}} of {{deploymentCommitStatus.behindCount}} commits.
+                    </div>
+                  {{/if}}
+                {{else}}
+                  <div class="text-muted fst-italic">Server code is up to date with the remote branch.</div>
+                {{/if}}
+              {{/if}}
+            {{else}}
+              <div class="text-muted fst-italic">
+                Repository status is only available on Linux hosts running {{siteName}} via <code>deploy.sh</code>.
+              </div>
+            {{/if}}
+          </div>
         </div>
       </div>
     </div>

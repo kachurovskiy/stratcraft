@@ -10,9 +10,11 @@ const router = express.Router();
 const ADMIN_SERVER_RESTART_COMMAND = 'sudo /sbin/reboot';
 const DEPLOY_UPDATE_SCRIPT_PATH = '/usr/local/bin/stratcraft-update.sh';
 const DEPLOY_TRIGGER_SCRIPT_PATH = '/usr/local/bin/stratcraft-manual-update-check.sh';
+const DEPLOY_REPO_PATH = '/opt/stratcraft/stratcraft';
 const COMMAND_OUTPUT_MAX_CHARS = 500;
 const COMMAND_TIMEOUT_MS = 120000;
 const MAX_CPU_METRIC_POINTS = 5000;
+const MAX_DEPLOY_COMMITS = 100;
 const stripAnsiCodes = (value: string): string => value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
 const sanitizeCommandOutput = (output?: string): string | undefined => {
@@ -27,6 +29,15 @@ const sanitizeCommandOutput = (output?: string): string | undefined => {
     return `${trimmed.slice(0, COMMAND_OUTPUT_MAX_CHARS)}...`;
   }
   return trimmed;
+};
+
+type DeploymentCommitStatus = {
+  repoPath: string;
+  defaultBranch: string;
+  behindCount: number;
+  commitMessages: string[];
+  truncated: boolean;
+  error?: string;
 };
 
 async function runShellCommand(command: string): Promise<{ stdout: string; stderr: string; }> {
@@ -47,6 +58,92 @@ function buildCommandErrorMessage(error: unknown, fallback: string): string {
   return stderr || stdout || fallback;
 }
 
+async function resolveDefaultBranch(repoPath: string): Promise<string> {
+  try {
+    const { stdout } = await runShellCommand(`git -C ${repoPath} symbolic-ref refs/remotes/origin/HEAD`);
+    const ref = stdout.trim();
+    if (ref) {
+      const parts = ref.split('/');
+      const branch = parts[parts.length - 1];
+      if (branch) {
+        return branch;
+      }
+    }
+  } catch {
+    // Fall back to master if origin/HEAD is unavailable.
+  }
+  return 'master';
+}
+
+function parseCommitMessages(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map(line => stripAnsiCodes(line).trim())
+    .filter(Boolean);
+}
+
+async function getDeploymentCommitStatus(): Promise<DeploymentCommitStatus> {
+  if (!fs.existsSync(DEPLOY_REPO_PATH)) {
+    return {
+      repoPath: DEPLOY_REPO_PATH,
+      defaultBranch: 'master',
+      behindCount: 0,
+      commitMessages: [],
+      truncated: false,
+      error: `Repository not found at ${DEPLOY_REPO_PATH}`
+    };
+  }
+
+  const defaultBranch = await resolveDefaultBranch(DEPLOY_REPO_PATH);
+
+  try {
+    await runShellCommand(`git -C ${DEPLOY_REPO_PATH} fetch origin --quiet`);
+  } catch (error) {
+    return {
+      repoPath: DEPLOY_REPO_PATH,
+      defaultBranch,
+      behindCount: 0,
+      commitMessages: [],
+      truncated: false,
+      error: buildCommandErrorMessage(error, 'Failed to fetch repository updates')
+    };
+  }
+
+  try {
+    const { stdout: countOutput } = await runShellCommand(
+      `git -C ${DEPLOY_REPO_PATH} rev-list --left-right --count HEAD...origin/${defaultBranch}`
+    );
+    const counts = countOutput.trim().split(/\s+/);
+    const behindCount = Number.parseInt(counts[1] || '0', 10) || 0;
+
+    const commitMessages: string[] = [];
+    if (behindCount > 0) {
+      const listCount = Math.min(behindCount, MAX_DEPLOY_COMMITS);
+      const { stdout: logOutput } = await runShellCommand(
+        `git -C ${DEPLOY_REPO_PATH} log --format=%s -n ${listCount} HEAD..origin/${defaultBranch}`
+      );
+      commitMessages.push(...parseCommitMessages(logOutput));
+    }
+
+    return {
+      repoPath: DEPLOY_REPO_PATH,
+      defaultBranch,
+      behindCount,
+      commitMessages,
+      truncated: behindCount > commitMessages.length
+    };
+  } catch (error) {
+    return {
+      repoPath: DEPLOY_REPO_PATH,
+      defaultBranch,
+      behindCount: 0,
+      commitMessages: [],
+      truncated: false,
+      error: buildCommandErrorMessage(error, 'Failed to read repository status')
+    };
+  }
+}
+
 function canUseDeploymentControls(): boolean {
   if (process.platform !== 'linux') return false;
   if (!Boolean(process.env.pm_id || process.env.PM2_HOME)) return false;
@@ -62,6 +159,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const deploymentControlsEnabled = canUseDeploymentControls();
     const cpuMetrics = req.cpuMetricsService.getSummary(MAX_CPU_METRIC_POINTS);
+    const deploymentCommitStatus = deploymentControlsEnabled ? await getDeploymentCommitStatus() : null;
 
     res.render('pages/deployment', {
       title: 'Deployment',
@@ -70,7 +168,8 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       success: req.query.success as string,
       error: req.query.error as string,
       deploymentControlsEnabled,
-      cpuMetrics
+      cpuMetrics,
+      deploymentCommitStatus
     });
   } catch (error) {
     console.error('Error loading deployment panel:', error);
