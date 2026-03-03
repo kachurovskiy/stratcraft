@@ -37,7 +37,8 @@ export class TiingoCandleSource implements CandleSource {
   async getHistoricalCandles(
     symbol: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    abortSignal?: AbortSignal
   ): Promise<CandleSourceResult> {
     const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.TIINGO_BASE_URL);
     const trimmedBase = baseUrl.replace(/\/+$/, '');
@@ -47,7 +48,7 @@ export class TiingoCandleSource implements CandleSource {
       endDate: formatDate(endDate)
     };
 
-    const { data, noData } = await this.makeRequest<TiingoPrice[]>(url, params, symbol);
+    const { data, noData } = await this.makeRequest<TiingoPrice[]>(url, params, symbol, abortSignal);
     if (noData) {
       return { candles: [], noData: true };
     }
@@ -98,7 +99,8 @@ export class TiingoCandleSource implements CandleSource {
   private async makeRequest<T>(
     url: string,
     params: RequestParams = {},
-    symbol?: string
+    symbol?: string,
+    abortSignal?: AbortSignal
   ): Promise<{ data: T; noData: boolean }> {
     const apiToken = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.TIINGO_API_TOKEN);
     const requestParams: RequestParams = {
@@ -114,13 +116,15 @@ export class TiingoCandleSource implements CandleSource {
           Authorization: `Token ${apiToken}`
         },
         params: requestParams,
-        timeout: 30000
+        timeout: 30000,
+        signal: abortSignal
       }),
       logParams: requestParams,
       symbol,
       sourceLabel: 'Tiingo',
       waitSecondsSettingKey: SETTING_KEYS.TIINGO_RATE_LIMIT_WAIT_SECONDS,
-      redactKeys: ['token']
+      redactKeys: ['token'],
+      abortSignal
     });
   }
 }

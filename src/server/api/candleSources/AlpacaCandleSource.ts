@@ -41,7 +41,8 @@ export class AlpacaCandleSource implements CandleSource {
   async getHistoricalCandles(
     symbol: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    abortSignal?: AbortSignal
   ): Promise<CandleSourceResult> {
     const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_DATA_BASE_URL);
     const trimmedBase = baseUrl.replace(/\/+$/, '');
@@ -69,7 +70,7 @@ export class AlpacaCandleSource implements CandleSource {
         page_token: nextPage
       };
 
-      const { data, noData } = await this.makeRequest<AlpacaBarsResponse>(url, params, symbol);
+      const { data, noData } = await this.makeRequest<AlpacaBarsResponse>(url, params, symbol, abortSignal);
       if (noData) {
         return { candles: [], noData: true };
       }
@@ -111,7 +112,8 @@ export class AlpacaCandleSource implements CandleSource {
   private async makeRequest<T>(
     url: string,
     params: RequestParams = {},
-    symbol?: string
+    symbol?: string,
+    abortSignal?: AbortSignal
   ): Promise<{ data: T; noData: boolean }> {
     const apiKey = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_KEY);
     const apiSecret = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_SECRET);
@@ -126,12 +128,14 @@ export class AlpacaCandleSource implements CandleSource {
       request: () => axios.get(url, {
         headers,
         params: requestParams,
-        timeout: 30000
+        timeout: 30000,
+        signal: abortSignal
       }),
       logParams: requestParams,
       symbol,
       sourceLabel: 'Alpaca',
-      waitSecondsSettingKey: SETTING_KEYS.ALPACA_DATA_RATE_LIMIT_WAIT_SECONDS
+      waitSecondsSettingKey: SETTING_KEYS.ALPACA_DATA_RATE_LIMIT_WAIT_SECONDS,
+      abortSignal
     });
 
     try {

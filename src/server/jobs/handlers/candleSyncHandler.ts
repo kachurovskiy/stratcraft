@@ -369,7 +369,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
     const updatedTickers = new Set<string>();
 
     ctx.loggingService.info(CANDLE_SOURCE, 'Checking SPY for new candles', logMetadata);
-    const spyCandles = await deps.candleClient.updateTickerData('SPY', true);
+    const spyCandles = await deps.candleClient.updateTickerData('SPY', true, ctx.abortSignal);
     let latestSpyDate = spyCandles.length > 0 ? spyCandles[spyCandles.length - 1].date : null;
 
     if (spyCandles.length > 0) {
@@ -434,11 +434,14 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
         }
 
         try {
-          const candles = await deps.candleClient.updateTickerData(ticker, true);
+          const candles = await deps.candleClient.updateTickerData(ticker, true, ctx.abortSignal);
           if (candles.length > 0) {
             updatedTickers.add(ticker);
           }
         } catch (error) {
+          if (ctx.abortSignal.aborted) {
+            throw error;
+          }
           const message = error instanceof Error ? error.message : String(error);
           errors.push(`${ticker}: ${message}`);
           ctx.loggingService.error(CANDLE_SOURCE, `Failed to update ${ticker}`, {

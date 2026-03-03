@@ -31,7 +31,8 @@ export class EodhdCandleSource implements CandleSource {
   async getHistoricalCandles(
     symbol: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    abortSignal?: AbortSignal
   ): Promise<CandleSourceResult> {
     const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.EODHD_BASE_URL);
     const url = `${baseUrl}/${encodeURIComponent(symbol)}`;
@@ -41,7 +42,7 @@ export class EodhdCandleSource implements CandleSource {
       to: formatDate(endDate)
     };
 
-    const { data, noData } = await this.makeRequest<EodhdResponse[]>(url, params, symbol);
+    const { data, noData } = await this.makeRequest<EodhdResponse[]>(url, params, symbol, abortSignal);
 
     const candles = data.map(item => {
       const close = item.adjusted_close ?? item.close;
@@ -80,7 +81,8 @@ export class EodhdCandleSource implements CandleSource {
   private async makeRequest<T>(
     url: string,
     params: RequestParams = {},
-    symbol?: string
+    symbol?: string,
+    abortSignal?: AbortSignal
   ): Promise<{ data: T; noData: boolean }> {
     const apiToken = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.EODHD_API_TOKEN);
     const requestParams: RequestParams = {
@@ -96,13 +98,15 @@ export class EodhdCandleSource implements CandleSource {
           'Content-Type': 'application/json'
         },
         params: requestParams,
-        timeout: 30000
+        timeout: 30000,
+        signal: abortSignal
       }),
       logParams: requestParams,
       symbol,
       sourceLabel: 'EODHD',
       waitSecondsSettingKey: SETTING_KEYS.EODHD_RATE_LIMIT_WAIT_SECONDS,
-      redactKeys: ['api_token']
+      redactKeys: ['api_token'],
+      abortSignal
     });
   }
 }

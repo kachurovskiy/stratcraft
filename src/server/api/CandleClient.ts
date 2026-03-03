@@ -37,17 +37,21 @@ export class CandleClient {
   private async getHistoricalData(
     symbol: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    abortSignal?: AbortSignal
   ): Promise<Candle[]> {
     const candleSource = await this.getCandleSource();
-    const { candles, noData } = await candleSource.getHistoricalCandles(symbol, startDate, endDate);
+    const { candles, noData } = await candleSource.getHistoricalCandles(symbol, startDate, endDate, abortSignal);
     if (noData) {
       this.tickersWithNoData.add(symbol);
     }
     return this.removeWeekendCandles(candles);
   }
 
-  async updateTickerData(symbol: string, includeToday = false): Promise<Candle[]> {
+  async updateTickerData(symbol: string, includeToday = false, abortSignal?: AbortSignal): Promise<Candle[]> {
+    if (abortSignal?.aborted) {
+      throw new Error('Candle synchronization cancelled');
+    }
     const endDate = this.getEndDate(includeToday);
 
     const latestDate = await this.db.candles.getLatestCandleDate(symbol);
@@ -68,10 +72,10 @@ export class CandleClient {
     const fullHistoryStart = this.subtractYears(endDate, 11);
 
     if (!normalizedLatest) {
-      return this.reloadFullHistory(symbol, fullHistoryStart, endDate);
+      return this.reloadFullHistory(symbol, fullHistoryStart, endDate, abortSignal);
     }
 
-    const candles = await this.getHistoricalData(symbol, normalizedLatest, endDate);
+    const candles = await this.getHistoricalData(symbol, normalizedLatest, endDate, abortSignal);
     if (candles.length === 0) {
       return [];
     }
@@ -90,7 +94,7 @@ export class CandleClient {
         date: this.formatDate(normalizedLatest)
       });
 
-      return this.reloadFullHistory(symbol, fullHistoryStart, endDate);
+      return this.reloadFullHistory(symbol, fullHistoryStart, endDate, abortSignal);
     }
 
     const candlesWithDisabled = await this.applyDisabledFlags(symbol, candles, true);
@@ -105,8 +109,13 @@ export class CandleClient {
     return candles.find(candle => this.formatDate(candle.date) === target) ?? null;
   }
 
-  private async reloadFullHistory(symbol: string, startDate: Date, endDate: Date): Promise<Candle[]> {
-    const candles = await this.getHistoricalData(symbol, startDate, endDate);
+  private async reloadFullHistory(
+    symbol: string,
+    startDate: Date,
+    endDate: Date,
+    abortSignal?: AbortSignal
+  ): Promise<Candle[]> {
+    const candles = await this.getHistoricalData(symbol, startDate, endDate, abortSignal);
     if (candles.length === 0) {
       return [];
     }

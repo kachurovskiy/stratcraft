@@ -6,6 +6,11 @@ export type CandleSourceResult = {
 };
 
 export interface CandleSource {
-  getHistoricalCandles(symbol: string, startDate: Date, endDate: Date): Promise<CandleSourceResult>;
+  getHistoricalCandles(
+    symbol: string,
+    startDate: Date,
+    endDate: Date,
+    abortSignal?: AbortSignal
+  ): Promise<CandleSourceResult>;
   getSourceName(): string;
 }

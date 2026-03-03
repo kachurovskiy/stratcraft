@@ -12,9 +12,11 @@ type RequestWithRetryOptions<T> = {
   sourceLabel: string;
   waitSecondsSettingKey: string;
   redactKeys?: string[];
+  abortSignal?: AbortSignal;
 };
 
 const MAX_RESPONSE_TEXT_LENGTH = 2000;
+const ABORT_ERROR_MESSAGE = 'Request cancelled';
 
 export function startOfDay(date: Date): Date {
   const normalized = new Date(date);
@@ -68,14 +70,21 @@ export async function requestWithRetry<T>(
     symbol,
     sourceLabel,
     waitSecondsSettingKey,
-    redactKeys = []
+    redactKeys = [],
+    abortSignal
   } = options;
   const sanitizedParams = sanitizeParams(logParams, redactKeys);
 
   try {
+    if (abortSignal?.aborted) {
+      throw new Error(ABORT_ERROR_MESSAGE);
+    }
     const response = await request();
     return { data: response.data, noData: false };
   } catch (error: any) {
+    if (abortSignal?.aborted || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
+      throw new Error(ABORT_ERROR_MESSAGE);
+    }
     const status = error.response?.status;
     if (status === 429) {
       const responseText = error.response?.data
