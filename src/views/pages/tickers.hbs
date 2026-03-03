@@ -137,7 +137,12 @@
         <div class="card">
             <div class="card-header">
                 <div class="fw-semibold">Latest Price vs USD Volume</div>
-                <div class="text-muted analytics-chart-subtitle">Scatterplot of latest close price compared to USD volume.</div>
+                <div class="text-muted analytics-chart-subtitle">
+                    Scatterplot of latest close price compared to USD volume.
+                    {{#if entryRuleBoundsActive}}
+                        &middot; Shaded area shows entry bounds.
+                    {{/if}}
+                </div>
             </div>
             <div class="card-body">
                 <div id="latestPriceVolumeScatter" class="analytics-chart-container analytics-chart-tall"></div>
@@ -358,6 +363,7 @@
 
 <script>
 const tickerAnalyticsData = {{{json tickerAnalytics}}};
+const entryRuleSettings = {{{json entryRuleSettings}}};
 const nameWordStatsData = {{{json nameWordStats}}};
 const chartEmptyStateMessage = 'Not enough data to build this chart yet.';
 const defaultPlotlyLayout = {
@@ -485,6 +491,79 @@ function getLatestPriceVolumePoints() {
     return Array.isArray(tickerAnalyticsData?.latestPriceVolumePoints)
         ? tickerAnalyticsData.latestPriceVolumePoints
         : [];
+}
+
+function getEntryRuleBounds() {
+    if (!entryRuleSettings || typeof entryRuleSettings !== 'object') {
+        return null;
+    }
+
+    const minPrice = getPositiveNumber(entryRuleSettings.tradeEntryPriceMin);
+    const maxPrice = getPositiveNumber(entryRuleSettings.tradeEntryPriceMax);
+    const minVolume = getPositiveNumber(entryRuleSettings.minimumDollarVolumeForEntry);
+    const rawLookback = Number(entryRuleSettings.minimumDollarVolumeLookback);
+    const volumeLookback = Number.isFinite(rawLookback) ? Math.max(0, Math.floor(rawLookback)) : 0;
+    const volumeRuleEnabled = minVolume !== null && volumeLookback > 0;
+
+    let normalizedMaxPrice = maxPrice;
+    if (minPrice !== null && normalizedMaxPrice !== null && normalizedMaxPrice < minPrice) {
+        normalizedMaxPrice = minPrice;
+    }
+
+    return {
+        minPrice,
+        maxPrice: normalizedMaxPrice,
+        minVolume,
+        volumeRuleEnabled,
+        hasAny: minPrice !== null || normalizedMaxPrice !== null || volumeRuleEnabled
+    };
+}
+
+function buildEntryBoundsShapes(points, entryBounds) {
+    if (!entryBounds || !entryBounds.hasAny) {
+        return [];
+    }
+
+    const priceValues = points
+        .map(point => getPositiveNumber(point.price))
+        .filter(value => value !== null);
+    const volumeValues = points
+        .map(point => getPositiveNumber(point.usdVolume))
+        .filter(value => value !== null);
+
+    if (!priceValues.length || !volumeValues.length) {
+        return [];
+    }
+
+    const dataPriceMin = Math.min(...priceValues);
+    const dataPriceMax = Math.max(...priceValues);
+    const dataVolumeMax = Math.max(...volumeValues);
+
+    const hasPriceBounds = entryBounds.minPrice !== null || entryBounds.maxPrice !== null;
+    const xref = hasPriceBounds ? 'x' : 'paper';
+    const x0 = hasPriceBounds ? (entryBounds.minPrice ?? dataPriceMin) : 0;
+    const x1 = hasPriceBounds ? (entryBounds.maxPrice ?? dataPriceMax) : 1;
+
+    if (hasPriceBounds && (!Number.isFinite(x0) || !Number.isFinite(x1) || x0 <= 0 || x1 <= 0 || x1 < x0)) {
+        return [];
+    }
+
+    if (entryBounds.volumeRuleEnabled && (entryBounds.minVolume === null || entryBounds.minVolume <= 0)) {
+        return [];
+    }
+
+    return [{
+        type: 'rect',
+        xref,
+        yref: entryBounds.volumeRuleEnabled ? 'y' : 'paper',
+        x0,
+        x1,
+        y0: entryBounds.volumeRuleEnabled ? entryBounds.minVolume : 0,
+        y1: entryBounds.volumeRuleEnabled ? dataVolumeMax : 1,
+        fillcolor: 'rgba(13, 110, 253, 0.12)',
+        line: { color: 'rgba(13, 110, 253, 0.35)', width: 1 },
+        layer: 'below'
+    }];
 }
 
 function buildFlagPercentageBuckets(points, valueAccessor, flagAccessor, options = {}) {
@@ -754,6 +833,9 @@ function renderPriceVolumeScatter() {
         return;
     }
 
+    const entryBounds = getEntryRuleBounds();
+    const entryShapes = buildEntryBoundsShapes(points, entryBounds);
+
     const layout = {
         ...defaultPlotlyLayout,
         xaxis: { title: 'Latest close price ($)', type: 'log' },
@@ -764,7 +846,8 @@ function renderPriceVolumeScatter() {
             y: 1.02,
             xanchor: 'left',
             x: 0
-        }
+        },
+        shapes: entryShapes
     };
 
     Plotly.react(targetId, scatterTraces, layout, defaultPlotlyConfig);
