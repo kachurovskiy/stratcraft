@@ -2,7 +2,7 @@ import type { QueryResultRow } from 'pg';
 import type { AccountOperation, AccountOperationType, Trade, TradeChange } from '../../../shared/types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
-import type { TradeTickerStats, TradeVolumeSegmentStats } from '../types';
+import type { EntryFillGapHistogram, TradeTickerStats, TradeVolumeSegmentStats } from '../types';
 
 type TradeStatus = 'pending' | 'active' | 'closed' | 'cancelled';
 
@@ -37,6 +37,7 @@ type TradeWithStrategyRow = TradeRow & {
 
 type CountRow = QueryResultRow & { total: number };
 type StatusCountRow = QueryResultRow & { status: string | null; count: number };
+type EntryFillGapBucketRow = QueryResultRow & { bucket: number | null; count: number };
 
 export class TradesRepo {
   constructor(private readonly db: DbClient) {}
@@ -927,5 +928,82 @@ export class TradesRepo {
         maxVolumeUsd: row.max_volume_usd === null ? null : Number(row.max_volume_usd) || 0
       }))
       .filter((row) => row.tradeCount > 0 && Number.isFinite(row.bucketOrder));
+  }
+
+  async getEntryFillGapHistogramForBacktest(
+    backtestResultId: string,
+    userId: number,
+    options: { minPercent?: number; maxPercent?: number; bucketCount?: number } = {}
+  ): Promise<EntryFillGapHistogram> {
+    const requestedMin = Number(options.minPercent);
+    const requestedMax = Number(options.maxPercent);
+    const requestedBuckets = Number(options.bucketCount);
+    const minPercent = Number.isFinite(requestedMin) ? requestedMin : -10;
+    const maxPercent = Number.isFinite(requestedMax) ? requestedMax : 10;
+    const bucketCount = Number.isFinite(requestedBuckets) ? Math.max(1, Math.floor(requestedBuckets)) : 20;
+    const lowerBound = Math.min(minPercent, maxPercent);
+    const upperBound = Math.max(minPercent, maxPercent);
+
+    const rows = await this.db.all<EntryFillGapBucketRow>(
+      `
+        WITH filtered_trades AS (
+          SELECT t.ticker, t.price, t.date
+          FROM trades t
+          LEFT JOIN strategies s ON s.id = t.strategy_id
+          WHERE t.backtest_result_id = ?
+            AND t.quantity > 0
+            AND (COALESCE(t.user_id, s.user_id) = ? OR COALESCE(t.user_id, s.user_id) IS NULL)
+        ),
+        trade_with_close AS (
+          SELECT
+            ft.ticker,
+            ft.price,
+            ft.date,
+            (
+              SELECT c.close
+              FROM candles c
+              WHERE c.ticker = ft.ticker
+                AND c.date < ft.date
+              ORDER BY c.date DESC
+              LIMIT 1
+            ) AS last_close
+          FROM filtered_trades ft
+        ),
+        gap_values AS (
+          SELECT ((price - last_close) / NULLIF(last_close, 0)) * 100 AS gap_percent
+          FROM trade_with_close
+          WHERE last_close IS NOT NULL
+        )
+        SELECT width_bucket(gap_percent, ?, ?, ?) AS bucket,
+               COUNT(*) AS count
+        FROM gap_values
+        GROUP BY bucket
+        ORDER BY bucket ASC
+      `,
+      [backtestResultId, userId, lowerBound, upperBound, bucketCount]
+    );
+
+    const buckets = rows
+      .map((row) => {
+        if (row.bucket === null || row.bucket === undefined) {
+          return null;
+        }
+        const bucketValue = Number(row.bucket);
+        if (!Number.isFinite(bucketValue)) {
+          return null;
+        }
+        return {
+          bucket: bucketValue,
+          count: Number(row.count) || 0
+        };
+      })
+      .filter((row): row is { bucket: number; count: number } => row !== null);
+
+    return {
+      minPercent: lowerBound,
+      maxPercent: upperBound,
+      bucketCount,
+      buckets
+    };
   }
 }

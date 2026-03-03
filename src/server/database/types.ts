@@ -122,6 +122,18 @@ export interface TradeVolumeSegmentStats {
   maxVolumeUsd: number | null;
 }
 
+export interface EntryFillGapBucket {
+  bucket: number;
+  count: number;
+}
+
+export interface EntryFillGapHistogram {
+  minPercent: number;
+  maxPercent: number;
+  bucketCount: number;
+  buckets: EntryFillGapBucket[];
+}
+
 export type InsertStrategyInput = {
   id: string;
   name: string;

@@ -9,7 +9,7 @@ import {
 } from '../../shared/types/StrategyTemplate';
 import { AccountSnapshot } from '../../shared/types/Account';
 import { LogEntry, LogLevel } from '../services/LoggingService';
-import type { AccountSignalSkipRow, TradeTickerStats } from '../database/types';
+import type { AccountSignalSkipRow, EntryFillGapHistogram, TradeTickerStats } from '../database/types';
 import { SETTING_KEYS } from '../constants';
 import {
   BACKTEST_SCOPE_META,
@@ -200,6 +200,75 @@ const buildParameterContexts = (
     }));
 
   return { parameterSummaries, extraParameters };
+};
+
+type EntryFillGapChartData = {
+  labels: string[];
+  counts: number[];
+  total: number;
+  minPercent: number;
+  maxPercent: number;
+  bucketSize: number;
+  bucketCount: number;
+};
+
+const formatPercentLabel = (value: number, decimals: number): string => {
+  if (!Number.isFinite(value)) {
+    return '0%';
+  }
+  const rounded = Object.is(value, -0) ? 0 : value;
+  const fixed = rounded.toFixed(decimals);
+  const trimmed = fixed.replace(/(\.\d*?[1-9])0+$/u, '$1').replace(/\.0+$/u, '');
+  return `${trimmed}%`;
+};
+
+const buildEntryFillGapChartData = (histogram: EntryFillGapHistogram | null): EntryFillGapChartData | null => {
+  if (!histogram || histogram.bucketCount <= 0) {
+    return null;
+  }
+  const { minPercent, maxPercent, bucketCount } = histogram;
+  const bucketSize = (maxPercent - minPercent) / bucketCount;
+  if (!Number.isFinite(bucketSize) || bucketSize <= 0) {
+    return null;
+  }
+
+  const buckets = new Array(bucketCount + 2).fill(0);
+  for (const entry of histogram.buckets) {
+    const index = Math.max(0, Math.min(bucketCount + 1, Math.floor(entry.bucket)));
+    buckets[index] += entry.count;
+  }
+
+  const decimals = bucketSize >= 1 ? 0 : bucketSize >= 0.1 ? 1 : 2;
+  const labels: string[] = [];
+  const counts: number[] = [];
+
+  labels.push(`< ${formatPercentLabel(minPercent, decimals)}`);
+  counts.push(buckets[0]);
+
+  for (let i = 1; i <= bucketCount; i += 1) {
+    const start = minPercent + (i - 1) * bucketSize;
+    const end = start + bucketSize;
+    labels.push(`${formatPercentLabel(start, decimals)} to ${formatPercentLabel(end, decimals)}`);
+    counts.push(buckets[i]);
+  }
+
+  labels.push(`> ${formatPercentLabel(maxPercent, decimals)}`);
+  counts.push(buckets[bucketCount + 1]);
+
+  const total = counts.reduce((sum, value) => sum + value, 0);
+  if (total === 0) {
+    return null;
+  }
+
+  return {
+    labels,
+    counts,
+    total,
+    minPercent,
+    maxPercent,
+    bucketSize,
+    bucketCount
+  };
 };
 
 type StrategyOperationStatusFilter = 'all' | AccountOperationStatus;
@@ -2225,6 +2294,12 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
     const bestTrades = await req.db.trades.getBestTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
     const worstTrades = await req.db.trades.getWorstTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
 
+    const entryFillGapHistogram = await req.db.trades.getEntryFillGapHistogramForBacktest(
+      targetBacktest.id,
+      userId
+    );
+    const entryFillGapChartData = buildEntryFillGapChartData(entryFillGapHistogram);
+
     const tradeTickerStatsAll: TradeTickerStats[] = await req.db.trades.getTickerTradeStatsForBacktest(targetBacktest.id, userId);
     const tradeVolumeSegments = await req.db.trades.getTradeVolumeSegmentStatsForBacktest(targetBacktest.id, userId);
     const volumeSegmentStats = tradeVolumeSegments
@@ -2294,6 +2369,7 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
       template,
       bestTrades,
       worstTrades,
+      entryFillGapChartData,
       portfolioValueData,
       bestPortfolioDays,
       worstPortfolioDays,

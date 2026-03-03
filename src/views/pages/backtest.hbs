@@ -318,6 +318,28 @@
                     </div>
                 </div>
 
+                {{#if entryFillGapChartData}}
+                <!-- Entry Fill vs Close Distribution -->
+                <div class="col-12" id="entryFillGapChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-arrows-alt-h me-2"></i>
+                                Entry Fill vs Prior Close
+                            </h6>
+                            <p class="text-muted small mb-0">
+                                Distribution of fill distance from the last close for entry fills.
+                            </p>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 300px; width: 100%;">
+                                <canvas id="entryFillGapChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {{/if}}
+
                 <!-- Portfolio Day Movers -->
                 <div class="col-12 col-xl-6">
                     <div class="card h-100">
@@ -601,6 +623,7 @@
     let tickerDotPlotChart = null;
     let tickerWinLossDotPlotChart = null;
     let cashPercentageChart = null;
+    let entryFillGapChart = null;
 
     // Store original data for filtering
     let originalPortfolioData = {{{ json portfolioValueData }}};
@@ -612,6 +635,7 @@
 
     const tradeTickerStats = {{{ json tradeTickerStats }}} || [];
     const volumeSegmentStats = {{{ json volumeSegmentStats }}} || [];
+    const entryFillGapChartData = {{{ json entryFillGapChartData }}} || null;
 
     const currencyFormatter = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -1282,6 +1306,116 @@
                                     `Trades: ${segment.tradeCount}`,
                                     `Total Buy Cost: ${currencyFormatter.format(segment.totalBuyCost)}`
                                 ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderEntryFillGapChart(histogram) {
+        const chartElement = document.getElementById('entryFillGapChart');
+        const container = document.getElementById('entryFillGapChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const labels = Array.isArray(histogram?.labels) ? histogram.labels : [];
+        const counts = Array.isArray(histogram?.counts) ? histogram.counts : [];
+        const total = Number(histogram?.total) || 0;
+        const bucketSize = Number(histogram?.bucketSize) || 0;
+        const minPercent = Number(histogram?.minPercent) || 0;
+        const maxPercent = Number(histogram?.maxPercent) || 0;
+        const bucketCount = Number(histogram?.bucketCount) || 0;
+
+        if (labels.length === 0 || counts.length === 0 || total === 0) {
+            container.style.display = 'none';
+            if (entryFillGapChart) {
+                entryFillGapChart.destroy();
+                entryFillGapChart = null;
+            }
+            return;
+        }
+
+        const bucketMids = labels.map((_, index) => {
+            if (index === 0) return minPercent - bucketSize;
+            if (index === bucketCount + 1) return maxPercent + bucketSize;
+            const start = minPercent + (index - 1) * bucketSize;
+            return start + bucketSize / 2;
+        });
+
+        const backgroundColors = bucketMids.map((mid) => {
+            if (!Number.isFinite(mid) || mid === 0) {
+                return 'rgba(108, 117, 125, 0.7)';
+            }
+            return mid > 0 ? 'rgba(220, 53, 69, 0.7)' : 'rgba(40, 167, 69, 0.7)';
+        });
+        const borderColors = bucketMids.map((mid) => {
+            if (!Number.isFinite(mid) || mid === 0) {
+                return '#6c757d';
+            }
+            return mid > 0 ? '#dc3545' : '#28a745';
+        });
+
+        container.style.display = 'block';
+
+        if (entryFillGapChart) {
+            entryFillGapChart.data.labels = labels;
+            entryFillGapChart.data.datasets[0].data = counts;
+            entryFillGapChart.data.datasets[0].backgroundColor = backgroundColors;
+            entryFillGapChart.data.datasets[0].borderColor = borderColors;
+            entryFillGapChart.update();
+            return;
+        }
+
+        entryFillGapChart = new Chart(chartElement.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Trades',
+                    data: counts,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Fill Gap vs Prior Close (%)'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Trades'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0]?.label ?? '',
+                            label: (context) => {
+                                const count = Number(context.parsed.y) || 0;
+                                const share = total > 0 ? (count / total) * 100 : 0;
+                                return [`Trades: ${count}`, `Share: ${share.toFixed(1)}%`];
                             }
                         }
                     }
@@ -2320,6 +2454,7 @@
         renderDrawdownChart(originalDrawdownData);
         renderDailyReturnDistributionChart(originalDailyReturnDistributionData);
         renderVolumeSegmentChart(volumeSegmentStats);
+        renderEntryFillGapChart(entryFillGapChartData);
         renderCashPercentageChart(originalCashPercentageData);
         const initialTradeStats = Array.isArray(tradeTickerStats) ? tradeTickerStats : [];
         renderTradeCharts(initialTradeStats);
