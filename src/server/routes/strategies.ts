@@ -2226,6 +2226,24 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
     const worstTrades = await req.db.trades.getWorstTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
 
     const tradeTickerStatsAll: TradeTickerStats[] = await req.db.trades.getTickerTradeStatsForBacktest(targetBacktest.id, userId);
+    const tradeVolumeSegments = await req.db.trades.getTradeVolumeSegmentStatsForBacktest(targetBacktest.id, userId);
+    const volumeSegmentStats = tradeVolumeSegments
+      .map((segment) => {
+        const totalBuyCost = Math.abs(segment.totalBuyCost);
+        const avgReturnPercent = totalBuyCost > 0 ? (segment.totalPnl / totalBuyCost) * 100 : 0;
+        return {
+          bucketLabel: segment.bucketLabel,
+          bucketOrder: segment.bucketOrder,
+          minVolumeUsd: segment.minVolumeUsd,
+          maxVolumeUsd: segment.maxVolumeUsd,
+          tradeCount: segment.tradeCount,
+          totalPnl: segment.totalPnl,
+          totalBuyCost,
+          avgReturnPercent
+        };
+      })
+      .filter((segment) => Number.isFinite(segment.minVolumeUsd) && Number.isFinite(segment.bucketOrder))
+      .sort((a, b) => a.bucketOrder - b.bucketOrder);
     const tradesPageUrl = `/backtests/${targetBacktest.id}/trades`;
     const tradeDateInsightsUrl = `/backtests/${targetBacktest.id}/trades/date-insights`;
 
@@ -2283,6 +2301,7 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
       drawdownData,
       dailyReturnDistributionData,
       tradeTickerStats: tradeTickerStatsAll,
+      volumeSegmentStats,
       tradesPageUrl,
       tradeDateInsightsUrl,
       cashPercentageData,

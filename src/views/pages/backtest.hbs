@@ -301,6 +301,23 @@
                     </div>
                 </div>
 
+                <!-- Volume Segment Profitability Chart -->
+                <div class="col-12" id="volumeSegmentChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-layer-group me-2"></i>
+                                Profitability by Entry Volume Segment
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 300px; width: 100%;">
+                                <canvas id="volumeSegmentChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Portfolio Day Movers -->
                 <div class="col-12 col-xl-6">
                     <div class="card h-100">
@@ -575,6 +592,7 @@
     let portfolioChart = null;
     let drawdownChart = null;
     let dailyReturnDistributionChart = null;
+    let volumeSegmentChart = null;
     let topStocksProfitChart = null;
     let topStocksLossChart = null;
     let topStocksRelativeProfitChart = null;
@@ -593,6 +611,7 @@
     const tradeDateInsightsBaseUrl = {{{ json tradeDateInsightsUrl }}};
 
     const tradeTickerStats = {{{ json tradeTickerStats }}} || [];
+    const volumeSegmentStats = {{{ json volumeSegmentStats }}} || [];
 
     const currencyFormatter = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -600,6 +619,27 @@
         maximumFractionDigits: 0
     });
     const RELATIVE_PROFIT_EPSILON = 0.0001;
+
+    function formatCompactUsd(value) {
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            return '$0';
+        }
+        const absValue = Math.abs(numericValue);
+        if (absValue >= 1e12) {
+            return `$${(numericValue / 1e12).toFixed(1)}T`;
+        }
+        if (absValue >= 1e9) {
+            return `$${(numericValue / 1e9).toFixed(1)}B`;
+        }
+        if (absValue >= 1e6) {
+            return `$${(numericValue / 1e6).toFixed(1)}M`;
+        }
+        if (absValue >= 1e3) {
+            return `$${(numericValue / 1e3).toFixed(1)}K`;
+        }
+        return currencyFormatter.format(numericValue);
+    }
 
     function normalizeTickerStatsInput(rawStats) {
         if (!Array.isArray(rawStats)) return [];
@@ -1094,6 +1134,154 @@
                             },
                             label: function (context) {
                                 return 'Days: ' + context.parsed.y;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderVolumeSegmentChart(rawSegments) {
+        const chartElement = document.getElementById('volumeSegmentChart');
+        const container = document.getElementById('volumeSegmentChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const normalizedSegments = Array.isArray(rawSegments) ? rawSegments : [];
+        const segments = normalizedSegments
+            .map(segment => ({
+                bucketLabel: typeof segment.bucketLabel === 'string' ? segment.bucketLabel : '',
+                bucketOrder: Number(segment.bucketOrder),
+                minVolumeUsd: Number(segment.minVolumeUsd),
+                maxVolumeUsd: segment.maxVolumeUsd === null || segment.maxVolumeUsd === undefined
+                    ? null
+                    : Number(segment.maxVolumeUsd),
+                avgReturnPercent: Number(segment.avgReturnPercent),
+                tradeCount: Number(segment.tradeCount) || 0,
+                totalPnl: Number(segment.totalPnl) || 0,
+                totalBuyCost: Number(segment.totalBuyCost) || 0
+            }))
+            .filter(segment => Number.isFinite(segment.minVolumeUsd) && Number.isFinite(segment.bucketOrder));
+
+        if (segments.length === 0) {
+            container.style.display = 'none';
+            if (volumeSegmentChart) {
+                volumeSegmentChart.destroy();
+                volumeSegmentChart = null;
+            }
+            return;
+        }
+
+        container.style.display = 'block';
+
+        segments.sort((a, b) => a.bucketOrder - b.bucketOrder);
+
+        const labels = segments.map(segment => segment.bucketLabel || 'Volume');
+        const avgProfitData = segments.map(segment => segment.avgReturnPercent);
+        const totalPnlData = segments.map(segment => segment.totalPnl);
+        const pnlBackgroundColors = totalPnlData.map(value => value >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)');
+        const pnlBorderColors = totalPnlData.map(value => value >= 0 ? '#28a745' : '#dc3545');
+
+        if (volumeSegmentChart) {
+            volumeSegmentChart.data.labels = labels;
+            volumeSegmentChart.data.datasets[0].data = totalPnlData;
+            volumeSegmentChart.data.datasets[0].backgroundColor = pnlBackgroundColors;
+            volumeSegmentChart.data.datasets[0].borderColor = pnlBorderColors;
+            volumeSegmentChart.data.datasets[1].data = avgProfitData;
+            volumeSegmentChart.update();
+            return;
+        }
+
+        volumeSegmentChart = new Chart(chartElement.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Total P&L',
+                    data: totalPnlData,
+                    backgroundColor: pnlBackgroundColors,
+                    borderColor: pnlBorderColors,
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Avg Profit %',
+                    data: avgProfitData,
+                    type: 'line',
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.2)',
+                    tension: 0.35,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Entry Day Dollar Volume'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Total P&L ($)'
+                        },
+                        ticks: {
+                            callback: (value) => currencyFormatter.format(value)
+                        }
+                    },
+                    y1: {
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'Average Profit (%)'
+                        },
+                        ticks: {
+                            callback: (value) => `${value.toFixed(2)}%`
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0].label,
+                            label: (context) => {
+                                if (context.datasetIndex !== 0) {
+                                    return null;
+                                }
+                                const segment = segments[context.dataIndex];
+                                const avgReturnDisplay = Number.isFinite(segment.avgReturnPercent)
+                                    ? `${segment.avgReturnPercent.toFixed(2)}%`
+                                    : 'N/A';
+                                const maxVolumeDisplay = Number.isFinite(segment.maxVolumeUsd)
+                                    ? formatCompactUsd(segment.maxVolumeUsd)
+                                    : null;
+                                const volumeRangeDisplay = maxVolumeDisplay
+                                    ? `${formatCompactUsd(segment.minVolumeUsd)} - ${maxVolumeDisplay}`
+                                    : `${formatCompactUsd(segment.minVolumeUsd)}+`;
+                                return [
+                                    `Avg Profit: ${avgReturnDisplay}`,
+                                    `Volume Range: ${volumeRangeDisplay}`,
+                                    `Total P&L: ${currencyFormatter.format(segment.totalPnl)}`,
+                                    `Trades: ${segment.tradeCount}`,
+                                    `Total Buy Cost: ${currencyFormatter.format(segment.totalBuyCost)}`
+                                ];
                             }
                         }
                     }
@@ -2131,6 +2319,7 @@
         renderPortfolioChart(originalPortfolioData, originalBenchmarkData);
         renderDrawdownChart(originalDrawdownData);
         renderDailyReturnDistributionChart(originalDailyReturnDistributionData);
+        renderVolumeSegmentChart(volumeSegmentStats);
         renderCashPercentageChart(originalCashPercentageData);
         const initialTradeStats = Array.isArray(tradeTickerStats) ? tradeTickerStats : [];
         renderTradeCharts(initialTradeStats);

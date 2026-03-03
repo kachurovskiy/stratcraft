@@ -112,6 +112,16 @@ export interface TradeTickerStats {
   lossDurationCount: number;
 }
 
+export interface TradeVolumeSegmentStats {
+  bucketLabel: string;
+  bucketOrder: number;
+  tradeCount: number;
+  totalPnl: number;
+  totalBuyCost: number;
+  minVolumeUsd: number;
+  maxVolumeUsd: number | null;
+}
+
 export type InsertStrategyInput = {
   id: string;
   name: string;

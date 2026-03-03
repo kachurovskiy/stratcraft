@@ -2,7 +2,7 @@ import type { QueryResultRow } from 'pg';
 import type { AccountOperation, AccountOperationType, Trade, TradeChange } from '../../../shared/types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
-import type { TradeTickerStats } from '../types';
+import type { TradeTickerStats, TradeVolumeSegmentStats } from '../types';
 
 type TradeStatus = 'pending' | 'active' | 'closed' | 'cancelled';
 
@@ -841,5 +841,91 @@ export class TradesRepo {
       lossDurationSum: Number(row.loss_duration_sum) || 0,
       lossDurationCount: Number(row.loss_duration_count) || 0
     }));
+  }
+
+  async getTradeVolumeSegmentStatsForBacktest(
+    backtestResultId: string,
+    userId: number
+  ): Promise<TradeVolumeSegmentStats[]> {
+    const { conditions, params } = this.buildBacktestTradeFilters(backtestResultId, userId);
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const rows = await this.db.all<QueryResultRow>(
+      `
+        WITH filtered_trades AS (
+          SELECT
+            UPPER(t.ticker) AS ticker,
+            t.date::date AS trade_date,
+            COALESCE(t.pnl, 0) AS pnl,
+            ABS(COALESCE(t.quantity, 0) * COALESCE(t.price, 0)) AS trade_value
+          FROM trades t
+          LEFT JOIN strategies s ON s.id = t.strategy_id
+          ${whereClause}
+        ),
+        trade_with_volume AS (
+          SELECT
+            ft.*,
+            (c.close * c.volume_shares) AS volume_usd
+          FROM filtered_trades ft
+          LEFT JOIN candles c
+            ON c.ticker = ft.ticker AND c.date = ft.trade_date
+        )
+        SELECT
+          CASE
+            WHEN volume_usd < 1000000 THEN '<1M'
+            WHEN volume_usd >= 1000000 AND volume_usd < 10000000 THEN '1-10M'
+            WHEN volume_usd >= 10000000 AND volume_usd < 100000000 THEN '10-100M'
+            WHEN volume_usd >= 100000000 AND volume_usd < 1000000000 THEN '100-1000M'
+            WHEN volume_usd >= 1000000000 AND volume_usd < 10000000000 THEN '1B-10B'
+            ELSE '10B+'
+          END AS bucket_label,
+          CASE
+            WHEN volume_usd < 1000000 THEN 1
+            WHEN volume_usd >= 1000000 AND volume_usd < 10000000 THEN 2
+            WHEN volume_usd >= 10000000 AND volume_usd < 100000000 THEN 3
+            WHEN volume_usd >= 100000000 AND volume_usd < 1000000000 THEN 4
+            WHEN volume_usd >= 1000000000 AND volume_usd < 10000000000 THEN 5
+            ELSE 6
+          END AS bucket_order,
+          CASE
+            WHEN volume_usd < 1000000 THEN 0
+            WHEN volume_usd >= 1000000 AND volume_usd < 10000000 THEN 1000000
+            WHEN volume_usd >= 10000000 AND volume_usd < 100000000 THEN 10000000
+            WHEN volume_usd >= 100000000 AND volume_usd < 1000000000 THEN 100000000
+            WHEN volume_usd >= 1000000000 AND volume_usd < 10000000000 THEN 1000000000
+            ELSE 10000000000
+          END AS min_volume_usd,
+          CASE
+            WHEN volume_usd < 1000000 THEN 1000000
+            WHEN volume_usd >= 1000000 AND volume_usd < 10000000 THEN 10000000
+            WHEN volume_usd >= 10000000 AND volume_usd < 100000000 THEN 100000000
+            WHEN volume_usd >= 100000000 AND volume_usd < 1000000000 THEN 1000000000
+            WHEN volume_usd >= 1000000000 AND volume_usd < 10000000000 THEN 10000000000
+            ELSE NULL
+          END AS max_volume_usd,
+          COUNT(*) AS trade_count,
+          SUM(pnl) AS total_pnl,
+          SUM(trade_value) AS total_buy_cost
+        FROM trade_with_volume
+        WHERE volume_usd IS NOT NULL
+          AND volume_usd > 0
+          AND trade_value > 0
+        GROUP BY bucket_label, bucket_order, min_volume_usd, max_volume_usd
+        ORDER BY bucket_order ASC
+      `,
+      params
+    );
+
+    return rows
+      .map((row) => ({
+        bucketLabel: typeof row.bucket_label === 'string' ? row.bucket_label : 'Unknown',
+        bucketOrder: Number(row.bucket_order) || 0,
+        tradeCount: Number(row.trade_count) || 0,
+        totalPnl: Number(row.total_pnl) || 0,
+        totalBuyCost: Number(row.total_buy_cost) || 0,
+        minVolumeUsd: Number(row.min_volume_usd) || 0,
+        maxVolumeUsd: row.max_volume_usd === null ? null : Number(row.max_volume_usd) || 0
+      }))
+      .filter((row) => row.tradeCount > 0 && Number.isFinite(row.bucketOrder));
   }
 }
