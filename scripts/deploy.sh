@@ -102,6 +102,24 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+detect_ufw_path() {
+    local ufw_path
+    ufw_path="$(command -v ufw 2>/dev/null || true)"
+    if [[ -n "$ufw_path" ]]; then
+        echo "$ufw_path"
+        return 0
+    fi
+    if [[ -x "/usr/sbin/ufw" ]]; then
+        echo "/usr/sbin/ufw"
+        return 0
+    fi
+    if [[ -x "/sbin/ufw" ]]; then
+        echo "/sbin/ufw"
+        return 0
+    fi
+    return 1
+}
+
 
 
 # Function to setup GitHub deploy key
@@ -1009,6 +1027,94 @@ setup_ssl() {
     print_success "SSL certificates configured with auto-renewal"
 }
 
+setup_ufw_ssh_helper() {
+    print_status "Installing SSH firewall helper (admin panel SSH toggle)..."
+
+    local ufw_path=""
+    if ! ufw_path=$(detect_ufw_path); then
+        print_warning "UFW binary not found; skipping SSH helper setup"
+        return 0
+    fi
+
+    cat > "/usr/local/bin/stratcraft-ufw-ssh" << 'EOF'
+#!/bin/bash
+
+set -e
+
+detect_ufw_path() {
+    local ufw_path
+    ufw_path="$(command -v ufw 2>/dev/null || true)"
+    if [[ -n "$ufw_path" ]]; then
+        echo "$ufw_path"
+        return 0
+    fi
+    if [[ -x "/usr/sbin/ufw" ]]; then
+        echo "/usr/sbin/ufw"
+        return 0
+    fi
+    if [[ -x "/sbin/ufw" ]]; then
+        echo "/sbin/ufw"
+        return 0
+    fi
+    if [[ -x "/usr/bin/ufw" ]]; then
+        echo "/usr/bin/ufw"
+        return 0
+    fi
+    if [[ -x "/bin/ufw" ]]; then
+        echo "/bin/ufw"
+        return 0
+    fi
+    return 1
+}
+
+ufw_path="$(detect_ufw_path || true)"
+if [[ -z "$ufw_path" ]]; then
+    echo "UFW binary not found." >&2
+    exit 1
+fi
+
+case "${1:-}" in
+    status)
+        "$ufw_path" status verbose
+        ;;
+    enable)
+        if ! "$ufw_path" allow OpenSSH; then
+            "$ufw_path" allow 22/tcp
+        fi
+        ;;
+    disable)
+        mapfile -t rules < <("$ufw_path" status numbered | sed -n 's/^\[\s*\([0-9]\+\)\]\s\+\(.*\)$/\1 \2/p')
+        rule_numbers=()
+        for rule in "${rules[@]}"; do
+            rule_number="${rule%% *}"
+            rule_body="${rule#* }"
+            if echo "$rule_body" | grep -Eiq '(OpenSSH|22/tcp)' && echo "$rule_body" | grep -Eiq '\b(ALLOW|LIMIT)\b'; then
+                rule_numbers+=("$rule_number")
+            fi
+        done
+        for ((i=${#rule_numbers[@]}-1; i>=0; i--)); do
+            "$ufw_path" --force delete "${rule_numbers[$i]}"
+        done
+        ;;
+    *)
+        echo "Usage: stratcraft-ufw-ssh {status|enable|disable}" >&2
+        exit 2
+        ;;
+esac
+EOF
+
+    chmod +x "/usr/local/bin/stratcraft-ufw-ssh"
+
+    cat > "/etc/sudoers.d/stratcraft-ufw" << EOF
+Defaults:${APP_USER} !requiretty
+$APP_USER ALL=(root) NOPASSWD: /usr/local/bin/stratcraft-ufw-ssh status, /usr/local/bin/stratcraft-ufw-ssh enable, /usr/local/bin/stratcraft-ufw-ssh disable
+EOF
+
+    chmod 440 "/etc/sudoers.d/stratcraft-ufw"
+
+    print_success "SSH firewall helper installed for $APP_USER"
+}
+
 # Function to configure firewall
 configure_firewall() {
     print_status "Configuring UFW firewall..."
@@ -1517,6 +1623,7 @@ update_application() {
             print_warning "Failed to (re)install nginx client-cert lockdown helper"
         fi
     fi
+    setup_ufw_ssh_helper
 
     # Wait for service to start
     sleep 5
@@ -1637,6 +1744,7 @@ deploy() {
     setup_ssl
     setup_client_cert_lockdown
     configure_firewall
+    setup_ufw_ssh_helper
     setup_fail2ban
     setup_log_rotation
     configure_postgres_credentials

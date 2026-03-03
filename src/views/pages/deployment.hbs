@@ -154,6 +154,60 @@
           {{/if}}
           <div class="border rounded p-3 mt-3">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <div class="fw-semibold">SSH Access</div>
+              {{#if sshAccess.supported}}
+                <span class="badge {{#if sshAccess.sshAllowedKnown}}{{#if sshAccess.sshAllowed}}bg-success{{else}}bg-secondary{{/if}}{{else}}bg-secondary{{/if}}">
+                  SSH: {{#if sshAccess.sshAllowedKnown}}{{#if sshAccess.sshAllowed}}Enabled{{else}}Disabled{{/if}}{{else}}Unknown{{/if}}
+                </span>
+                <span class="badge {{#if sshAccess.firewallActiveKnown}}{{#if sshAccess.firewallActive}}bg-info{{else}}bg-secondary{{/if}}{{else}}bg-secondary{{/if}}">
+                  Firewall: {{#if sshAccess.firewallActiveKnown}}{{#if sshAccess.firewallActive}}Active{{else}}Inactive{{/if}}{{else}}Unknown{{/if}}
+                </span>
+              {{/if}}
+            </div>
+            {{#if sshAccess.supported}}
+              <div class="text-muted small mb-2">
+                Manage inbound SSH (port 22) through UFW rules. Disabling SSH can lock you out unless you have console access.
+              </div>
+              <div class="d-flex flex-wrap gap-2">
+                <form method="POST" action="/admin/deployment/ssh-enable" class="d-inline">
+                  {{> csrf-field}}
+                  <button
+                    type="submit"
+                    class="btn btn-outline-success"
+                    {{#unless sshAccess.controlsEnabled}}disabled{{/unless}}
+                    onclick="return confirm('Enable inbound SSH (port 22) via UFW?')"
+                  >
+                    <i class="fas fa-unlock-alt"></i> Enable SSH
+                  </button>
+                </form>
+                <form method="POST" action="/admin/deployment/ssh-disable" class="d-inline">
+                  {{> csrf-field}}
+                  <button
+                    type="submit"
+                    class="btn btn-outline-danger"
+                    {{#unless sshAccess.controlsEnabled}}disabled{{/unless}}
+                    onclick="return confirm('Disable inbound SSH (port 22) via UFW? This can lock you out unless you have console access.')"
+                  >
+                    <i class="fas fa-lock"></i> Disable SSH
+                  </button>
+                </form>
+              </div>
+              {{#unless sshAccess.controlsEnabled}}
+                <div class="alert alert-info mt-3 mb-0">
+                  SSH toggles require the helper from <code>scripts/deploy.sh</code> (and passwordless sudo for the helper).
+                </div>
+              {{/unless}}
+              {{#if sshAccess.error}}
+                <div class="alert alert-warning mt-3 mb-0">{{sshAccess.error}}</div>
+              {{/if}}
+            {{else}}
+              <div class="text-muted fst-italic">
+                SSH controls are only available on Linux hosts with the SSH helper installed.
+              </div>
+            {{/if}}
+          </div>
+          <div class="border rounded p-3 mt-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
               <div class="fw-semibold">Repository Updates</div>
               {{#if deploymentCommitStatus}}
                 <span class="badge {{#if (gt deploymentCommitStatus.behindCount 0)}}bg-warning text-dark{{else}}bg-success{{/if}}">
@@ -315,4 +369,3 @@
     renderChart(cpuMetrics ? cpuMetrics.samples : [], coreCount);
   });
 </script>
-

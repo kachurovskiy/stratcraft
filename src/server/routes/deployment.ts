@@ -15,6 +15,7 @@ const COMMAND_OUTPUT_MAX_CHARS = 500;
 const COMMAND_TIMEOUT_MS = 120000;
 const MAX_CPU_METRIC_POINTS = 5000;
 const MAX_DEPLOY_COMMITS = 100;
+const SSH_HELPER_PATH = '/usr/local/bin/stratcraft-ufw-ssh';
 const stripAnsiCodes = (value: string): string => value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
 const sanitizeCommandOutput = (output?: string): string | undefined => {
@@ -40,6 +41,14 @@ type DeploymentCommitStatus = {
   error?: string;
 };
 
+type SshAccessState = {
+  supported: boolean;
+  controlsEnabled: boolean;
+  sshAllowed: boolean | null;
+  firewallActive: boolean | null;
+  error?: string;
+};
+
 async function runShellCommand(command: string): Promise<{ stdout: string; stderr: string; }> {
   return execAsync(command, {
     timeout: COMMAND_TIMEOUT_MS,
@@ -56,6 +65,104 @@ function buildCommandErrorMessage(error: unknown, fallback: string): string {
     return details ? `${base}: ${details}` : base;
   }
   return stderr || stdout || fallback;
+}
+
+function canUseSshAccessControls(): boolean {
+  return process.platform === 'linux' && fs.existsSync(SSH_HELPER_PATH);
+}
+
+function parseUfwStatus(output: string): { firewallActive: boolean | null; sshAllowed: boolean | null; } {
+  const lines = output.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const statusLine = lines.find(line => line.toLowerCase().startsWith('status:'));
+  const defaultLine = lines.find(line => line.toLowerCase().startsWith('default:'));
+  let firewallActive: boolean | null = null;
+  if (statusLine) {
+    const statusMatch = statusLine.match(/status:\s*([a-z]+)/i);
+    const statusValue = statusMatch?.[1]?.toLowerCase();
+    if (statusValue === 'active') {
+      firewallActive = true;
+    } else if (statusValue === 'inactive') {
+      firewallActive = false;
+    }
+  }
+  let defaultIncomingPolicy: 'allow' | 'deny' | null = null;
+  if (defaultLine) {
+    const policyMatch = defaultLine.match(/default:\s*([a-z]+)\s*\(incoming\)/i);
+    const policyValue = policyMatch?.[1]?.toLowerCase();
+    if (policyValue === 'allow' || policyValue === 'deny') {
+      defaultIncomingPolicy = policyValue;
+    }
+  }
+  const sshLines = lines.filter(line => /OpenSSH|22\/tcp/i.test(line));
+  const sshAllowed = sshLines.some(line => /\b(ALLOW|LIMIT)\b/i.test(line));
+  const sshDenied = sshLines.some(line => /\b(DENY|REJECT)\b/i.test(line));
+
+  let sshAllowedState: boolean | null = null;
+  if (sshAllowed) {
+    sshAllowedState = true;
+  } else if (sshDenied) {
+    sshAllowedState = false;
+  } else if (firewallActive && defaultIncomingPolicy) {
+    sshAllowedState = defaultIncomingPolicy === 'allow';
+  }
+
+  return { firewallActive, sshAllowed: sshAllowedState };
+}
+
+async function runSshHelperCommand(command: 'status' | 'enable' | 'disable'): Promise<{ stdout: string; stderr: string; }> {
+  if (!canUseSshAccessControls()) {
+    throw new Error('SSH access controls are only available on Linux hosts with the SSH helper installed.');
+  }
+  return runShellCommand(`sudo -n ${SSH_HELPER_PATH} ${command}`);
+}
+
+async function getSshAccessState(): Promise<SshAccessState> {
+  if (process.platform !== 'linux') {
+    return {
+      supported: false,
+      controlsEnabled: false,
+      sshAllowed: null,
+      firewallActive: null
+    };
+  }
+
+  if (!fs.existsSync(SSH_HELPER_PATH)) {
+    return {
+      supported: true,
+      controlsEnabled: false,
+      sshAllowed: null,
+      firewallActive: null,
+      error: 'SSH helper is missing. Re-run deploy.sh to add it.'
+    };
+  }
+
+  try {
+    const { stdout } = await runSshHelperCommand('status');
+    const { firewallActive, sshAllowed } = parseUfwStatus(stdout);
+    return {
+      supported: true,
+      controlsEnabled: true,
+      sshAllowed,
+      firewallActive
+    };
+  } catch (error) {
+    return {
+      supported: true,
+      controlsEnabled: false,
+      sshAllowed: null,
+      firewallActive: null,
+      error: buildCommandErrorMessage(error, 'Failed to read SSH firewall status')
+    };
+  }
+}
+
+async function enableSshAccess(): Promise<{ command: string; stdout: string; stderr: string; }> {
+  const result = await runSshHelperCommand('enable');
+  return { command: `${SSH_HELPER_PATH} enable`, ...result };
+}
+
+async function disableSshAccess(): Promise<{ stdout: string; stderr: string; }> {
+  return runSshHelperCommand('disable');
 }
 
 async function resolveDefaultBranch(repoPath: string): Promise<string> {
@@ -159,7 +266,15 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const deploymentControlsEnabled = canUseDeploymentControls();
     const cpuMetrics = req.cpuMetricsService.getSummary(MAX_CPU_METRIC_POINTS);
-    const deploymentCommitStatus = deploymentControlsEnabled ? await getDeploymentCommitStatus() : null;
+    const [deploymentCommitStatus, sshAccessState] = await Promise.all([
+      deploymentControlsEnabled ? getDeploymentCommitStatus() : Promise.resolve(null),
+      getSshAccessState()
+    ]);
+    const sshAccess = {
+      ...sshAccessState,
+      sshAllowedKnown: typeof sshAccessState.sshAllowed === 'boolean',
+      firewallActiveKnown: typeof sshAccessState.firewallActive === 'boolean'
+    };
 
     res.render('pages/deployment', {
       title: 'Deployment',
@@ -169,7 +284,8 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       error: req.query.error as string,
       deploymentControlsEnabled,
       cpuMetrics,
-      deploymentCommitStatus
+      deploymentCommitStatus,
+      sshAccess
     });
   } catch (error) {
     console.error('Error loading deployment panel:', error);
@@ -280,6 +396,99 @@ router.post('/restart-server', (req: Request, res: Response, next: NextFunction)
       stderr: sanitizeCommandOutput((error as any)?.stderr)
     });
     const errorMessage = buildCommandErrorMessage(error, 'Failed to restart server');
+    res.redirect(`/admin/deployment?error=${encodeURIComponent(errorMessage)}`);
+  }
+});
+
+// Enable SSH access via helper (admin only)
+router.post('/ssh-enable', (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAuth(req, res, next);
+}, (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAdmin(req, res, next);
+}, async (req: Request, res: Response) => {
+  if (!canUseSshAccessControls()) {
+    res.redirect('/admin/deployment?error=SSH access controls are only available on Linux hosts with the SSH helper installed.');
+    return;
+  }
+
+  const state = await getSshAccessState();
+  if (!state.controlsEnabled) {
+    const message = state.error ?? 'SSH access controls require passwordless sudo for the SSH helper.';
+    res.redirect(`/admin/deployment?error=${encodeURIComponent(message)}`);
+    return;
+  }
+  if (state.sshAllowed === true) {
+    res.redirect('/admin/deployment?success=SSH access is already enabled.');
+    return;
+  }
+
+  const triggeredBy = req.user?.email || req.user?.userId || 'unknown';
+
+  try {
+    const { command, stdout, stderr } = await enableSshAccess();
+    req.loggingService.warn('system', 'SSH access enabled via deployment panel', {
+      triggeredBy,
+      command,
+      stdout: sanitizeCommandOutput(stdout),
+      stderr: sanitizeCommandOutput(stderr)
+    });
+    const message = 'SSH access enabled via UFW helper.';
+    res.redirect(`/admin/deployment?success=${encodeURIComponent(message)}`);
+  } catch (error) {
+    console.error('Error enabling SSH access via deployment route:', error);
+    req.loggingService.error('system', 'SSH access enable command failed', {
+      triggeredBy,
+      error: error instanceof Error ? error.message : String(error),
+      stdout: sanitizeCommandOutput((error as any)?.stdout),
+      stderr: sanitizeCommandOutput((error as any)?.stderr)
+    });
+    const errorMessage = buildCommandErrorMessage(error, 'Failed to enable SSH access');
+    res.redirect(`/admin/deployment?error=${encodeURIComponent(errorMessage)}`);
+  }
+});
+
+// Disable SSH access via helper (admin only)
+router.post('/ssh-disable', (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAuth(req, res, next);
+}, (req: Request, res: Response, next: NextFunction) => {
+  req.authMiddleware.requireAdmin(req, res, next);
+}, async (req: Request, res: Response) => {
+  if (!canUseSshAccessControls()) {
+    res.redirect('/admin/deployment?error=SSH access controls are only available on Linux hosts with the SSH helper installed.');
+    return;
+  }
+
+  const state = await getSshAccessState();
+  if (!state.controlsEnabled) {
+    const message = state.error ?? 'SSH access controls require passwordless sudo for the SSH helper.';
+    res.redirect(`/admin/deployment?error=${encodeURIComponent(message)}`);
+    return;
+  }
+  if (state.sshAllowed === false) {
+    res.redirect('/admin/deployment?success=SSH access is already disabled.');
+    return;
+  }
+
+  const triggeredBy = req.user?.email || req.user?.userId || 'unknown';
+
+  try {
+    const { stdout, stderr } = await disableSshAccess();
+    req.loggingService.warn('system', 'SSH access disabled via deployment panel', {
+      triggeredBy,
+      stdout: sanitizeCommandOutput(stdout),
+      stderr: sanitizeCommandOutput(stderr)
+    });
+    const message = 'SSH access disabled via UFW helper.';
+    res.redirect(`/admin/deployment?success=${encodeURIComponent(message)}`);
+  } catch (error) {
+    console.error('Error disabling SSH access via deployment route:', error);
+    req.loggingService.error('system', 'SSH access disable command failed', {
+      triggeredBy,
+      error: error instanceof Error ? error.message : String(error),
+      stdout: sanitizeCommandOutput((error as any)?.stdout),
+      stderr: sanitizeCommandOutput((error as any)?.stderr)
+    });
+    const errorMessage = buildCommandErrorMessage(error, 'Failed to disable SSH access');
     res.redirect(`/admin/deployment?error=${encodeURIComponent(errorMessage)}`);
   }
 });
