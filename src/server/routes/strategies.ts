@@ -212,6 +212,33 @@ type EntryFillGapChartData = {
   bucketCount: number;
 };
 
+type EntryFillGapPnlChartData = {
+  labels: string[];
+  totalPnl: number[];
+  avgProfitPercent: Array<number | null>;
+  totalTrades: number;
+  minPercent: number;
+  maxPercent: number;
+  bucketSize: number;
+  bucketCount: number;
+};
+
+type EntryFillGapBucketAggregate = {
+  count: number;
+  totalPnl: number;
+  sumPnlPercent: number;
+  pnlPercentCount: number;
+};
+
+type EntryFillGapBucketSeries = {
+  labels: string[];
+  buckets: EntryFillGapBucketAggregate[];
+  minPercent: number;
+  maxPercent: number;
+  bucketSize: number;
+  bucketCount: number;
+};
+
 const formatPercentLabel = (value: number, decimals: number): string => {
   if (!Number.isFinite(value)) {
     return '0%';
@@ -222,7 +249,7 @@ const formatPercentLabel = (value: number, decimals: number): string => {
   return `${trimmed}%`;
 };
 
-const buildEntryFillGapChartData = (histogram: EntryFillGapHistogram | null): EntryFillGapChartData | null => {
+const buildEntryFillGapBucketSeries = (histogram: EntryFillGapHistogram | null): EntryFillGapBucketSeries | null => {
   if (!histogram || histogram.bucketCount <= 0) {
     return null;
   }
@@ -232,42 +259,87 @@ const buildEntryFillGapChartData = (histogram: EntryFillGapHistogram | null): En
     return null;
   }
 
-  const buckets = new Array(bucketCount + 2).fill(0);
+  const buckets: EntryFillGapBucketAggregate[] = Array.from({ length: bucketCount + 2 }, () => ({
+    count: 0,
+    totalPnl: 0,
+    sumPnlPercent: 0,
+    pnlPercentCount: 0
+  }));
   for (const entry of histogram.buckets) {
     const index = Math.max(0, Math.min(bucketCount + 1, Math.floor(entry.bucket)));
-    buckets[index] += entry.count;
+    const bucket = buckets[index];
+    bucket.count += entry.count;
+    bucket.totalPnl += entry.totalPnl;
+    bucket.sumPnlPercent += entry.sumPnlPercent;
+    bucket.pnlPercentCount += entry.pnlPercentCount;
   }
 
   const decimals = bucketSize >= 1 ? 0 : bucketSize >= 0.1 ? 1 : 2;
   const labels: string[] = [];
-  const counts: number[] = [];
 
   labels.push(`< ${formatPercentLabel(minPercent, decimals)}`);
-  counts.push(buckets[0]);
-
   for (let i = 1; i <= bucketCount; i += 1) {
     const start = minPercent + (i - 1) * bucketSize;
     const end = start + bucketSize;
     labels.push(`${formatPercentLabel(start, decimals)} to ${formatPercentLabel(end, decimals)}`);
-    counts.push(buckets[i]);
+  }
+  labels.push(`> ${formatPercentLabel(maxPercent, decimals)}`);
+
+  return {
+    labels,
+    buckets,
+    minPercent,
+    maxPercent,
+    bucketSize,
+    bucketCount
+  };
+};
+
+const buildEntryFillGapChartData = (histogram: EntryFillGapHistogram | null): EntryFillGapChartData | null => {
+  const series = buildEntryFillGapBucketSeries(histogram);
+  if (!series) {
+    return null;
   }
 
-  labels.push(`> ${formatPercentLabel(maxPercent, decimals)}`);
-  counts.push(buckets[bucketCount + 1]);
-
+  const counts = series.buckets.map((bucket) => bucket.count);
   const total = counts.reduce((sum, value) => sum + value, 0);
   if (total === 0) {
     return null;
   }
 
   return {
-    labels,
+    labels: series.labels,
     counts,
     total,
-    minPercent,
-    maxPercent,
-    bucketSize,
-    bucketCount
+    minPercent: series.minPercent,
+    maxPercent: series.maxPercent,
+    bucketSize: series.bucketSize,
+    bucketCount: series.bucketCount
+  };
+};
+
+const buildEntryFillGapPnlChartData = (histogram: EntryFillGapHistogram | null): EntryFillGapPnlChartData | null => {
+  const series = buildEntryFillGapBucketSeries(histogram);
+  if (!series) {
+    return null;
+  }
+
+  const totalTrades = series.buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  if (totalTrades === 0) {
+    return null;
+  }
+
+  return {
+    labels: series.labels,
+    totalPnl: series.buckets.map((bucket) => bucket.totalPnl),
+    avgProfitPercent: series.buckets.map((bucket) =>
+      bucket.pnlPercentCount > 0 ? bucket.sumPnlPercent / bucket.pnlPercentCount : null
+    ),
+    totalTrades,
+    minPercent: series.minPercent,
+    maxPercent: series.maxPercent,
+    bucketSize: series.bucketSize,
+    bucketCount: series.bucketCount
   };
 };
 
@@ -2299,6 +2371,7 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
       userId
     );
     const entryFillGapChartData = buildEntryFillGapChartData(entryFillGapHistogram);
+    const entryFillGapPnlChartData = buildEntryFillGapPnlChartData(entryFillGapHistogram);
 
     const tradeTickerStatsAll: TradeTickerStats[] = await req.db.trades.getTickerTradeStatsForBacktest(targetBacktest.id, userId);
     const tradeVolumeSegments = await req.db.trades.getTradeVolumeSegmentStatsForBacktest(targetBacktest.id, userId);
@@ -2370,6 +2443,7 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
       bestTrades,
       worstTrades,
       entryFillGapChartData,
+      entryFillGapPnlChartData,
       portfolioValueData,
       bestPortfolioDays,
       worstPortfolioDays,

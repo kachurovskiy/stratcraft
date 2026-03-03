@@ -340,6 +340,28 @@
                 </div>
                 {{/if}}
 
+                {{#if entryFillGapPnlChartData}}
+                <!-- Entry Fill Gap Profitability -->
+                <div class="col-12" id="entryFillGapPnlChartContainer" style="display: none;">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-chart-area me-2"></i>
+                                Entry Fill Gap Profitability
+                            </h6>
+                            <p class="text-muted small mb-0">
+                                Total P&amp;L and average profit % by fill vs prior close bucket.
+                            </p>
+                        </div>
+                        <div class="card-body">
+                            <div style="position: relative; height: 300px; width: 100%;">
+                                <canvas id="entryFillGapPnlChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {{/if}}
+
                 <!-- Portfolio Day Movers -->
                 <div class="col-12 col-xl-6">
                     <div class="card h-100">
@@ -624,6 +646,7 @@
     let tickerWinLossDotPlotChart = null;
     let cashPercentageChart = null;
     let entryFillGapChart = null;
+    let entryFillGapPnlChart = null;
 
     // Store original data for filtering
     let originalPortfolioData = {{{ json portfolioValueData }}};
@@ -636,6 +659,7 @@
     const tradeTickerStats = {{{ json tradeTickerStats }}} || [];
     const volumeSegmentStats = {{{ json volumeSegmentStats }}} || [];
     const entryFillGapChartData = {{{ json entryFillGapChartData }}} || null;
+    const entryFillGapPnlChartData = {{{ json entryFillGapPnlChartData }}} || null;
 
     const currencyFormatter = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -1416,6 +1440,129 @@
                                 const count = Number(context.parsed.y) || 0;
                                 const share = total > 0 ? (count / total) * 100 : 0;
                                 return [`Trades: ${count}`, `Share: ${share.toFixed(1)}%`];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function renderEntryFillGapPnlChart(chartData) {
+        const chartElement = document.getElementById('entryFillGapPnlChart');
+        const container = document.getElementById('entryFillGapPnlChartContainer');
+
+        if (!chartElement || !container) return;
+
+        const labels = Array.isArray(chartData?.labels) ? chartData.labels : [];
+        const totalPnl = Array.isArray(chartData?.totalPnl) ? chartData.totalPnl : [];
+        const avgProfitPercent = Array.isArray(chartData?.avgProfitPercent) ? chartData.avgProfitPercent : [];
+
+        if (labels.length === 0 || totalPnl.length === 0) {
+            container.style.display = 'none';
+            if (entryFillGapPnlChart) {
+                entryFillGapPnlChart.destroy();
+                entryFillGapPnlChart = null;
+            }
+            return;
+        }
+
+        const pnlBackgroundColors = totalPnl.map(value => value >= 0 ? 'rgba(40, 167, 69, 0.7)' : 'rgba(220, 53, 69, 0.7)');
+        const pnlBorderColors = totalPnl.map(value => value >= 0 ? '#28a745' : '#dc3545');
+
+        container.style.display = 'block';
+
+        if (entryFillGapPnlChart) {
+            entryFillGapPnlChart.data.labels = labels;
+            entryFillGapPnlChart.data.datasets[0].data = totalPnl;
+            entryFillGapPnlChart.data.datasets[0].backgroundColor = pnlBackgroundColors;
+            entryFillGapPnlChart.data.datasets[0].borderColor = pnlBorderColors;
+            entryFillGapPnlChart.data.datasets[1].data = avgProfitPercent;
+            entryFillGapPnlChart.update();
+            return;
+        }
+
+        entryFillGapPnlChart = new Chart(chartElement.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Total P&L',
+                    data: totalPnl,
+                    backgroundColor: pnlBackgroundColors,
+                    borderColor: pnlBorderColors,
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Avg Profit %',
+                    data: avgProfitPercent,
+                    type: 'line',
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.2)',
+                    tension: 0.35,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    spanGaps: true,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Fill vs Prior Close (%)'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Total P&L ($)'
+                        },
+                        ticks: {
+                            callback: (value) => currencyFormatter.format(value)
+                        }
+                    },
+                    y1: {
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'Avg Profit (%)'
+                        },
+                        ticks: {
+                            callback: (value) => `${value.toFixed(2)}%`
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (context) => context[0]?.label ?? '',
+                            label: (context) => {
+                                if (context.datasetIndex === 0) {
+                                    return `Total P&L: ${currencyFormatter.format(context.parsed.y)}`;
+                                }
+                                if (context.parsed.y === null || context.parsed.y === undefined) {
+                                    return 'Avg Profit: N/A';
+                                }
+                                return `Avg Profit: ${context.parsed.y.toFixed(2)}%`;
                             }
                         }
                     }
@@ -2455,6 +2602,7 @@
         renderDailyReturnDistributionChart(originalDailyReturnDistributionData);
         renderVolumeSegmentChart(volumeSegmentStats);
         renderEntryFillGapChart(entryFillGapChartData);
+        renderEntryFillGapPnlChart(entryFillGapPnlChartData);
         renderCashPercentageChart(originalCashPercentageData);
         const initialTradeStats = Array.isArray(tradeTickerStats) ? tradeTickerStats : [];
         renderTradeCharts(initialTradeStats);

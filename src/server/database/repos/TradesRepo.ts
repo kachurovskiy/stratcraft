@@ -37,7 +37,13 @@ type TradeWithStrategyRow = TradeRow & {
 
 type CountRow = QueryResultRow & { total: number };
 type StatusCountRow = QueryResultRow & { status: string | null; count: number };
-type EntryFillGapBucketRow = QueryResultRow & { bucket: number | null; count: number };
+type EntryFillGapBucketRow = QueryResultRow & {
+  bucket: number | null;
+  count: number;
+  total_pnl: number | null;
+  sum_pnl_percent: number | null;
+  pnl_percent_count: number | null;
+};
 
 export class TradesRepo {
   constructor(private readonly db: DbClient) {}
@@ -947,11 +953,11 @@ export class TradesRepo {
     const rows = await this.db.all<EntryFillGapBucketRow>(
       `
         WITH filtered_trades AS (
-          SELECT t.ticker, t.price, t.date
+          SELECT t.ticker, t.price, t.date, t.quantity, t.pnl
           FROM trades t
           LEFT JOIN strategies s ON s.id = t.strategy_id
           WHERE t.backtest_result_id = ?
-            AND t.quantity > 0
+            AND t.quantity != 0
             AND (COALESCE(t.user_id, s.user_id) = ? OR COALESCE(t.user_id, s.user_id) IS NULL)
         ),
         trade_with_close AS (
@@ -959,6 +965,8 @@ export class TradesRepo {
             ft.ticker,
             ft.price,
             ft.date,
+            ft.quantity,
+            ft.pnl,
             (
               SELECT c.close
               FROM candles c
@@ -970,12 +978,20 @@ export class TradesRepo {
           FROM filtered_trades ft
         ),
         gap_values AS (
-          SELECT ((price - last_close) / NULLIF(last_close, 0)) * 100 AS gap_percent
+          SELECT
+            ((price - last_close) / NULLIF(last_close, 0)) * 100 AS gap_percent,
+            pnl,
+            ABS(quantity * price) AS trade_value
           FROM trade_with_close
           WHERE last_close IS NOT NULL
         )
         SELECT width_bucket(gap_percent, ?, ?, ?) AS bucket,
-               COUNT(*) AS count
+               COUNT(*) AS count,
+               SUM(COALESCE(pnl, 0)) AS total_pnl,
+               SUM(CASE WHEN trade_value > 0 AND pnl IS NOT NULL THEN (pnl / trade_value) * 100 ELSE 0 END)
+                 AS sum_pnl_percent,
+               SUM(CASE WHEN trade_value > 0 AND pnl IS NOT NULL THEN 1 ELSE 0 END)
+                 AS pnl_percent_count
         FROM gap_values
         GROUP BY bucket
         ORDER BY bucket ASC
@@ -994,10 +1010,16 @@ export class TradesRepo {
         }
         return {
           bucket: bucketValue,
-          count: Number(row.count) || 0
+          count: Number(row.count) || 0,
+          totalPnl: Number(row.total_pnl) || 0,
+          sumPnlPercent: Number(row.sum_pnl_percent) || 0,
+          pnlPercentCount: Number(row.pnl_percent_count) || 0
         };
       })
-      .filter((row): row is { bucket: number; count: number } => row !== null);
+      .filter(
+        (row): row is { bucket: number; count: number; totalPnl: number; sumPnlPercent: number; pnlPercentCount: number } =>
+          row !== null
+      );
 
     return {
       minPercent: lowerBound,
