@@ -1,10 +1,14 @@
 import os from 'os';
 
-export interface CpuSample {
+export interface Sample {
   ts: number;
-  avg: number;
-  min: number;
-  max: number;
+  avg?: number;
+  min?: number;
+  max?: number;
+  totalBytes?: number;
+  freeBytes?: number;
+  usedBytes?: number;
+  usedPercent?: number;
 }
 
 export interface CpuMetricsSummary {
@@ -12,8 +16,16 @@ export interface CpuMetricsSummary {
   uptimeMs: number;
   coreCount: number;
   sampleIntervalMs: number;
-  samples: CpuSample[];
-  latest?: CpuSample;
+  samples: Sample[];
+  latest?: Sample;
+}
+
+export interface MemoryMetricsSummary {
+  startedAt: number;
+  uptimeMs: number;
+  sampleIntervalMs: number;
+  samples: Sample[];
+  latest?: Sample;
 }
 
 const DEFAULT_SAMPLE_INTERVAL_MS = 15000;
@@ -22,7 +34,8 @@ const DEFAULT_PRECISION = 1;
 export class CpuMetricsService {
   private readonly startedAt: number = Date.now();
   private readonly sampleIntervalMs: number;
-  private samples: CpuSample[] = [];
+  private samples: Sample[] = [];
+  private memorySamples: Sample[] = [];
   private timer: NodeJS.Timeout | null = null;
   private primeTimer: NodeJS.Timeout | null = null;
   private lastTimes: os.CpuInfo['times'][] | null = null;
@@ -77,6 +90,20 @@ export class CpuMetricsService {
     };
   }
 
+  getMemorySummary(maxPoints?: number): MemoryMetricsSummary {
+    const trimmed = typeof maxPoints === 'number' && Number.isFinite(maxPoints) && maxPoints > 0
+      ? this.downsampleMemorySamples(this.memorySamples, Math.floor(maxPoints))
+      : this.memorySamples;
+
+    return {
+      startedAt: this.startedAt,
+      uptimeMs: Date.now() - this.startedAt,
+      sampleIntervalMs: this.sampleIntervalMs,
+      samples: trimmed,
+      latest: this.memorySamples.length ? this.memorySamples[this.memorySamples.length - 1] : undefined
+    };
+  }
+
   private captureBaseline(): void {
     const cpus = os.cpus();
     this.coreCount = cpus.length;
@@ -84,14 +111,19 @@ export class CpuMetricsService {
   }
 
   private captureSample(): void {
-    const sample = this.calculateSample();
-    if (!sample) {
+    const ts = Date.now();
+    const cpuSample = this.calculateCpuSample(ts);
+    if (!cpuSample) {
       return;
     }
-    this.samples.push(sample);
+    const memorySample = this.calculateMemorySample(ts);
+    this.samples.push(cpuSample);
+    if (memorySample) {
+      this.memorySamples.push(memorySample);
+    }
   }
 
-  private calculateSample(): CpuSample | null {
+  private calculateCpuSample(ts: number): Sample | null {
     const cpus = os.cpus();
     if (!this.lastTimes || this.lastTimes.length !== cpus.length) {
       this.captureBaseline();
@@ -120,20 +152,39 @@ export class CpuMetricsService {
     const max = Math.max(...perCoreUsage);
 
     return {
-      ts: Date.now(),
+      ts,
       avg: roundTo(avg, DEFAULT_PRECISION),
       min: roundTo(min, DEFAULT_PRECISION),
       max: roundTo(max, DEFAULT_PRECISION)
     };
   }
 
-  private downsampleSamples(samples: CpuSample[], maxPoints: number): CpuSample[] {
+  private calculateMemorySample(ts: number): Sample | null {
+    const totalBytes = os.totalmem();
+    if (!Number.isFinite(totalBytes) || totalBytes <= 0) {
+      return null;
+    }
+
+    const freeBytes = Math.max(0, os.freemem());
+    const usedBytes = Math.max(0, totalBytes - freeBytes);
+    const usedPercent = (usedBytes / totalBytes) * 100;
+
+    return {
+      ts,
+      totalBytes,
+      freeBytes,
+      usedBytes,
+      usedPercent: roundTo(usedPercent, DEFAULT_PRECISION)
+    };
+  }
+
+  private downsampleSamples(samples: Sample[], maxPoints: number): Sample[] {
     if (samples.length <= maxPoints) {
       return samples;
     }
 
     const bucketSize = Math.ceil(samples.length / maxPoints);
-    const downsampled: CpuSample[] = [];
+    const downsampled: Sample[] = [];
 
     for (let start = 0; start < samples.length; start += bucketSize) {
       const bucket = samples.slice(start, start + bucketSize);
@@ -146,9 +197,9 @@ export class CpuMetricsService {
       let max = Number.NEGATIVE_INFINITY;
 
       for (const sample of bucket) {
-        sumAvg += sample.avg;
-        if (sample.min < min) min = sample.min;
-        if (sample.max > max) max = sample.max;
+        sumAvg += sample.avg ?? 0;
+        if ((sample.min ?? 0) < min) min = sample.min ?? 0;
+        if ((sample.max ?? 0) > max) max = sample.max ?? 0;
       }
 
       downsampled.push({
@@ -156,6 +207,47 @@ export class CpuMetricsService {
         avg: roundTo(sumAvg / bucket.length, DEFAULT_PRECISION),
         min: roundTo(min, DEFAULT_PRECISION),
         max: roundTo(max, DEFAULT_PRECISION)
+      });
+    }
+
+    return downsampled;
+  }
+
+  private downsampleMemorySamples(samples: Sample[], maxPoints: number): Sample[] {
+    if (samples.length <= maxPoints) {
+      return samples;
+    }
+
+    const bucketSize = Math.ceil(samples.length / maxPoints);
+    const downsampled: Sample[] = [];
+
+    for (let start = 0; start < samples.length; start += bucketSize) {
+      const bucket = samples.slice(start, start + bucketSize);
+      if (!bucket.length) {
+        continue;
+      }
+
+      let sumUsed = 0;
+      let sumFree = 0;
+      let sumPercent = 0;
+      let totalBytes = bucket[bucket.length - 1].totalBytes ?? 0;
+
+      for (const sample of bucket) {
+        sumUsed += sample.usedBytes ?? 0;
+        sumFree += sample.freeBytes ?? 0;
+        sumPercent += sample.usedPercent ?? 0;
+        if (typeof sample.totalBytes === 'number') {
+          totalBytes = sample.totalBytes;
+        }
+      }
+
+      const count = bucket.length;
+      downsampled.push({
+        ts: bucket[bucket.length - 1].ts,
+        totalBytes,
+        freeBytes: Math.round(sumFree / count),
+        usedBytes: Math.round(sumUsed / count),
+        usedPercent: roundTo(sumPercent / count, DEFAULT_PRECISION)
       });
     }
 

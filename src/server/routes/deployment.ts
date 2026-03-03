@@ -13,7 +13,7 @@ const DEPLOY_TRIGGER_SCRIPT_PATH = '/usr/local/bin/stratcraft-manual-update-chec
 const DEPLOY_REPO_PATH = '/opt/stratcraft/stratcraft';
 const COMMAND_OUTPUT_MAX_CHARS = 500;
 const COMMAND_TIMEOUT_MS = 120000;
-const MAX_CPU_METRIC_POINTS = 5000;
+const MAX_METRIC_POINTS = 5000;
 const MAX_DEPLOY_COMMITS = 100;
 const SSH_HELPER_PATH = '/usr/local/bin/stratcraft-ufw-ssh';
 const stripAnsiCodes = (value: string): string => value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
@@ -265,7 +265,8 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
 }, async (req: Request, res: Response) => {
   try {
     const deploymentControlsEnabled = canUseDeploymentControls();
-    const cpuMetrics = req.cpuMetricsService.getSummary(MAX_CPU_METRIC_POINTS);
+    const cpuMetrics = req.cpuMetricsService.getSummary(MAX_METRIC_POINTS);
+    const memoryMetrics = req.cpuMetricsService.getMemorySummary(MAX_METRIC_POINTS);
     const [deploymentCommitStatus, sshAccessState] = await Promise.all([
       deploymentControlsEnabled ? getDeploymentCommitStatus() : Promise.resolve(null),
       getSshAccessState()
@@ -284,6 +285,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       error: req.query.error as string,
       deploymentControlsEnabled,
       cpuMetrics,
+      memoryMetrics,
       deploymentCommitStatus,
       sshAccess
     });
