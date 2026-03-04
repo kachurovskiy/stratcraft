@@ -190,22 +190,6 @@ async fn reconcile_trade(
         }
     }
 
-    if let Some(eval) = stop_eval
-        .as_ref()
-        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
-    {
-        apply_closure(trade, eval, true);
-        return Ok(true);
-    }
-
-    if let Some(eval) = exit_eval
-        .as_ref()
-        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
-    {
-        apply_closure(trade, eval, false);
-        return Ok(true);
-    }
-
     let mut changed = false;
 
     if let Some(eval) = entry_eval
@@ -259,6 +243,17 @@ async fn reconcile_trade(
     }
 
     if let Some(position) = position_match {
+        if trade.status == TradeStatus::Active
+            && position.avg_entry_price.is_finite()
+            && position.avg_entry_price > 0.0
+            && (trade.price - position.avg_entry_price).abs() > PNL_EPSILON
+        {
+            trade.set_price(position.avg_entry_price, Utc::now());
+            changed = true;
+        }
+    }
+
+    if let Some(position) = position_match {
         if trade.ticker != position.ticker {
             trade.set_ticker(position.ticker.clone(), Utc::now());
             changed = true;
@@ -274,6 +269,22 @@ async fn reconcile_trade(
             trade.set_stop_order_id(None, Utc::now());
             changed = true;
         }
+    }
+
+    if let Some(eval) = stop_eval
+        .as_ref()
+        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
+    {
+        apply_closure(trade, eval, true);
+        return Ok(true);
+    }
+
+    if let Some(eval) = exit_eval
+        .as_ref()
+        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
+    {
+        apply_closure(trade, eval, false);
+        return Ok(true);
     }
 
     if should_cancel_trade(
