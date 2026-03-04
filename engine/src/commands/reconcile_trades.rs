@@ -172,6 +172,23 @@ async fn reconcile_trade(
         None
     };
 
+    let mut changed = false;
+    if let Some(eval) = entry_eval.as_ref() {
+        if update_order_status(trade, TradeOrderKind::Entry, eval) {
+            changed = true;
+        }
+    }
+    if let Some(eval) = stop_eval.as_ref() {
+        if update_order_status(trade, TradeOrderKind::Stop, eval) {
+            changed = true;
+        }
+    }
+    if let Some(eval) = exit_eval.as_ref() {
+        if update_order_status(trade, TradeOrderKind::Exit, eval) {
+            changed = true;
+        }
+    }
+
     if entry_order_ready_for_cancellation(trade, &entry_eval) {
         if let Some(order_id) = trade
             .entry_order_id
@@ -189,8 +206,6 @@ async fn reconcile_trade(
             }
         }
     }
-
-    let mut changed = false;
 
     if let Some(eval) = entry_eval
         .as_ref()
@@ -325,6 +340,74 @@ fn apply_cancellation(trade: &mut Trade, changed_at: DateTime<Utc>) {
     trade.set_exit_date(None, changed_at);
     trade.set_stop_loss_triggered(Some(false), changed_at);
     trade.set_pnl(None, changed_at);
+}
+
+enum TradeOrderKind {
+    Entry,
+    Stop,
+    Exit,
+}
+
+fn update_order_status(
+    trade: &mut Trade,
+    kind: TradeOrderKind,
+    evaluation: &OrderEvaluation,
+) -> bool {
+    let status_label = order_state_label(evaluation.state);
+    let status_value = Some(status_label.to_string());
+    let changed_at = evaluation.changed_at();
+    let status_updated_at = evaluation.timestamp.or_else(|| {
+        if matches!(evaluation.state, OrderState::Filled | OrderState::Cancelled) {
+            Some(changed_at)
+        } else {
+            None
+        }
+    });
+
+    let mut changed = false;
+
+    match kind {
+        TradeOrderKind::Entry => {
+            if trade.entry_order_status.as_deref() != Some(status_label) {
+                trade.set_entry_order_status(status_value, changed_at);
+                changed = true;
+            }
+            if trade.entry_order_status_updated_at != status_updated_at {
+                trade.entry_order_status_updated_at = status_updated_at;
+                changed = true;
+            }
+        }
+        TradeOrderKind::Stop => {
+            if trade.stop_order_status.as_deref() != Some(status_label) {
+                trade.set_stop_order_status(status_value, changed_at);
+                changed = true;
+            }
+            if trade.stop_order_status_updated_at != status_updated_at {
+                trade.stop_order_status_updated_at = status_updated_at;
+                changed = true;
+            }
+        }
+        TradeOrderKind::Exit => {
+            if trade.exit_order_status.as_deref() != Some(status_label) {
+                trade.set_exit_order_status(status_value, changed_at);
+                changed = true;
+            }
+            if trade.exit_order_status_updated_at != status_updated_at {
+                trade.exit_order_status_updated_at = status_updated_at;
+                changed = true;
+            }
+        }
+    }
+
+    changed
+}
+
+fn order_state_label(state: OrderState) -> &'static str {
+    match state {
+        OrderState::Pending => "pending",
+        OrderState::Filled => "filled",
+        OrderState::Cancelled => "cancelled",
+    }
 }
 
 async fn fetch_last_candle_closes(

@@ -1091,6 +1091,12 @@ impl Engine {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
         active_trades.push(trade);
@@ -1260,6 +1266,12 @@ impl Engine {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
         active_trades.push(trade);
@@ -2639,6 +2651,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
 
@@ -3595,6 +3613,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         }
     }
@@ -4257,6 +4281,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
 
@@ -4484,6 +4514,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         }];
         let mut closed_trades = Vec::new();
@@ -4613,6 +4649,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         }];
         let mut closed_trades = Vec::new();
@@ -4660,6 +4702,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
 
@@ -4694,6 +4742,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
 
@@ -4728,6 +4782,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
 
@@ -4762,6 +4822,12 @@ mod tests {
             entry_cancel_after: None,
             stop_order_id: None,
             exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
             changes: Vec::new(),
         };
 

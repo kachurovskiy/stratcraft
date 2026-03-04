@@ -318,6 +318,13 @@ export const viewHelpers = {
         return 'Sent';
       case 'skipped':
         return 'Skipped';
+      case 'filled':
+        return 'Filled';
+      case 'cancelled':
+      case 'canceled':
+        return 'Cancelled';
+      case 'triggered':
+        return 'Triggered';
       case 'unknown':
         return 'Unknown';
       default:
@@ -334,6 +341,13 @@ export const viewHelpers = {
         return 'success';
       case 'skipped':
         return 'secondary';
+      case 'filled':
+        return 'success';
+      case 'cancelled':
+      case 'canceled':
+        return 'secondary';
+      case 'triggered':
+        return 'warning';
       case 'unknown':
         return 'dark';
       default:

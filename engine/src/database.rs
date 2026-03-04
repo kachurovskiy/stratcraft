@@ -999,7 +999,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id
+                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id, entry_order_status, entry_order_status_updated_at, stop_order_status, stop_order_status_updated_at, exit_order_status, exit_order_status_updated_at
                  FROM trades t
                  WHERE t.strategy_id = $1
                    AND t.entry_order_id IS NOT NULL
@@ -1039,7 +1039,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT t.id, t.ticker, t.quantity, t.price, t.date, t.status, t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered, t.changes, t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, s.account_id, t.strategy_id
+                "SELECT t.id, t.ticker, t.quantity, t.price, t.date, t.status, t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered, t.changes, t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, s.account_id, t.strategy_id
                  FROM trades t
                  INNER JOIN strategies s ON s.id = t.strategy_id
                  WHERE s.account_id IS NOT NULL
@@ -1052,11 +1052,11 @@ impl Database {
 
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
-            let account_id: String = row.get(17);
+            let account_id: String = row.get(23);
             if account_id.trim().is_empty() {
                 continue;
             }
-            let strategy_id: String = row.get(18);
+            let strategy_id: String = row.get(24);
             let trade = Self::map_trade_row(&row, &strategy_id)?;
             result.push(TradeReconciliationCandidate { trade, account_id });
         }
@@ -1236,7 +1236,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id
+                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id, entry_order_status, entry_order_status_updated_at, stop_order_status, stop_order_status_updated_at, exit_order_status, exit_order_status_updated_at
                  FROM trades
                  WHERE backtest_result_id = $1
                  ORDER BY date, id",
@@ -1274,8 +1274,14 @@ impl Database {
                      price = $8,
                      date = $9,
                      ticker = $10,
-                     stop_order_id = $11
-                 WHERE id = $12",
+                     stop_order_id = $11,
+                     entry_order_status = $12,
+                     entry_order_status_updated_at = $13,
+                     stop_order_status = $14,
+                     stop_order_status_updated_at = $15,
+                     exit_order_status = $16,
+                     exit_order_status_updated_at = $17
+                 WHERE id = $18",
                 &[
                     &status,
                     &trade.pnl,
@@ -1288,6 +1294,12 @@ impl Database {
                     &trade_date,
                     &trade.ticker,
                     &trade.stop_order_id,
+                    &trade.entry_order_status,
+                    &trade.entry_order_status_updated_at,
+                    &trade.stop_order_status,
+                    &trade.stop_order_status_updated_at,
+                    &trade.exit_order_status,
+                    &trade.exit_order_status_updated_at,
                     &trade.id,
                 ],
             )
@@ -1474,6 +1486,12 @@ impl Database {
         let entry_cancel_after: Option<DateTime<Utc>> = row.get(14);
         let stop_order_id: Option<String> = row.get(15);
         let exit_order_id: Option<String> = row.get(16);
+        let entry_order_status: Option<String> = row.get(17);
+        let entry_order_status_updated_at: Option<DateTime<Utc>> = row.get(18);
+        let stop_order_status: Option<String> = row.get(19);
+        let stop_order_status_updated_at: Option<DateTime<Utc>> = row.get(20);
+        let exit_order_status: Option<String> = row.get(21);
+        let exit_order_status_updated_at: Option<DateTime<Utc>> = row.get(22);
         let changes: Vec<TradeChange> = serde_json::from_str(&changes_json)
             .map_err(|err| anyhow!("Failed to parse trade changes JSON: {}", err))?;
         let fee_value: Option<f64> = row.get(7);
@@ -1496,6 +1514,12 @@ impl Database {
             entry_cancel_after,
             stop_order_id,
             exit_order_id,
+            entry_order_status,
+            entry_order_status_updated_at,
+            stop_order_status,
+            stop_order_status_updated_at,
+            exit_order_status,
+            exit_order_status_updated_at,
             changes,
         })
     }

@@ -25,6 +25,12 @@ type TradeRow = QueryResultRow & {
   entry_cancel_after?: Date | null;
   stop_order_id: string | null;
   exit_order_id: string | null;
+  entry_order_status: string | null;
+  entry_order_status_updated_at: string | Date | null;
+  stop_order_status: string | null;
+  stop_order_status_updated_at: string | Date | null;
+  exit_order_status: string | null;
+  exit_order_status_updated_at: string | Date | null;
   changes: unknown;
   created_at: Date;
   user_id?: number | null;
@@ -114,6 +120,26 @@ export class TradesRepo {
         ? row.status
         : 'pending';
 
+    const entryOrderStatus =
+      typeof row.entry_order_status === 'string' && row.entry_order_status.trim().length > 0
+        ? row.entry_order_status.trim().toLowerCase()
+        : undefined;
+    const stopOrderStatus =
+      typeof row.stop_order_status === 'string' && row.stop_order_status.trim().length > 0
+        ? row.stop_order_status.trim().toLowerCase()
+        : undefined;
+    const exitOrderStatus =
+      typeof row.exit_order_status === 'string' && row.exit_order_status.trim().length > 0
+        ? row.exit_order_status.trim().toLowerCase()
+        : undefined;
+
+    const entryOrderStatusUpdatedAt =
+      row.entry_order_status_updated_at ? new Date(row.entry_order_status_updated_at) : undefined;
+    const stopOrderStatusUpdatedAt =
+      row.stop_order_status_updated_at ? new Date(row.stop_order_status_updated_at) : undefined;
+    const exitOrderStatusUpdatedAt =
+      row.exit_order_status_updated_at ? new Date(row.exit_order_status_updated_at) : undefined;
+
     return {
       id: row.id,
       strategyId: row.strategy_id,
@@ -134,6 +160,12 @@ export class TradesRepo {
       entryCancelAfter: row.entry_cancel_after ? new Date(row.entry_cancel_after) : undefined,
       stopOrderId: trimToNull(row.stop_order_id),
       exitOrderId: trimToNull(row.exit_order_id),
+      entryOrderStatus,
+      entryOrderStatusUpdatedAt,
+      stopOrderStatus,
+      stopOrderStatusUpdatedAt,
+      exitOrderStatus,
+      exitOrderStatusUpdatedAt,
       createdAt: new Date(row.created_at),
       changes: this.parseTradeChanges(row.changes)
     };
@@ -303,7 +335,7 @@ export class TradesRepo {
     let sql = `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
-             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.changes, t.created_at,
+             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
       FROM trades t
       LEFT JOIN strategies s ON s.id = t.strategy_id
@@ -487,7 +519,7 @@ export class TradesRepo {
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
-             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.changes, t.created_at,
+             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
       FROM trades t
       LEFT JOIN strategies s ON s.id = t.strategy_id
@@ -520,7 +552,7 @@ export class TradesRepo {
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
-             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.changes, t.created_at,
+             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id,
              s.account_id,
              s.name as strategy_name
@@ -606,7 +638,7 @@ export class TradesRepo {
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
-             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.changes, t.created_at,
+             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
       FROM trades t
       LEFT JOIN strategies s ON s.id = t.strategy_id
@@ -642,7 +674,7 @@ export class TradesRepo {
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
-             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.changes, t.created_at,
+             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
       FROM trades t
       LEFT JOIN strategies s ON s.id = t.strategy_id
@@ -685,7 +717,7 @@ export class TradesRepo {
     const sql = `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
-             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.changes, t.created_at, t.user_id as user_id
+             t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at, t.user_id as user_id
       FROM trades t
       WHERE t.id = ? AND (t.user_id = ? OR t.user_id IS NULL)
     `;

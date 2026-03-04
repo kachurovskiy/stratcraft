@@ -174,6 +174,12 @@ export interface Trade {
   entryCancelAfter?: Date | null;
   stopOrderId?: string | null;
   exitOrderId?: string | null;
+  entryOrderStatus?: string;
+  entryOrderStatusUpdatedAt?: Date | null;
+  stopOrderStatus?: string;
+  stopOrderStatusUpdatedAt?: Date | null;
+  exitOrderStatus?: string;
+  exitOrderStatusUpdatedAt?: Date | null;
   createdAt: Date;
   changes: TradeChange[];
 }

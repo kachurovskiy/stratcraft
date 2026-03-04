@@ -55,6 +55,18 @@ pub struct Trade {
     pub stop_order_id: Option<String>,
     #[serde(default)]
     pub exit_order_id: Option<String>,
+    #[serde(default)]
+    pub entry_order_status: Option<String>,
+    #[serde(default)]
+    pub entry_order_status_updated_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub stop_order_status: Option<String>,
+    #[serde(default)]
+    pub stop_order_status_updated_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub exit_order_status: Option<String>,
+    #[serde(default)]
+    pub exit_order_status_updated_at: Option<DateTime<Utc>>,
     pub changes: Vec<TradeChange>,
 }
 
@@ -209,6 +221,24 @@ impl Trade {
         let old = self.stop_order_id.clone();
         self.record_change("stopOrderId", &old, &value, changed_at);
         self.stop_order_id = value;
+    }
+
+    pub fn set_entry_order_status(&mut self, value: Option<String>, changed_at: DateTime<Utc>) {
+        let old = self.entry_order_status.clone();
+        self.record_change("entryOrderStatus", &old, &value, changed_at);
+        self.entry_order_status = value;
+    }
+
+    pub fn set_stop_order_status(&mut self, value: Option<String>, changed_at: DateTime<Utc>) {
+        let old = self.stop_order_status.clone();
+        self.record_change("stopOrderStatus", &old, &value, changed_at);
+        self.stop_order_status = value;
+    }
+
+    pub fn set_exit_order_status(&mut self, value: Option<String>, changed_at: DateTime<Utc>) {
+        let old = self.exit_order_status.clone();
+        self.record_change("exitOrderStatus", &old, &value, changed_at);
+        self.exit_order_status = value;
     }
 }
 

@@ -28,7 +28,7 @@ const TRADE_SORT_OPTION_LABELS: Record<TradeSortField, string> = {
 };
 const TRADE_OPERATION_STATUS_ORDER: AccountOperationStatus[] = ['pending', 'sent', 'skipped', 'failed'];
 type TradeOrderType = 'entry' | 'stop' | 'exit' | 'operation';
-type TradeOrderStatus = AccountOperationStatus | 'unknown';
+type TradeOrderStatus = AccountOperationStatus | 'unknown' | 'triggered' | 'filled' | 'cancelled';
 
 interface TradeOrderView {
   label: string;
@@ -220,6 +220,68 @@ function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | und
   const operationList = Array.isArray(operations) ? operations : [];
   const operationsByOrder = new Map<string, AccountOperation[]>();
 
+  const normalizeBrokerStatus = (value: string | null | undefined): TradeOrderStatus | null => {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'pending' || normalized === 'filled' || normalized === 'cancelled') {
+      return normalized as TradeOrderStatus;
+    }
+    if (normalized === 'canceled') {
+      return 'cancelled';
+    }
+    return null;
+  };
+
+  const getBrokerSnapshot = (
+    type: TradeOrderType
+  ): { status: TradeOrderStatus; updatedAt: Date | null; triggeredAt: Date | null } | null => {
+    let rawStatus: string | null | undefined;
+    let updatedAt: Date | null | undefined;
+
+    switch (type) {
+      case 'entry':
+        rawStatus = trade.entryOrderStatus;
+        updatedAt = trade.entryOrderStatusUpdatedAt ?? null;
+        break;
+      case 'stop':
+        rawStatus = trade.stopOrderStatus;
+        updatedAt = trade.stopOrderStatusUpdatedAt ?? null;
+        break;
+      case 'exit':
+        rawStatus = trade.exitOrderStatus;
+        updatedAt = trade.exitOrderStatusUpdatedAt ?? null;
+        break;
+      default:
+        return null;
+    }
+
+    const normalizedStatus = normalizeBrokerStatus(rawStatus);
+    if (!normalizedStatus) {
+      return null;
+    }
+
+    const status = type === 'stop' && normalizedStatus === 'filled' ? 'triggered' : normalizedStatus;
+    let triggeredAt: Date | null = null;
+    if (status === 'filled' || status === 'triggered') {
+      if (type === 'entry') {
+        triggeredAt = trade.date;
+      } else {
+        triggeredAt = trade.exitDate ?? null;
+      }
+    }
+    if (!triggeredAt) {
+      triggeredAt = updatedAt ?? null;
+    }
+
+    return {
+      status,
+      updatedAt: updatedAt ?? null,
+      triggeredAt
+    };
+  };
+
   operationList.forEach(operation => {
     const orderId = normalizeTradeOrderIdValue(operation.orderId);
     if (!orderId) {
@@ -244,14 +306,35 @@ function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | und
     seenOrderKeys.add(key);
     const matchingOperations = operationsByOrder.get(key);
     const latestOperation = getLatestOperationForOrder(matchingOperations ?? null);
+    let status: TradeOrderStatus = latestOperation?.status ?? 'unknown';
+    let statusReason = latestOperation?.statusReason ?? latestOperation?.reason ?? null;
+    let triggeredAt = latestOperation?.triggeredAt ?? null;
+    let statusUpdatedAt = latestOperation?.statusUpdatedAt ?? latestOperation?.triggeredAt ?? null;
+
+    const brokerSnapshot = getBrokerSnapshot(type);
+    if (brokerSnapshot) {
+      status = brokerSnapshot.status;
+      statusUpdatedAt = brokerSnapshot.updatedAt ?? statusUpdatedAt;
+      if (brokerSnapshot.triggeredAt) {
+        triggeredAt = brokerSnapshot.triggeredAt;
+      }
+    } else if (type === 'stop' && trade.stopLossTriggered) {
+      status = 'triggered';
+      statusReason = statusReason ?? 'Stop loss triggered';
+      if (trade.exitDate) {
+        triggeredAt = trade.exitDate;
+        statusUpdatedAt = trade.exitDate;
+      }
+    }
+
     orderViews.push({
       label,
       type,
       orderId: normalizedId,
-      status: latestOperation?.status ?? 'unknown',
-      statusReason: latestOperation?.statusReason ?? latestOperation?.reason ?? null,
-      triggeredAt: latestOperation?.triggeredAt ?? null,
-      statusUpdatedAt: latestOperation?.statusUpdatedAt ?? latestOperation?.triggeredAt ?? null,
+      status,
+      statusReason,
+      triggeredAt,
+      statusUpdatedAt,
       operationType: latestOperation?.operationType ?? null,
       quantity: latestOperation?.quantity ?? null,
       price: latestOperation?.price ?? null,

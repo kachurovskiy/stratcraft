@@ -194,6 +194,12 @@ CREATE TABLE IF NOT EXISTS trades (
     entry_cancel_after TIMESTAMPTZ,
     stop_order_id TEXT,
     exit_order_id TEXT,
+    entry_order_status TEXT,
+    entry_order_status_updated_at TIMESTAMPTZ,
+    stop_order_status TEXT,
+    stop_order_status_updated_at TIMESTAMPTZ,
+    exit_order_status TEXT,
+    exit_order_status_updated_at TIMESTAMPTZ,
     changes TEXT NOT NULL DEFAULT '[]',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (strategy_id) REFERENCES strategies(id),
@@ -201,6 +207,14 @@ CREATE TABLE IF NOT EXISTS trades (
     FOREIGN KEY (ticker) REFERENCES tickers(symbol),
     FOREIGN KEY (backtest_result_id) REFERENCES backtest_results(id)
 );
+
+ALTER TABLE trades
+    ADD COLUMN IF NOT EXISTS entry_order_status TEXT,
+    ADD COLUMN IF NOT EXISTS entry_order_status_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS stop_order_status TEXT,
+    ADD COLUMN IF NOT EXISTS stop_order_status_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS exit_order_status TEXT,
+    ADD COLUMN IF NOT EXISTS exit_order_status_updated_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS account_operations (
     id TEXT PRIMARY KEY,
