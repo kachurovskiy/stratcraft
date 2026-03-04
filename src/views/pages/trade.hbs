@@ -399,11 +399,19 @@
         <!-- Ticker Chart -->
         <div class="col-12">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-chart-line me-2"></i>
                         {{trade.ticker}} Price Chart
                     </h5>
+                    <button
+                        type="button"
+                        id="tickerChartRangeToggle"
+                        class="btn btn-outline-secondary btn-sm"
+                        aria-pressed="false"
+                    >
+                        Show 1M
+                    </button>
                 </div>
                 <div class="card-body">
                     <div style="position: relative; height: 400px; width: 100%;">
@@ -481,17 +489,68 @@ document.addEventListener('DOMContentLoaded', function () {
         const simulatedFutureData = {{{ json simulatedFutureData }}};
         const expectedEndDate = {{{ json expectedEndDate }}};
         const expectedPriceTarget = {{{ json expectedPriceTarget }}};
+        const chartRangeToggle = document.getElementById('tickerChartRangeToggle');
+        let tradeDetailChart = null;
+
+        const parseChartDate = (value) => {
+            const parsed = new Date(value);
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        };
+
+        const renderTradeChart = (data) => {
+            if (!data || data.length === 0) {
+                return;
+            }
+
+            if (tradeDetailChart) {
+                tradeDetailChart.destroy();
+            }
+
+            tradeDetailChart = ChartUtils.createTradeDetailChart('tickerChart', data, trade, {
+                simulatedFutureData: simulatedFutureData,
+                expectedPriceTarget: expectedPriceTarget,
+                expectedEndDate: expectedEndDate
+            });
+        };
+
+        const filterChartDataToLastMonth = (data) => {
+            if (!Array.isArray(data) || data.length === 0) {
+                return [];
+            }
+
+            const lastDate = parseChartDate(data[data.length - 1].date);
+            if (!lastDate) {
+                return data;
+            }
+
+            const monthAgo = new Date(lastDate);
+            monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+            return data.filter(candle => {
+                const candleDate = parseChartDate(candle.date);
+                return candleDate && candleDate >= monthAgo;
+            });
+        };
 
         if (chartData && chartData.length > 0) {
             // Sort data by date
             chartData.sort((a, b) => new Date(a.date) - new Date(b.date));
 
             // Use the shared chart utilities to create the trade detail chart
-            ChartUtils.createTradeDetailChart('tickerChart', chartData, trade, {
-                simulatedFutureData: simulatedFutureData,
-                expectedPriceTarget: expectedPriceTarget,
-                expectedEndDate: expectedEndDate
-            });
+            renderTradeChart(chartData);
+
+            if (chartRangeToggle) {
+                let isOneMonth = false;
+                chartRangeToggle.addEventListener('click', function () {
+                    isOneMonth = !isOneMonth;
+                    const nextData = isOneMonth ? filterChartDataToLastMonth(chartData) : chartData;
+                    renderTradeChart(nextData);
+                    chartRangeToggle.textContent = isOneMonth ? 'Show All' : 'Show 1M';
+                    chartRangeToggle.setAttribute('aria-pressed', isOneMonth ? 'true' : 'false');
+                });
+            }
+        } else if (chartRangeToggle) {
+            chartRangeToggle.disabled = true;
         }
     }
     {{#if showTradingViewChart}}
