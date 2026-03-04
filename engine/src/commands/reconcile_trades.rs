@@ -269,7 +269,7 @@ async fn reconcile_trade(
     }
 
     if let Some(position) = position_match {
-        if trade.ticker != position.ticker {
+        if trade.status == TradeStatus::Active && trade.ticker != position.ticker {
             trade.set_ticker(position.ticker.clone(), Utc::now());
             changed = true;
         }
