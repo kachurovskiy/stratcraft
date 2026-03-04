@@ -1020,9 +1020,11 @@ impl Engine {
             None
         };
 
+        let available_buying_power = self.backtest_available_buying_power(*cash, active_trades);
+
         let allocation = match determine_position_size(PositionSizingParams {
             price: sizing_price,
-            available_cash: *cash,
+            available_cash: available_buying_power,
             trade_size_ratio: self.config.trade_size_ratio,
             minimum_trade_size: self.config.minimum_trade_size,
             position_sizing_mode: self.config.position_sizing.mode,
@@ -1040,18 +1042,21 @@ impl Engine {
             PositionSizingOutcome::InsufficientCash { required } => {
                 return EntrySignalOutcome::Skipped {
                     reason: "insufficient_cash",
-                    details: Some(format!("need {:.2}, have {:.2}", required, *cash)),
+                    details: Some(format!(
+                        "need {:.2}, have {:.2}",
+                        required, available_buying_power
+                    )),
                 }
             }
         };
 
         let trade_value = price * allocation.quantity as f64;
-        if trade_value > *cash + PRICE_EPSILON {
+        if trade_value > available_buying_power + PRICE_EPSILON {
             return EntrySignalOutcome::Skipped {
                 reason: "insufficient_cash",
                 details: Some(format!(
                     "need {:.2} after slippage, have {:.2}",
-                    trade_value, *cash
+                    trade_value, available_buying_power
                 )),
             };
         }
@@ -1193,9 +1198,11 @@ impl Engine {
             None
         };
 
+        let available_buying_power = self.backtest_available_buying_power(*cash, active_trades);
+
         let allocation = match determine_position_size(PositionSizingParams {
             price: sizing_price,
-            available_cash: *cash,
+            available_cash: available_buying_power,
             trade_size_ratio: self.config.trade_size_ratio,
             minimum_trade_size: self.config.minimum_trade_size,
             position_sizing_mode: self.config.position_sizing.mode,
@@ -1213,7 +1220,10 @@ impl Engine {
             PositionSizingOutcome::InsufficientCash { required } => {
                 return EntrySignalOutcome::Skipped {
                     reason: "insufficient_cash",
-                    details: Some(format!("need {:.2}, have {:.2}", required, *cash)),
+                    details: Some(format!(
+                        "need {:.2}, have {:.2}",
+                        required, available_buying_power
+                    )),
                 }
             }
         };
@@ -1402,6 +1412,33 @@ impl Engine {
                 entry_value + pnl
             })
             .sum()
+    }
+
+    fn backtest_available_buying_power(&self, cash: f64, active_trades: &[Trade]) -> f64 {
+        let leverage = if self.config.max_leverage.is_finite() && self.config.max_leverage >= 1.0 {
+            self.config.max_leverage
+        } else {
+            1.0
+        };
+        if !cash.is_finite() {
+            return 0.0;
+        }
+        let mut positions_value = 0.0;
+        let mut exposure = 0.0;
+        for trade in active_trades {
+            let value = trade.price * trade.quantity as f64 + trade.pnl.unwrap_or(0.0);
+            if !value.is_finite() {
+                continue;
+            }
+            positions_value += value;
+            exposure += value.abs();
+        }
+        let equity = cash + positions_value;
+        if !equity.is_finite() {
+            return 0.0;
+        }
+        let leverage_cap = equity.max(0.0) * leverage;
+        (leverage_cap - exposure).max(0.0)
     }
 
     fn force_liquidation(
@@ -2908,6 +2945,40 @@ mod tests {
         ));
         assert!(active_trades.is_empty());
         assert!((cash - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_execute_buy_signal_respects_max_leverage() {
+        let mut settings = test_runtime_settings();
+        settings.trade_slippage_rate = 0.0;
+        let mut engine = Engine::new(settings);
+        engine.config.trade_size_ratio = 1.0;
+        engine.config.minimum_trade_size = 0.0;
+        engine.config.max_leverage = 2.0;
+
+        let ticker = "LEVG".to_string();
+        let (candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 100.0]);
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut cash = 100.0;
+        let mut active_trades = Vec::new();
+
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            refs.get(history_offset + 1).copied(),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(outcome, EntrySignalOutcome::Executed));
+        assert_eq!(active_trades.len(), 1);
+        let trade = active_trades.last().unwrap();
+        assert_eq!(trade.quantity, 2);
+        assert!((cash + 100.0).abs() < PRICE_EPSILON);
     }
 
     #[test]
