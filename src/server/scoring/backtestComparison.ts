@@ -479,7 +479,7 @@ const buildExclusiveTradeReason = ({
 
   if (!otherTickersTraded.has(trade.ticker)) {
     return {
-      label: `Ticker never traded in ${otherBacktestLabel}`,
+      label: `Not in ${otherBacktestLabel}`,
       detail: 'No entries recorded',
       badge: 'bg-secondary'
     };
