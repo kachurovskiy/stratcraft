@@ -230,11 +230,13 @@ fn determine_live_backtest_window(
     candles_by_ticker: &HashMap<String, Vec<&Candle>>,
     fallback: DateTime<Utc>,
 ) -> (DateTime<Utc>, DateTime<Utc>) {
-    let start_date = trades
+    let earliest_trade_date = trades
         .iter()
-        .map(|trade| trade.date)
+        .map(|trade| normalize_trade_date(trade.date))
         .min()
         .unwrap_or(fallback);
+    let start_date = resolve_live_signal_start_date(earliest_trade_date, candles_by_ticker)
+        .unwrap_or(earliest_trade_date);
 
     let last_trade_date = trades
         .iter()
@@ -264,6 +266,39 @@ fn determine_live_backtest_window(
     }
 
     (start_date, end_date)
+}
+
+fn resolve_live_signal_start_date(
+    earliest_trade_date: DateTime<Utc>,
+    candles_by_ticker: &HashMap<String, Vec<&Candle>>,
+) -> Option<DateTime<Utc>> {
+    let mut unique_dates: Vec<DateTime<Utc>> = candles_by_ticker
+        .values()
+        .flat_map(|candles| {
+            candles
+                .iter()
+                .map(|candle| normalize_trade_date(candle.date))
+        })
+        .collect();
+    unique_dates.sort();
+    unique_dates.dedup();
+
+    if unique_dates.is_empty() {
+        return None;
+    }
+
+    let signal_date = match unique_dates.binary_search(&earliest_trade_date) {
+        Ok(trade_index) => unique_dates.get(trade_index.saturating_sub(1)).copied(),
+        Err(insert_index) => {
+            let trade_index = insert_index.saturating_sub(1);
+            unique_dates.get(trade_index.saturating_sub(1)).copied()
+        }
+    };
+
+    match signal_date {
+        Some(date) if date <= earliest_trade_date => Some(date),
+        _ => None,
+    }
 }
 
 fn build_live_snapshots(
