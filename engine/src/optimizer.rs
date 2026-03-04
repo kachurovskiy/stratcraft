@@ -23,6 +23,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
+const ALLOW_SHORT_SELLING_OPTIMIZATION_SETTING: &str = "ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED";
+const ALLOW_SHORT_SELLING_PARAMETER: &str = "allowShortSelling";
+
 enum VariationOutcome {
     NoChange,
     Improved(OptimizationResult),
@@ -32,6 +35,14 @@ pub(crate) fn parameter_signature(parameters: &HashMap<String, f64>) -> String {
     let mut sorted: Vec<_> = parameters.iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     format!("{:?}", sorted)
+}
+
+fn allow_short_selling_optimization_enabled(settings: &HashMap<String, String>) -> bool {
+    settings
+        .get(ALLOW_SHORT_SELLING_OPTIMIZATION_SETTING)
+        .map(|value| value.trim())
+        .map(|value| value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 fn collect_numeric_parameter_ranges(
@@ -141,8 +152,13 @@ impl<'a> OptimizationEngine<'a> {
     ) -> Result<(Vec<String>, HashMap<String, ParameterRange>)> {
         let template = self.load_strategy_template(template_id).await?;
 
-        let (parameters_to_optimize, parameter_ranges) =
+        let (mut parameters_to_optimize, mut parameter_ranges) =
             collect_numeric_parameter_ranges(&template);
+
+        if !allow_short_selling_optimization_enabled(self.data.settings()) {
+            parameters_to_optimize.retain(|name| name != ALLOW_SHORT_SELLING_PARAMETER);
+            parameter_ranges.remove(ALLOW_SHORT_SELLING_PARAMETER);
+        }
 
         if parameters_to_optimize.is_empty() {
             return Err(anyhow!("No optimizable parameters found for this strategy"));

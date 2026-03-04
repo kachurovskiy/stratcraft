@@ -498,6 +498,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     min: '0'
   },
   {
+    key: SETTING_KEYS.ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED,
+    group: 'optimizer',
+    label: 'Optimize allowShortSelling',
+    description: 'Set to true to let the optimizer vary allowShortSelling (true/false).',
+    placeholder: 'false',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE,
     group: 'optimizer',
     label: 'LightGBM Training Start Date',
