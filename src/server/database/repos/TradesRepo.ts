@@ -224,11 +224,16 @@ export class TradesRepo {
     if (quantityValue === null || quantityValue === 0) {
       return;
     }
-    const tradeDate = operation.triggeredAt instanceof Date ? operation.triggeredAt : new Date();
+    const createdAt =
+      operation.createdAt instanceof Date && !Number.isNaN(operation.createdAt.getTime())
+        ? operation.createdAt
+        : null;
+    const tradeDate = createdAt ?? new Date();
     await this.db.run(
       `INSERT INTO trades (id, strategy_id, user_id, ticker, quantity, price, date, status, stop_loss)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT (id) DO UPDATE
+           SET date = GREATEST(trades.date, EXCLUDED.date)`,
       [
         tradeId,
         operation.strategyId,

@@ -250,6 +250,10 @@ async fn reconcile_trade(
             if trade.ticker != position.ticker {
                 trade.set_ticker(position.ticker.clone(), changed_at);
             }
+            let filled_date = normalize_trade_date(changed_at);
+            if trade.date != filled_date {
+                trade.set_date(filled_date, changed_at);
+            }
             changed = true;
         }
     }
