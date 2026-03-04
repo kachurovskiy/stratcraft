@@ -2,7 +2,6 @@ import express, { NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import {
   AccountEnvironment,
-  AccountPortfolioHistoryRequest,
   AccountPosition,
   AccountSnapshot
 } from '../../shared/types/Account';
@@ -285,30 +284,6 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
         };
       }
     );
-    let accountHistory = null;
-    let accountHistoryError: string | null = null;
-    const historyRequest: AccountPortfolioHistoryRequest = {
-      timeframe: '1D'
-    };
-    const accountCreatedAt = tradingAccount.createdAt;
-    if (accountCreatedAt instanceof Date && !Number.isNaN(accountCreatedAt.getTime())) {
-      historyRequest.start = accountCreatedAt.toISOString();
-    }
-    if (historyRequest.start) {
-      const now = new Date();
-      historyRequest.end = now.toISOString();
-      const startDate = new Date(historyRequest.start);
-      if (!Number.isNaN(startDate.getTime()) && startDate.getTime() > now.getTime()) {
-        historyRequest.start = historyRequest.end;
-      }
-    }
-    try {
-      accountHistory = await req.accountDataService.fetchPortfolioHistory(tradingAccount, historyRequest);
-    } catch (historyError) {
-      console.error('Failed to load account portfolio history:', historyError);
-      accountHistoryError =
-        historyError instanceof Error ? historyError.message : 'Unable to load portfolio history right now.';
-    }
     const account =
     {
       id: tradingAccount.id,
@@ -327,9 +302,7 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
       snapshotMessage: snapshot?.message ?? null,
       strategyPrefillParams,
       strategies: strategiesForAccount,
-      uncoveredPositions,
-      history: accountHistory,
-      historyError: accountHistoryError
+      uncoveredPositions
     };
     res.render('pages/account', {
       title: 'Account',

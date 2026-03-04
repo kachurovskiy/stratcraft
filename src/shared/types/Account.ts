@@ -51,29 +51,6 @@ export interface AccountSnapshot {
   message?: string;
 }
 
-export type AccountPortfolioHistoryPoint = {
-  timestamp: number;
-  equity: number | null;
-};
-
-export interface AccountPortfolioHistory {
-  currency: string | null;
-  timeframe: string | null;
-  baseValue: number | null;
-  baseValueAsOf: string | null;
-  startAt: string | null;
-  endAt: string | null;
-  points: AccountPortfolioHistoryPoint[];
-}
-
-export interface AccountPortfolioHistoryRequest {
-  period?: string;
-  timeframe?: string;
-  intradayReporting?: 'market_hours' | 'extended_hours' | 'continuous';
-  start?: string;
-  end?: string;
-}
-
 export type AccountPositionSide = 'long' | 'short';
 
 export interface AccountPosition {

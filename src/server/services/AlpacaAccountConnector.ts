@@ -1,9 +1,6 @@
 import axios from 'axios';
 import {
   AccountEnvironment,
-  AccountPortfolioHistory,
-  AccountPortfolioHistoryPoint,
-  AccountPortfolioHistoryRequest,
   AccountPosition,
   AccountSnapshot,
   TradingAccount
@@ -132,21 +129,6 @@ export class AlpacaAccountConnector implements AccountConnector {
     };
   }
 
-  async fetchPortfolioHistory(
-    account: TradingAccount,
-    options?: AccountPortfolioHistoryRequest
-  ): Promise<AccountPortfolioHistory> {
-    const baseUrl = await this.getBaseUrl(account.environment);
-    const headers = this.buildHeaders(account);
-    const params = this.buildPortfolioHistoryParams(options);
-    const response = await axios.get(`${baseUrl}/account/portfolio/history`, {
-      headers,
-      timeout: this.requestTimeout,
-      params
-    });
-    return this.normalizePortfolioHistoryResponse(response.data);
-  }
-
   async fetchPositions(account: TradingAccount): Promise<AccountPosition[]> {
     const baseUrl = await this.getBaseUrl(account.environment);
     const headers = this.buildHeaders(account);
@@ -190,129 +172,6 @@ export class AlpacaAccountConnector implements AccountConnector {
       });
     }
     return positions;
-  }
-
-  private buildPortfolioHistoryParams(
-    options?: AccountPortfolioHistoryRequest
-  ): Record<string, string> {
-    const params: Record<string, string> = {};
-    const normalizedStart = this.normalizeIsoTimestamp(options?.start);
-    const normalizedEnd = this.normalizeIsoTimestamp(options?.end);
-    if (normalizedStart) {
-      params.start = normalizedStart;
-    }
-    if (normalizedEnd) {
-      params.end = normalizedEnd;
-    }
-    const normalizedTimeframe = this.normalizeHistoryTimeframe(options?.timeframe);
-    if (normalizedTimeframe) {
-      params.timeframe = normalizedTimeframe;
-    }
-    const intraday = this.normalizeIntradayReporting(options?.intradayReporting, normalizedTimeframe);
-    if (intraday) {
-      params.intraday_reporting = intraday;
-    }
-    const normalizedPeriod = this.normalizeHistoryPeriod(options?.period);
-    const hasStart = Boolean(normalizedStart);
-    const hasEnd = Boolean(normalizedEnd);
-    if (!normalizedStart && !normalizedEnd) {
-      params.period = normalizedPeriod ?? '1M';
-    } else if (
-      normalizedPeriod &&
-      ((hasStart && !hasEnd) || (!hasStart && hasEnd))
-    ) {
-      params.period = normalizedPeriod;
-    }
-    return params;
-  }
-
-  private normalizePortfolioHistoryResponse(data: any): AccountPortfolioHistory {
-    const timestamps = Array.isArray(data?.timestamp) ? data.timestamp : [];
-    const equityValues = Array.isArray(data?.equity) ? data.equity : [];
-    const count = Math.max(timestamps.length, equityValues.length);
-    const points: AccountPortfolioHistoryPoint[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const tsSeconds = this.toNumber(timestamps[i]);
-      if (tsSeconds === null) {
-        continue;
-      }
-      points.push({
-        timestamp: Math.round(tsSeconds * 1000),
-        equity: this.toNumber(equityValues[i])
-      });
-    }
-
-    points.sort((a, b) => a.timestamp - b.timestamp);
-
-    return {
-      currency: this.toCurrency(data?.currency ?? data?.base_currency),
-      timeframe: typeof data?.timeframe === 'string' ? data.timeframe : null,
-      baseValue: this.toNumber(data?.base_value),
-      baseValueAsOf: typeof data?.base_value_asof === 'string' ? data.base_value_asof : null,
-      startAt: points.length > 0 ? new Date(points[0].timestamp).toISOString() : null,
-      endAt: points.length > 0 ? new Date(points[points.length - 1].timestamp).toISOString() : null,
-      points
-    };
-  }
-
-  private normalizeIsoTimestamp(value?: string | null): string | null {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      return null;
-    }
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return null;
-    }
-    return date.toISOString();
-  }
-
-  private normalizeHistoryPeriod(value?: string | null): string | null {
-    if (typeof value !== 'string') {
-      return null;
-    }
-    const normalized = value.trim().toUpperCase();
-    const match = normalized.match(/^(\d{1,3})([DWMAY])$/);
-    if (!match) {
-      return null;
-    }
-    const quantity = match[1];
-    const unit = match[2] === 'Y' ? 'A' : match[2];
-    return `${quantity}${unit}`;
-  }
-
-  private normalizeHistoryTimeframe(value?: string | null): string | null {
-    const allowed: Record<string, string> = {
-      '1MIN': '1Min',
-      '5MIN': '5Min',
-      '15MIN': '15Min',
-      '1H': '1H',
-      '1D': '1D'
-    };
-    if (typeof value === 'string') {
-      const normalized = value.trim().toUpperCase();
-      if (allowed[normalized]) {
-        return allowed[normalized];
-      }
-    }
-    return null;
-  }
-
-  private normalizeIntradayReporting(
-    value: string | undefined,
-    timeframe: string | null
-  ): string | null {
-    if (!timeframe || timeframe === '1D') {
-      return null;
-    }
-    const allowed = new Set(['market_hours', 'extended_hours', 'continuous']);
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (allowed.has(normalized)) {
-        return normalized;
-      }
-    }
-    return 'extended_hours';
   }
 
   async dispatchOperation(

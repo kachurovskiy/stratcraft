@@ -1,7 +1,5 @@
 import axios, { AxiosError } from 'axios';
 import {
-  AccountPortfolioHistory,
-  AccountPortfolioHistoryRequest,
   AccountPosition,
   AccountSnapshot,
   AccountSnapshotStatus,
@@ -25,10 +23,6 @@ export interface AccountConnector {
   supports(provider: string): boolean;
   fetchSnapshot(account: TradingAccount): Promise<AccountSnapshot>;
   fetchPositions?(account: TradingAccount): Promise<AccountPosition[]>;
-  fetchPortfolioHistory?(
-    account: TradingAccount,
-    options?: AccountPortfolioHistoryRequest
-  ): Promise<AccountPortfolioHistory>;
   dispatchOperation?(
     account: TradingAccount,
     operation: AccountOperation,
@@ -61,27 +55,6 @@ export class AccountDataService {
       })
     );
     return Object.fromEntries(results);
-  }
-
-  async fetchPortfolioHistory(
-    account: TradingAccount,
-    options?: AccountPortfolioHistoryRequest
-  ): Promise<AccountPortfolioHistory> {
-    const connector = this.connectors.find((c) => c.supports(account.provider));
-    if (!connector || !connector.fetchPortfolioHistory) {
-      throw new Error(`Portfolio history unsupported for provider ${account.provider}`);
-    }
-    try {
-      return await connector.fetchPortfolioHistory(account, options);
-    } catch (error) {
-      const message = this.extractErrorMessage(error);
-      this.loggingService.warn(ACCOUNT_SERVICE_LOG_SOURCE, 'Account portfolio history fetch failed', {
-        provider: account.provider,
-        accountId: account.id,
-        message
-      });
-      throw new Error(message || 'Unable to load portfolio history');
-    }
   }
 
   async fetchOpenPositions(account: TradingAccount): Promise<AccountPosition[]> {
