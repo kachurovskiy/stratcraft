@@ -2,6 +2,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import {
   DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS,
   DEFAULT_BACKTEST_INITIAL_CAPITAL,
+  DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO,
   DEFAULT_MTLS_ACCESS_CERT_PASSWORD,
   SETTING_KEYS,
   SETTING_KEY_LIST,
@@ -442,6 +443,15 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     placeholder: '60',
     inputType: 'number',
     min: '1'
+  },
+  {
+    key: SETTING_KEYS.MARKET_ORDER_PRICE_CAP_RATIO,
+    group: 'alpaca',
+    label: 'Market Order Price Cap Ratio',
+    description: 'Cap market order fills by converting to a limit order (e.g. 0.08 = 8%). Set to 0 to disable.',
+    placeholder: String(DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO),
+    inputType: 'number',
+    min: '0'
   },
   {
     key: SETTING_KEYS.IGNORED_TICKERS,

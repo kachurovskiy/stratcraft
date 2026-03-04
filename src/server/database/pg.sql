@@ -365,6 +365,7 @@ VALUES
     ('ALPACA_LIVE_URL', 'https://api.alpaca.markets/v2'),
     ('ALPACA_DATA_BASE_URL', 'https://data.alpaca.markets/v2'),
     ('ALPACA_DATA_RATE_LIMIT_WAIT_SECONDS', '60'),
+    ('MARKET_ORDER_PRICE_CAP_RATIO', '0.08'),
     ('IGNORED_TICKERS', '[]'),
     ('ALWAYS_VALIDATION_TICKERS', '["SPY","QQQ"]'),
     ('TRAINING_ALLOCATION_RATIO', '0.7'),

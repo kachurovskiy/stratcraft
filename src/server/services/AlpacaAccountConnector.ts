@@ -6,7 +6,7 @@ import {
   TradingAccount
 } from '../../shared/types/Account';
 import { AccountOperation } from '../../shared/types/StrategyTemplate';
-import { SETTING_KEYS } from '../constants';
+import { DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO, SETTING_KEYS } from '../constants';
 import { Database } from '../database/Database';
 import { LoggingService } from './LoggingService';
 import type { AccountConnector, DispatchResult } from './AccountDataService';
@@ -211,7 +211,8 @@ export class AlpacaAccountConnector implements AccountConnector {
       );
     }
 
-    const payload = this.buildAlpacaOrderPayload(operation, ticker);
+    const marketOrderPriceCapRatio = await this.resolveMarketOrderPriceCapRatio();
+    const payload = this.buildAlpacaOrderPayload(operation, ticker, marketOrderPriceCapRatio);
 
     if (operation.operationType === 'update_stop_loss') {
       return this.replaceStopLossOrder(
@@ -270,6 +271,19 @@ export class AlpacaAccountConnector implements AccountConnector {
     const settingKey = isLive ? SETTING_KEYS.ALPACA_LIVE_URL : SETTING_KEYS.ALPACA_PAPER_URL;
     const configured = await this.db.settings.getRequiredSettingValue(settingKey);
     return configured.trim();
+  }
+
+  private async resolveMarketOrderPriceCapRatio(): Promise<number> {
+    const rawValue = await this.db.settings.getSettingValue(SETTING_KEYS.MARKET_ORDER_PRICE_CAP_RATIO);
+    const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
+    if (!trimmed) {
+      return DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+    return DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO;
   }
 
   private buildHeaders(account: TradingAccount) {
@@ -331,7 +345,11 @@ export class AlpacaAccountConnector implements AccountConnector {
     return String(value).toUpperCase();
   }
 
-  private buildAlpacaOrderPayload(operation: AccountOperation, ticker: string) {
+  private buildAlpacaOrderPayload(
+    operation: AccountOperation,
+    ticker: string,
+    marketOrderPriceCapRatio: number
+  ) {
     const quantity = operation.quantity ?? 0;
     if (!Number.isFinite(quantity) || quantity <= 0) {
       throw new Error('invalid_quantity');
@@ -348,9 +366,13 @@ export class AlpacaAccountConnector implements AccountConnector {
       case 'open_position': {
         payload.side = 'buy';
         const metadataOrderType = this.getOperationOrderType(operation);
-        if (metadataOrderType === 'limit' && operation.price) {
+        const limitPrice =
+          metadataOrderType === 'limit' && this.isValidOrderPrice(operation.price)
+            ? operation.price!
+            : this.resolveMarketOrderLimitPrice(operation, 'buy', marketOrderPriceCapRatio);
+        if (limitPrice !== null) {
           payload.type = 'limit';
-          payload.limit_price = this.normalizeOrderPrice(operation.price);
+          payload.limit_price = this.normalizeOrderPrice(limitPrice);
         } else {
           payload.type = 'market';
         }
@@ -366,9 +388,13 @@ export class AlpacaAccountConnector implements AccountConnector {
       case 'close_position': {
         payload.side = 'sell';
         const metadataOrderType = this.getOperationOrderType(operation);
-        if (metadataOrderType === 'limit' && operation.price) {
+        const limitPrice =
+          metadataOrderType === 'limit' && this.isValidOrderPrice(operation.price)
+            ? operation.price!
+            : this.resolveMarketOrderLimitPrice(operation, 'sell', marketOrderPriceCapRatio);
+        if (limitPrice !== null) {
           payload.type = 'limit';
-          payload.limit_price = this.normalizeOrderPrice(operation.price);
+          payload.limit_price = this.normalizeOrderPrice(limitPrice);
         } else {
           payload.type = 'market';
         }
@@ -757,6 +783,33 @@ export class AlpacaAccountConnector implements AccountConnector {
     }
     const decimals = Math.abs(value) >= 1 ? 2 : 4;
     return Number(value.toFixed(decimals));
+  }
+
+  private isValidOrderPrice(value?: number | null): value is number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0;
+  }
+
+  private resolveMarketOrderLimitPrice(
+    operation: AccountOperation,
+    side: 'buy' | 'sell',
+    capRatio: number
+  ): number | null {
+    if (!Number.isFinite(capRatio) || capRatio <= 0) {
+      return null;
+    }
+    const referencePrice = this.isValidOrderPrice(operation.price) ? operation.price : null;
+    if (referencePrice === null) {
+      return null;
+    }
+    const multiplier = side === 'buy' ? 1 + capRatio : 1 - capRatio;
+    if (!Number.isFinite(multiplier) || multiplier <= 0) {
+      return null;
+    }
+    const limitPrice = referencePrice * multiplier;
+    if (!Number.isFinite(limitPrice) || limitPrice <= 0) {
+      return null;
+    }
+    return limitPrice;
   }
 
   private normalizeQuantity(value?: number | null): number | null {
