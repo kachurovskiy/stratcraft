@@ -270,7 +270,7 @@
                                         <div><span class="fw-semibold">Reason:</span> {{reason}}</div>
                                         {{/if}}
                                         {{#if orderId}}
-                                        <div><span class="fw-semibold">Order ID:</span> {{orderId}}</div>
+                                        <div><span class="fw-semibold">Order ID:</span> <a href="https://app.alpaca.markets/dashboard/order/{{orderId}}" target="_blank" rel="noopener" class="text-decoration-none">{{orderId}}</a></div>
                                         {{/if}}
                                         {{#if (defined signalConfidence)}}
                                         <div><span class="fw-semibold">Confidence:</span> {{formatNumber signalConfidence}}</div>
@@ -342,7 +342,7 @@
                                 {{#each tradeOrders}}
                                 <tr>
                                     <td class="fw-semibold">{{label}}</td>
-                                    <td><code class="small">{{orderId}}</code></td>
+                                    <td><a href="https://app.alpaca.markets/dashboard/order/{{orderId}}" target="_blank" rel="noopener" class="text-decoration-none"><code class="small">{{orderId}}</code></a></td>
                                     <td>
                                         {{#if operationType}}
                                             {{operationTypeLabel operationType}}
