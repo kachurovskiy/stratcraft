@@ -192,6 +192,86 @@ update_system() {
     print_success "System packages updated"
 }
 
+# Function to configure swap (20G)
+setup_swap() {
+    print_status "Configuring 20G swap..."
+
+    local swapfile="/swapfile-stratcraft"
+    local desired_gb=20
+
+    local avail_gb
+    avail_gb=$(df --output=avail -BG / | tail -n 1 | tr -dc '0-9')
+    if [[ -z "$avail_gb" ]]; then
+        avail_gb=0
+    fi
+    local max_by_disk=$(( avail_gb - 2 ))
+    if (( max_by_disk < 1 )); then
+        print_warning "Not enough disk space available for swap"
+        return 0
+    fi
+    local existing_swap_kb
+    existing_swap_kb=$(awk '/SwapTotal/ {print $2}' /proc/meminfo)
+    local existing_swap_gb=$(( (existing_swap_kb + 1048575) / 1048576 ))
+    if (( existing_swap_gb >= desired_gb )); then
+        print_success "Swap already configured (${existing_swap_gb}G >= desired ${desired_gb}G)"
+        return 0
+    fi
+
+    local swapfile_bytes=0
+    local swapfile_active_gb=0
+    swapfile_bytes=$(swapon --noheadings --bytes --show=NAME,SIZE 2>/dev/null | awk -v file="$swapfile" '$1==file {print $2; exit}')
+    if [[ -n "$swapfile_bytes" ]]; then
+        swapfile_active_gb=$(( (swapfile_bytes + 1073741823) / 1073741824 ))
+    fi
+
+    local other_swap_gb=$(( existing_swap_gb - swapfile_active_gb ))
+    if (( other_swap_gb < 0 )); then
+        other_swap_gb=0
+    fi
+
+    local needed_gb=$(( desired_gb - other_swap_gb ))
+    if (( needed_gb <= 0 )); then
+        print_success "Swap already configured (${existing_swap_gb}G >= desired ${desired_gb}G)"
+        return 0
+    fi
+
+    if (( needed_gb > max_by_disk )); then
+        print_warning "Not enough disk space for ${needed_gb}G swap; capping to ${max_by_disk}G"
+        needed_gb=$max_by_disk
+    fi
+
+    if (( needed_gb < 1 )); then
+        print_warning "Not enough disk space available for swap"
+        return 0
+    fi
+
+    if [[ -e "$swapfile" ]]; then
+        if swapon --show=NAME --noheadings 2>/dev/null | grep -q "^$swapfile$"; then
+            swapoff "$swapfile" || true
+        fi
+        rm -f "$swapfile"
+    fi
+
+    print_status "Creating ${needed_gb}G swap file at $swapfile (target total ${desired_gb}G)"
+    if command_exists fallocate; then
+        if ! fallocate -l "${needed_gb}G" "$swapfile"; then
+            print_warning "fallocate failed; falling back to dd"
+            dd if=/dev/zero of="$swapfile" bs=1M count=$((needed_gb * 1024))
+        fi
+    else
+        dd if=/dev/zero of="$swapfile" bs=1M count=$((needed_gb * 1024))
+    fi
+
+    chmod 600 "$swapfile"
+    mkswap "$swapfile" >/dev/null
+    swapon "$swapfile"
+    if ! grep -q "^$swapfile " /etc/fstab; then
+        echo "$swapfile none swap sw 0 0" >> /etc/fstab
+    fi
+
+    print_success "Swap configured: added ${needed_gb}G (target total ${desired_gb}G)"
+}
+
 # Function to install Node.js
 install_nodejs() {
     print_status "Installing Node.js 22.x..."
@@ -1592,6 +1672,8 @@ restart_application() {
 update_application() {
     print_status "Updating StratCraft application..."
 
+    setup_swap
+
     # Update repository
     cd "$APP_DIR/stratcraft"
     sudo -u "$APP_USER" git fetch origin
@@ -1729,6 +1811,7 @@ deploy() {
 
     # Execute deployment steps
     update_system
+    setup_swap
     install_nodejs
     install_pm2
     install_nginx

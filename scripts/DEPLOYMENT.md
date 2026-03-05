@@ -78,6 +78,7 @@ After you're in, consider adding an SSH key and disabling password auth for bett
 ## What the Script Does
 
 - Installs Node.js 20.x, Rust/Cargo (engine toolchain), PM2, nginx, and Certbot
+- Configures 20 GB swap
 - Creates a dedicated `stratcraft` user
 - Clones and builds your StratCraft application (HTTPS; SSH deploy keys if needed)
 - Configures nginx with SSL (Let's Encrypt)
