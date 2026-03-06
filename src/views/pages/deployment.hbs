@@ -206,7 +206,7 @@
         <div class="card-body">
           {{#if deploymentControlsEnabled}}
             <p class="text-muted mb-3">
-              <strong>Warning:</strong> Triggering a server update will pull the latest code from the repository, rebuild the application, and restart the server. This will cause a brief period of downtime.
+              <strong>Warning:</strong> Triggering a server update will run <code>deploy.sh update</code> (via the manual trigger), pull the latest code from the repository, rebuild the application, and restart the server. This will cause a brief period of downtime.
             </p>
             <div class="d-flex gap-2 flex-wrap">
               <form method="POST" action="/admin/deployment/trigger-update" class="d-inline">

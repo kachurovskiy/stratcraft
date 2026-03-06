@@ -120,6 +120,57 @@ detect_ufw_path() {
     return 1
 }
 
+read_env_value() {
+    local env_file="$1"
+    local key="$2"
+    if [[ -f "$env_file" ]]; then
+        grep -E "^${key}=" "$env_file" | tail -n 1 | cut -d= -f2- || true
+        return 0
+    fi
+    return 1
+}
+
+parse_github_repo_from_url() {
+    local url="$1"
+    if [[ -z "$url" ]]; then
+        return 1
+    fi
+    url="${url%.git}"
+    if [[ "$url" =~ github\.com[:/]+([^/]+)/([^/]+)$ ]]; then
+        echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        return 0
+    fi
+    return 1
+}
+
+detect_existing_installation() {
+    local env_file="$APP_DIR/stratcraft/.env"
+    if [[ -z "$DOMAIN" ]]; then
+        local env_domain
+        env_domain=$(read_env_value "$env_file" "DOMAIN" || true)
+        if [[ -n "$env_domain" ]]; then
+            DOMAIN="$env_domain"
+        fi
+    fi
+
+    if [[ -z "$GITHUB_USER" || -z "$GITHUB_REPO" ]]; then
+        if [[ -d "$APP_DIR/stratcraft/.git" ]]; then
+            local origin_url
+            local repo_slug
+            origin_url=$(git -C "$APP_DIR/stratcraft" remote get-url origin 2>/dev/null || true)
+            repo_slug=$(parse_github_repo_from_url "$origin_url" || true)
+            if [[ -n "$repo_slug" ]]; then
+                if [[ -z "$GITHUB_USER" ]]; then
+                    GITHUB_USER="${repo_slug%%/*}"
+                fi
+                if [[ -z "$GITHUB_REPO" ]]; then
+                    GITHUB_REPO="${repo_slug##*/}"
+                fi
+            fi
+        fi
+    fi
+}
+
 
 
 # Function to setup GitHub deploy key
@@ -1384,7 +1435,7 @@ setup_update_script() {
 LOG_FILE="/var/log/stratcraft-update.log"
 APP_DIR="/opt/stratcraft"
 APP_USER="stratcraft"
-SERVICE_NAME="stratcraft"
+DEPLOY_SCRIPT="$APP_DIR/stratcraft/scripts/deploy.sh"
 
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
@@ -1401,6 +1452,12 @@ fi
 # Create lock file
 touch /tmp/stratcraft-updating
 
+if [[ ! -f "$DEPLOY_SCRIPT" ]]; then
+    log_message "ERROR: deploy.sh not found at $DEPLOY_SCRIPT"
+    rm -f /tmp/stratcraft-updating
+    exit 1
+fi
+
 # Change to app directory
 cd "$APP_DIR/stratcraft" || {
     log_message "ERROR: Cannot access app directory"
@@ -1409,54 +1466,41 @@ cd "$APP_DIR/stratcraft" || {
 }
 
 # Check for updates
-sudo -u "$APP_USER" git fetch origin >/dev/null 2>&1
+if ! sudo -u "$APP_USER" git fetch origin >/dev/null 2>&1; then
+    log_message "WARNING: Failed to fetch origin; running deploy.sh update anyway"
+fi
 
 # Check if there are updates
-LOCAL=$(sudo -u "$APP_USER" git rev-parse HEAD)
+LOCAL=$(sudo -u "$APP_USER" git rev-parse HEAD 2>/dev/null || true)
 DEFAULT_BRANCH_REF=$(sudo -u "$APP_USER" git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)
 DEFAULT_BRANCH="${DEFAULT_BRANCH_REF##*/}"
 if [[ -z "$DEFAULT_BRANCH" ]]; then
     DEFAULT_BRANCH="master"
 fi
-REMOTE=$(sudo -u "$APP_USER" git rev-parse "origin/$DEFAULT_BRANCH")
+REMOTE=$(sudo -u "$APP_USER" git rev-parse "origin/$DEFAULT_BRANCH" 2>/dev/null || true)
 
-if [[ "$LOCAL" == "$REMOTE" ]]; then
-    log_message "No updates available; restarting service anyway"
-    sudo -u "$APP_USER" pm2 restart "$SERVICE_NAME"
-    sleep 5
-    if sudo -u "$APP_USER" pm2 list | grep -q "$SERVICE_NAME.*online"; then
-        log_message "Service restarted successfully with no code changes"
-    else
-        log_message "ERROR: Service failed to restart without updates"
-    fi
-    rm -f /tmp/stratcraft-updating
-    exit 0
+RUN_MODE="update"
+if [[ -n "$LOCAL" && -n "$REMOTE" && "$LOCAL" == "$REMOTE" ]]; then
+    RUN_MODE="restart"
+    log_message "No updates available; running deploy.sh restart"
+elif [[ -z "$LOCAL" || -z "$REMOTE" ]]; then
+    log_message "Unable to determine update status; running deploy.sh update"
+else
+    log_message "Updates found; running deploy.sh update"
 fi
 
-log_message "Updates found, starting deployment..."
-
-
-# Update repository
-sudo -u "$APP_USER" git reset --hard "origin/$DEFAULT_BRANCH"
-
-# Install dependencies
-sudo -u "$APP_USER" npm install --include=dev
-
-# Build application
-sudo -u "$APP_USER" npm run build
-
-# Restart service
-sudo -u "$APP_USER" pm2 restart "$SERVICE_NAME"
-
-# Wait for service to start
-sleep 10
-
-# Check if service is running
-if sudo -u "$APP_USER" pm2 list | grep -q "$SERVICE_NAME.*online"; then
-    log_message "Update completed successfully"
-
+if [[ "$RUN_MODE" == "restart" ]]; then
+    if bash "$DEPLOY_SCRIPT" restart >> "$LOG_FILE" 2>&1; then
+        log_message "deploy.sh restart completed"
+    else
+        log_message "ERROR: deploy.sh restart failed"
+    fi
 else
-    log_message "ERROR: Service failed to start after update"
+    if bash "$DEPLOY_SCRIPT" update >> "$LOG_FILE" 2>&1; then
+        log_message "deploy.sh update completed"
+    else
+        log_message "ERROR: deploy.sh update failed"
+    fi
 fi
 
 # Remove lock file
@@ -1784,15 +1828,23 @@ deploy() {
 
     # Get user input
     echo
-    while [[ -z "$DOMAIN" ]]; do
-        get_input "Enter your domain name (e.g., example.com)" "DOMAIN"
-        if [[ -z "$DOMAIN" ]]; then
-            print_warning "Domain is required (used for nginx + Let's Encrypt)"
-        fi
-    done
+    detect_existing_installation
+    if [[ -z "$DOMAIN" ]]; then
+        while [[ -z "$DOMAIN" ]]; do
+            get_input "Enter your domain name (e.g., example.com)" "DOMAIN"
+            if [[ -z "$DOMAIN" ]]; then
+                print_warning "Domain is required (used for nginx + Let's Encrypt)"
+            fi
+        done
+    fi
 
-    get_input "Enter your GitHub username" "GITHUB_USER" "kachurovskiy"
-    get_input "Enter your GitHub repository name" "GITHUB_REPO" "stratcraft"
+    if [[ -z "$GITHUB_USER" ]]; then
+        get_input "Enter your GitHub username" "GITHUB_USER" "kachurovskiy"
+    fi
+
+    if [[ -z "$GITHUB_REPO" ]]; then
+        get_input "Enter your GitHub repository name" "GITHUB_REPO" "stratcraft"
+    fi
 
     echo
     print_status "Starting deployment with the following configuration:"
