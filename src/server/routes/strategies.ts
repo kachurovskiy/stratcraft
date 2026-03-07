@@ -47,6 +47,10 @@ const getSnapshotBadgeMeta = (snapshot?: AccountSnapshot) => {
   }
 };
 
+const STRATEGY_OPTIONAL_SECTION_TIMEOUT_MS = 3_000;
+const STRATEGY_ACCOUNT_TIMEOUT_MS = 4_000;
+const STRATEGY_BACKTEST_COMPARISON_TIMEOUT_MS = 4_000;
+
 const ACCOUNT_OPERATION_STATUS_ORDER: AccountOperationStatus[] = ['pending', 'sent', 'skipped', 'failed'];
 
 const ACCOUNT_OPERATION_STATUS_META: Record<AccountOperationStatus, { label: string; badge: string }> = {
@@ -391,6 +395,25 @@ type PortfolioDayMove = {
   direction: 'up' | 'down' | 'flat';
 };
 
+type StrategyAccountSummary = {
+  id: string;
+  name: string;
+  provider: string;
+  environment: string;
+  balance: number | null;
+  hasBalance: boolean;
+  currency: string | null;
+  snapshotBadgeLabel: string;
+  snapshotBadgeVariant: string;
+  snapshotMessage: string | null;
+  snapshotFetchedAt: Date | null;
+};
+
+type StrategyAccountLoadResult = {
+  strategyAccount: StrategyAccountSummary | null;
+  strategyAccountWarning: string | null;
+};
+
 const LOG_LEVEL_BADGES: Record<LogLevel, string> = {
   error: 'bg-danger',
   warn: 'bg-warning text-dark',
@@ -399,6 +422,40 @@ const LOG_LEVEL_BADGES: Record<LogLevel, string> = {
 };
 
 const IGNORED_LOG_METADATA_KEYS = new Set(['strategyId']);
+
+const loadOptionalStrategySection = async <T>({
+  strategyId,
+  label,
+  fallback,
+  load,
+  timeoutMs = STRATEGY_OPTIONAL_SECTION_TIMEOUT_MS
+}: {
+  strategyId: string;
+  label: string;
+  fallback: T;
+  load: () => Promise<T>;
+  timeoutMs?: number;
+}): Promise<T> => {
+  let timeoutHandle: NodeJS.Timeout | null = null;
+
+  try {
+    return await Promise.race([
+      load(),
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      })
+    ]);
+  } catch (error) {
+    console.warn(`Strategy overview ${label} failed for ${strategyId}:`, error);
+    return fallback;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
 
 const humanizeMetadataKey = (key: string): string => {
   if (!key) {
@@ -1523,26 +1580,56 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
     }
 
     const template = req.strategyRegistry.getTemplate(strategy.templateId) as StrategyTemplate | undefined;
-    const backtestResults = await req.db.backtestResults.getBacktestResults(strategyId, 'all');
-    const performance = await req.db.backtestResults.getStoredStrategyPerformance(strategyId);
-    const signalSummary = await req.db.signals.getSignalSummary(strategyId);
-    const recentSignals = await req.db.signals.getSignalsForStrategy(strategyId);
-    const signalLineCounts = await req.db.signals.getSignalLineCountsByDay(strategyId, 3);
-    const signalConfidenceMaxByDay = await req.db.signals.getSignalConfidenceMaxByDay(strategyId, 365);
-    let qqqSignalPriceSeries: Array<{ isoDate: string; close: number }> = [];
-    if (signalLineCounts.length > 0) {
+    const [
+      backtestResults,
+      performance,
+      signalSummary,
+      recentSignals,
+      signalLineCounts,
+      signalConfidenceMaxByDay,
+      rawBacktestInitialCapital,
+      rawStrategyLogs
+    ] = await Promise.all([
+      req.db.backtestResults.getBacktestResults(strategyId, 'all'),
+      req.db.backtestResults.getStoredStrategyPerformance(strategyId),
+      req.db.signals.getSignalSummary(strategyId),
+      req.db.signals.getSignalsForStrategy(strategyId),
+      req.db.signals.getSignalLineCountsByDay(strategyId, 3),
+      req.db.signals.getSignalConfidenceMaxByDay(strategyId, 365),
+      req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_INITIAL_CAPITAL),
+      loadOptionalStrategySection<LogEntry[]>({
+        strategyId,
+        label: 'strategy logs',
+        fallback: [],
+        load: async () =>
+          typeof req.loggingService?.getStrategyLogs === 'function'
+            ? req.loggingService.getStrategyLogs(strategyId, 50)
+            : []
+      })
+    ]);
+    const loadQqqSignalPriceSeries = async (): Promise<Array<{ isoDate: string; close: number }>> => {
+      if (signalLineCounts.length === 0) {
+        return [];
+      }
+
       const firstIsoDate = signalLineCounts[0].isoDate;
       const lastIsoDate = signalLineCounts[signalLineCounts.length - 1].isoDate;
       const firstDate = firstIsoDate ? new Date(`${firstIsoDate}T00:00:00Z`) : null;
       const lastDate = lastIsoDate ? new Date(`${lastIsoDate}T00:00:00Z`) : null;
-      if (firstDate && lastDate && !Number.isNaN(firstDate.getTime()) && !Number.isNaN(lastDate.getTime())) {
-        try {
+      if (!firstDate || !lastDate || Number.isNaN(firstDate.getTime()) || Number.isNaN(lastDate.getTime())) {
+        return [];
+      }
+
+      return loadOptionalStrategySection<Array<{ isoDate: string; close: number }>>({
+        strategyId,
+        label: 'QQQ signal overlay',
+        fallback: [],
+        load: async () => {
           const qqqCandlesResult = await req.db.candles.getCandles(['QQQ'], firstDate, lastDate);
           const qqqCandles = qqqCandlesResult?.['QQQ'] ?? [];
-          qqqSignalPriceSeries = qqqCandles
+          return qqqCandles
             .map((candle: Candle) => {
-              const dateValue =
-                candle.date instanceof Date ? candle.date : new Date(candle.date);
+              const dateValue = candle.date instanceof Date ? candle.date : new Date(candle.date);
               const isoDate = dateValue.toISOString().split('T')[0];
               const close = Number(candle.close);
               return Number.isFinite(close) ? { isoDate, close } : null;
@@ -1551,23 +1638,15 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
               (point: { isoDate: string; close: number } | null): point is { isoDate: string; close: number } =>
                 Boolean(point)
             );
-        } catch (error) {
-          console.warn(`Unable to load QQQ candles for signal overlay on strategy ${strategyId}:`, error);
         }
-      }
-    }
-    const rawStrategyLogs: LogEntry[] =
-      typeof req.loggingService?.getStrategyLogs === 'function'
-        ? await req.loggingService.getStrategyLogs(strategyId, 50)
-        : [];
+      });
+    };
     const strategyLogViews = rawStrategyLogs.map((entry: LogEntry) => buildStrategyLogView(entry));
     const metadataColumns = Array.from(
       new Set(
         strategyLogViews.flatMap((entry: StrategyLogView) => entry.metadataPairs.map((pair) => pair.label))
       )
     ).sort((a, b) => a.localeCompare(b));
-
-    const rawBacktestInitialCapital = await req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_INITIAL_CAPITAL);
     const backtestInitialCapital = resolveBacktestInitialCapitalSetting(rawBacktestInitialCapital);
     const initialCapital = resolveStrategyInitialCapital(strategy, backtestInitialCapital);
     const hasInitialCapital = Number.isFinite(initialCapital) && initialCapital > 0;
@@ -1654,61 +1733,103 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
 
     const latestTrainingBacktest = backtests.find(backtest => backtest.tickerScope === 'training');
     const latestBacktest = latestTrainingBacktest || (backtests.length > 0 ? backtests[0] : null);
-
-    let strategyAccount: {
-      id: string;
-      name: string;
-      provider: string;
-      environment: string;
-      balance: number | null;
-      hasBalance: boolean;
-      currency: string | null;
-      snapshotBadgeLabel: string;
-      snapshotBadgeVariant: string;
-      snapshotMessage: string | null;
-      snapshotFetchedAt: Date | null;
-    } | null = null;
-    let strategyAccountWarning: string | null = null;
-
-    if (strategy.accountId) {
-      const account = await req.db.accounts.getAccountById(strategy.accountId, userId);
-      if (!account) {
-        strategyAccountWarning =
-          'The linked account could not be found. Trades will not be routed until you select a different account.';
-      } else {
-        const snapshotMap = await req.accountDataService.fetchSnapshots([account]);
-        const snapshot = snapshotMap[account.id];
-        const badge = getSnapshotBadgeMeta(snapshot);
-        const rawBalance = snapshot?.balance;
-        const hasBalance = typeof rawBalance === 'number' && Number.isFinite(rawBalance);
-        strategyAccount = {
-          id: account.id,
-          name: account.name,
-          provider: account.provider,
-          environment: account.environment,
-          balance: hasBalance ? rawBalance ?? null : null,
-          hasBalance,
-          currency: snapshot?.currency ?? null,
-          snapshotBadgeLabel: badge.label,
-          snapshotBadgeVariant: badge.variant,
-          snapshotMessage: snapshot?.message ?? null,
-          snapshotFetchedAt: snapshot?.fetchedAt ?? null
-        };
-
-      }
-    }
-
     const clearBacktestConfirmMessage = strategy.accountId
       ? 'Are you sure you want to clear backtest data and simulated trades for this strategy? Trades executed on the linked account will be preserved.'
       : 'Are you sure you want to clear all backtest data for this strategy? This will remove all trades and performance metrics.';
+    const loadStrategyAccount = async (): Promise<StrategyAccountLoadResult> => {
+      if (!strategy.accountId) {
+        return {
+          strategyAccount: null,
+          strategyAccountWarning: null
+        };
+      }
 
-    const backtestComparison = await buildBacktestComparisonView({
-      db: req.db,
-      strategyId,
-      userId,
-      backtests: backtestResults,
-      isEligible: Boolean(strategy.accountId)
-    });
+      return loadOptionalStrategySection<StrategyAccountLoadResult>({
+        strategyId,
+        label: 'linked account snapshot',
+        timeoutMs: STRATEGY_ACCOUNT_TIMEOUT_MS,
+        fallback: {
+          strategyAccount: null,
+          strategyAccountWarning: 'The linked account snapshot is taking too long to load. Try refreshing in a moment.'
+        },
+        load: async () => {
+          const account = await req.db.accounts.getAccountById(strategy.accountId!, userId);
+          if (!account) {
+            return {
+              strategyAccount: null,
+              strategyAccountWarning:
+                'The linked account could not be found. Trades will not be routed until you select a different account.'
+            };
+          }
+
+          const snapshotMap = await req.accountDataService.fetchSnapshots([account]);
+          const snapshot = snapshotMap[account.id];
+          const badge = getSnapshotBadgeMeta(snapshot);
+          const rawBalance = snapshot?.balance;
+          const hasBalance = typeof rawBalance === 'number' && Number.isFinite(rawBalance);
+          return {
+            strategyAccount: {
+              id: account.id,
+              name: account.name,
+              provider: account.provider,
+              environment: account.environment,
+              balance: hasBalance ? rawBalance ?? null : null,
+              hasBalance,
+              currency: snapshot?.currency ?? null,
+              snapshotBadgeLabel: badge.label,
+              snapshotBadgeVariant: badge.variant,
+              snapshotMessage: snapshot?.message ?? null,
+              snapshotFetchedAt: snapshot?.fetchedAt ?? null
+            },
+            strategyAccountWarning: null
+          };
+        }
+      });
+    };
+    const loadBacktestComparison = async () => {
+      if (!strategy.accountId) {
+        return buildBacktestComparisonView({
+          db: req.db,
+          strategyId,
+          userId,
+          backtests: backtestResults,
+          isEligible: false
+        });
+      }
+
+      const hasEngine = backtestResults.some((backtest) => {
+        const scope = normalizeBacktestScope(backtest.tickerScope);
+        return scope === 'training' || scope === 'validation' || scope === 'all';
+      });
+      const hasLive = backtestResults.some((backtest) => normalizeBacktestScope(backtest.tickerScope) === 'live');
+
+      return loadOptionalStrategySection({
+        strategyId,
+        label: 'backtest comparison',
+        timeoutMs: STRATEGY_BACKTEST_COMPARISON_TIMEOUT_MS,
+        fallback: {
+          isEligible: true,
+          hasEngine,
+          hasLive,
+          notice: 'Backtest comparison is taking too long to load. Try refreshing in a moment.',
+          sampleDays: []
+        },
+        load: async () =>
+          buildBacktestComparisonView({
+            db: req.db,
+            strategyId,
+            userId,
+            backtests: backtestResults,
+            isEligible: true
+          })
+      });
+    };
+    const [qqqSignalPriceSeries, strategyAccountResult, backtestComparison] = await Promise.all([
+      loadQqqSignalPriceSeries(),
+      loadStrategyAccount(),
+      loadBacktestComparison()
+    ]);
+    const { strategyAccount, strategyAccountWarning } = strategyAccountResult;
 
     res.render('pages/strategy', {
       title: `${strategy.name} - Strategy Overview`,

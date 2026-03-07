@@ -451,18 +451,26 @@ CREATE INDEX IF NOT EXISTS idx_account_operations_strategy_status ON account_ope
 CREATE INDEX IF NOT EXISTS idx_account_operations_status ON account_operations(status);
 CREATE INDEX IF NOT EXISTS idx_account_operations_trade_id ON account_operations(trade_id);
 CREATE INDEX IF NOT EXISTS idx_account_signal_skips_strategy_date ON account_signal_skips(strategy_id, signal_date);
+CREATE INDEX IF NOT EXISTS idx_account_signal_skips_strategy_source_date
+    ON account_signal_skips(strategy_id, source, signal_date, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_account_signal_skips_created_at ON account_signal_skips(created_at);
 CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy_id ON backtest_results(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy_scope_created_at
+    ON backtest_results(strategy_id, ticker_scope, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
 CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
 CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_system_logs_source_level ON system_logs(source, level);
+CREATE INDEX IF NOT EXISTS idx_system_logs_strategy_id_created_at
+    ON system_logs (((NULLIF(metadata, '')::jsonb ->> 'strategyId')), created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_backtest_cache_template_id ON backtest_cache(template_id);
 CREATE INDEX IF NOT EXISTS idx_backtest_cache_sharpe_ratio ON backtest_cache(sharpe_ratio);
 CREATE INDEX IF NOT EXISTS idx_signals_date ON signals(date);
 CREATE INDEX IF NOT EXISTS idx_signals_ticker ON signals(ticker);
 CREATE INDEX IF NOT EXISTS idx_signals_strategy ON signals(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_signals_strategy_date_ticker ON signals(strategy_id, date DESC, ticker);
 CREATE INDEX IF NOT EXISTS idx_signals_user_id ON signals(user_id);
 CREATE INDEX IF NOT EXISTS idx_signals_user_date_ticker ON signals(user_id, date, ticker);
+CREATE INDEX IF NOT EXISTS idx_trades_strategy_backtest_date ON trades(strategy_id, backtest_result_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_remote_optimizer_jobs_template_id ON remote_optimizer_jobs(template_id);
 CREATE INDEX IF NOT EXISTS idx_remote_optimizer_jobs_status ON remote_optimizer_jobs(status);
