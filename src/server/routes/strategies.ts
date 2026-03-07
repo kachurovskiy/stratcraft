@@ -25,7 +25,7 @@ import {
   type PortfolioValuePoint
 } from '../utils/backtestCharts';
 import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
-import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';
+import { getReqUserId, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
 const router = express.Router();
 
@@ -79,9 +79,7 @@ interface ParameterSummaryView {
   name: string;
   label?: string;
   description?: string;
-  type: StrategyParameter['type'];
   displayValue: string;
-  defaultDisplay: string;
   hasOverride: boolean;
 }
 
@@ -185,9 +183,7 @@ const buildParameterContexts = (
           name: param.name,
           label: param.label,
           description: param.description,
-          type: param.type,
           displayValue,
-          defaultDisplay,
           hasOverride: hasOverride && displayValue !== defaultDisplay
         };
       })
@@ -372,8 +368,6 @@ type StrategyLogMetadataPair = {
 };
 
 interface StrategyLogView {
-  id?: number;
-  level: string;
   levelLabel: string;
   levelBadgeClass: string;
   source: string;
@@ -381,18 +375,15 @@ interface StrategyLogView {
   createdAt?: Date;
   metadataPairs: StrategyLogMetadataPair[];
   metadataByLabel: Record<string, string>;
-  strategyId?: string;
 }
 
 type PortfolioDayMove = {
   date: string;
   change: number;
   changePercent: number;
-  previousValue: number;
   value: number;
   activeTrades: number;
   missedTradesDueToCash: number;
-  direction: 'up' | 'down' | 'flat';
 };
 
 type StrategyAccountSummary = {
@@ -519,16 +510,13 @@ const buildStrategyLogView = (log: LogEntry): StrategyLogView => {
     return acc;
   }, {});
   return {
-    id: log.id,
-    level,
     levelLabel: level.toUpperCase(),
     levelBadgeClass: LOG_LEVEL_BADGES[level as LogLevel] ?? 'bg-secondary',
     source: log.source ?? 'system',
     message: log.message,
     createdAt: log.created_at,
     metadataPairs,
-    metadataByLabel,
-    strategyId: log.strategyId
+    metadataByLabel
   };
 };
 
@@ -566,18 +554,14 @@ function buildPortfolioDayMovers(
     const current = normalizedPoints[i];
     const change = current.value - previous.value;
     const changePercent = previous.value !== 0 ? (change / previous.value) * 100 : 0;
-    const direction: PortfolioDayMove['direction'] =
-      change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
 
     dayMoves.push({
       date: current.date,
       change,
       changePercent,
-      previousValue: previous.value,
       value: current.value,
       activeTrades: current.activeTrades,
-      missedTradesDueToCash: current.missedTradesDueToCash,
-      direction
+      missedTradesDueToCash: current.missedTradesDueToCash
     });
   }
 
@@ -1436,7 +1420,6 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
       prefillNotice,
       bestBacktestSummary,
       bestBacktestHasMetrics,
-      currentUrl: getCurrentUrl(req),
       accounts: accountsForSelection,
       hasAccounts: accountsForSelection.length > 0,
       selectedAccountId,
@@ -1709,20 +1692,15 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
         : null;
 
       return {
-        id: backtest.id,
-        periodMonths,
-        periodDays,
         periodLabel,
         startDate: backtest.startDate,
         endDate: backtest.endDate,
         initialCapital: backtest.initialCapital,
         finalPortfolioValue: backtest.finalPortfolioValue,
-        performance: backtest.performance,
         totalReturn: backtest.performance?.totalReturn ?? 0,
         totalTrades: backtest.performance?.totalTrades ?? 0,
         sharpeRatio: backtest.performance?.sharpeRatio ?? null,
         calmarRatio,
-        hasCalmarRatio: calmarRatio !== null,
         createdAt: backtest.createdAt,
         detailHref: `/backtests/${backtest.id}`,
         tickerScope,
@@ -1864,7 +1842,6 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       metadataColumns,
       strategyLogs: strategyLogViews,
       hasStrategyLogs: strategyLogViews.length > 0,
-      currentUrl: getCurrentUrl(req),
       success: req.query.success as string,
       error: req.query.error as string
     });
@@ -2050,15 +2027,12 @@ router.get<StrategyTickerParams>('/strategies/:strategyId/tickers/:ticker', requ
       latestDate: skipViews[0]?.signalDate ?? null
     };
 
-    let strategyAccountSummary: { id: string; name: string; provider: string; environment: string } | null = null;
+    let strategyAccountSummary: { id: string } | null = null;
     if (strategy.accountId) {
       const account = await req.db.accounts.getAccountById(strategy.accountId, userId);
       if (account) {
         strategyAccountSummary = {
-          id: account.id,
-          name: account.name,
-          provider: account.provider,
-          environment: account.environment
+          id: account.id
         };
       }
     }
@@ -2115,8 +2089,7 @@ router.get<StrategyTickerParams>('/strategies/:strategyId/tickers/:ticker', requ
       strategyAccountSummary,
       tickerLogs: tickerLogViews,
       hasTickerLogs: tickerLogViews.length > 0,
-      tickerLogMetadataColumns,
-      currentUrl: getCurrentUrl(req)
+      tickerLogMetadataColumns
     });
   } catch (error) {
     console.error('Error rendering strategy ticker page:', error);
@@ -2174,8 +2147,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId/skips', requireAuth, async
       sourceLabels: {
         backtest: SKIP_SOURCE_META.backtest.label,
         planOperations: SKIP_SOURCE_META.planOperations.label
-      },
-      currentUrl: getCurrentUrl(req)
+      }
     });
   } catch (error) {
     console.error('Error rendering strategy skips page:', error);
@@ -2355,8 +2327,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId/operations', requireAuth, 
       pageSizeOptions: STRATEGY_OPERATION_PAGE_SIZE_OPTIONS,
       statusSummary,
       basePath: operationsPagePath,
-      baseQuery,
-      currentUrl: getCurrentUrl(req)
+      baseQuery
     });
   } catch (error) {
     console.error('Error rendering strategy operations page:', error);
@@ -2581,11 +2552,8 @@ router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, re
       parameterSummariesCount: parameterSummaries.length,
       extraParameters,
       extraParameterCount: extraParameters.length,
-      currentUrl: getCurrentUrl(req),
       success,
       error,
-      selectedBacktestPeriodMonths: periodMonths,
-      selectedBacktestScope: tickerScope,
       selectedBacktestScopeLabel: scopeMeta.label,
       selectedBacktestScopeBadgeVariant: scopeMeta.badge
     });
