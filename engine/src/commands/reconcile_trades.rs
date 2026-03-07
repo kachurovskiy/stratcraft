@@ -229,6 +229,13 @@ async fn reconcile_trade(
         }
     }
 
+    if let Some(ticker) =
+        detect_renamed_ticker(trade, positions, &entry_eval, &stop_eval, &exit_eval)
+    {
+        trade.set_ticker(ticker, Utc::now());
+        changed = true;
+    }
+
     let position_match = find_position_match(trade, positions);
     if trade.status == TradeStatus::Pending
         && (entry_eval.is_none()
@@ -246,9 +253,6 @@ async fn reconcile_trade(
             {
                 trade.set_price(position.avg_entry_price, changed_at);
             }
-            if trade.ticker != position.ticker {
-                trade.set_ticker(position.ticker.clone(), changed_at);
-            }
             let filled_date = normalize_trade_date(changed_at);
             if trade.date != filled_date {
                 trade.set_date(filled_date, changed_at);
@@ -264,13 +268,6 @@ async fn reconcile_trade(
             && (trade.price - position.avg_entry_price).abs() > PNL_EPSILON
         {
             trade.set_price(position.avg_entry_price, Utc::now());
-            changed = true;
-        }
-    }
-
-    if let Some(position) = position_match {
-        if trade.status == TradeStatus::Active && trade.ticker != position.ticker {
-            trade.set_ticker(position.ticker.clone(), Utc::now());
             changed = true;
         }
     }
@@ -452,22 +449,69 @@ fn find_position_match<'a>(
     trade: &Trade,
     positions: &'a [AccountPositionState],
 ) -> Option<&'a AccountPositionState> {
-    if positions.is_empty() {
+    positions
+        .iter()
+        .find(|position| position.quantity == trade.quantity && position.ticker == trade.ticker)
+}
+
+fn detect_renamed_ticker(
+    trade: &Trade,
+    positions: &[AccountPositionState],
+    entry_eval: &Option<OrderEvaluation>,
+    stop_eval: &Option<OrderEvaluation>,
+    exit_eval: &Option<OrderEvaluation>,
+) -> Option<String> {
+    if trade.status != TradeStatus::Active {
         return None;
     }
 
-    let trade_qty = trade.quantity;
+    if find_position_match(trade, positions).is_some() {
+        return None;
+    }
 
-    let exact_match = positions
+    if let Some(symbol) = resolve_renamed_order_symbol(trade, &[entry_eval, stop_eval, exit_eval]) {
+        return Some(symbol);
+    }
+
+    find_renamed_position_match(trade, positions).map(|position| position.ticker.clone())
+}
+
+fn resolve_renamed_order_symbol(
+    trade: &Trade,
+    evaluations: &[&Option<OrderEvaluation>],
+) -> Option<String> {
+    let mut symbols = evaluations
         .iter()
-        .find(|position| position.quantity == trade_qty && position.ticker == trade.ticker);
-    if exact_match.is_some() {
-        return exact_match;
+        .filter_map(|evaluation| evaluation.as_ref())
+        .filter_map(|evaluation| evaluation.symbol.as_deref())
+        .map(str::trim)
+        .filter(|symbol| !symbol.is_empty())
+        .map(str::to_uppercase)
+        .collect::<Vec<_>>();
+    symbols.sort();
+    symbols.dedup();
+
+    match symbols.as_slice() {
+        [symbol] if symbol != &trade.ticker => Some(symbol.clone()),
+        _ => None,
+    }
+}
+
+fn find_renamed_position_match<'a>(
+    trade: &Trade,
+    positions: &'a [AccountPositionState],
+) -> Option<&'a AccountPositionState> {
+    if trade.status != TradeStatus::Active {
+        return None;
+    }
+
+    if find_position_match(trade, positions).is_some() {
+        return None;
     }
 
     let mut candidates: Vec<&AccountPositionState> = positions
         .iter()
-        .filter(|position| position.quantity == trade_qty)
+        .filter(|position| position.quantity == trade.quantity)
         .collect();
     if candidates.is_empty() {
         return None;
@@ -570,4 +614,140 @@ fn entry_order_ready_for_cancellation(trade: &Trade, entry: &Option<OrderEvaluat
         .as_ref()
         .map(|evaluation| matches!(evaluation.state, OrderState::Pending))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn sample_trade(ticker: &str, quantity: i32, price: f64) -> Trade {
+        Trade {
+            id: format!("trade-{}", ticker),
+            strategy_id: "strategy".to_string(),
+            ticker: ticker.to_string(),
+            quantity,
+            price,
+            date: Utc
+                .with_ymd_and_hms(2024, 1, 2, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            status: TradeStatus::Pending,
+            pnl: None,
+            fee: None,
+            exit_price: None,
+            exit_date: None,
+            stop_loss: None,
+            stop_loss_triggered: Some(false),
+            entry_order_id: Some("entry-order".to_string()),
+            entry_cancel_after: None,
+            stop_order_id: None,
+            exit_order_id: None,
+            entry_order_status: None,
+            entry_order_status_updated_at: None,
+            stop_order_status: None,
+            stop_order_status_updated_at: None,
+            exit_order_status: None,
+            exit_order_status_updated_at: None,
+            changes: Vec::new(),
+        }
+    }
+
+    fn sample_active_trade(ticker: &str, quantity: i32, price: f64) -> Trade {
+        let mut trade = sample_trade(ticker, quantity, price);
+        trade.status = TradeStatus::Active;
+        trade
+    }
+
+    fn sample_eval(symbol: &str) -> Option<OrderEvaluation> {
+        Some(OrderEvaluation {
+            state: OrderState::Pending,
+            filled_price: None,
+            symbol: Some(symbol.to_string()),
+            timestamp: None,
+        })
+    }
+
+    #[test]
+    fn find_position_match_requires_same_ticker() {
+        let trade = sample_trade("GPRO", 697, 1.04);
+        let positions = vec![AccountPositionState {
+            ticker: "UPXI".to_string(),
+            quantity: 697,
+            avg_entry_price: 1.04,
+            current_price: Some(1.08),
+        }];
+
+        assert!(find_position_match(&trade, &positions).is_none());
+    }
+
+    #[test]
+    fn find_position_match_keeps_same_ticker_fill_detection() {
+        let trade = sample_trade("UPXI", 697, 1.04);
+        let positions = vec![
+            AccountPositionState {
+                ticker: "GPRO".to_string(),
+                quantity: 697,
+                avg_entry_price: 1.04,
+                current_price: Some(1.08),
+            },
+            AccountPositionState {
+                ticker: "UPXI".to_string(),
+                quantity: 697,
+                avg_entry_price: 1.04,
+                current_price: Some(1.08),
+            },
+        ];
+
+        let matched = find_position_match(&trade, &positions).expect("expected UPXI match");
+        assert_eq!(matched.ticker, "UPXI");
+    }
+
+    #[test]
+    fn detect_renamed_ticker_does_not_rename_pending_trade_from_position_shape() {
+        let trade = sample_trade("GPRO", 697, 1.04);
+        let positions = vec![AccountPositionState {
+            ticker: "UPXI".to_string(),
+            quantity: 697,
+            avg_entry_price: 1.04,
+            current_price: Some(1.08),
+        }];
+
+        assert_eq!(
+            detect_renamed_ticker(&trade, &positions, &None, &None, &None),
+            None
+        );
+    }
+
+    #[test]
+    fn detect_renamed_ticker_uses_order_symbol_for_active_trade() {
+        let trade = sample_active_trade("FB", 10, 200.0);
+        let positions = vec![AccountPositionState {
+            ticker: "META".to_string(),
+            quantity: 10,
+            avg_entry_price: 200.0,
+            current_price: Some(250.0),
+        }];
+
+        assert_eq!(
+            detect_renamed_ticker(&trade, &positions, &None, &sample_eval("META"), &None),
+            Some("META".to_string())
+        );
+    }
+
+    #[test]
+    fn detect_renamed_ticker_falls_back_to_unique_position_for_active_trade() {
+        let trade = sample_active_trade("FB", 10, 200.0);
+        let positions = vec![AccountPositionState {
+            ticker: "META".to_string(),
+            quantity: 10,
+            avg_entry_price: 200.01,
+            current_price: Some(250.0),
+        }];
+
+        assert_eq!(
+            detect_renamed_ticker(&trade, &positions, &None, &None, &None),
+            Some("META".to_string())
+        );
+    }
 }

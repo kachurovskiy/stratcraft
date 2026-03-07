@@ -164,6 +164,7 @@ impl<'a> AlpacaClient<'a> {
         Ok(Some(OrderEvaluation {
             state,
             filled_price,
+            symbol: normalize_symbol(order.symbol.as_deref()),
             timestamp: filled_at,
         }))
     }
@@ -350,6 +351,7 @@ fn resolve_alpaca_base_url(
 pub struct OrderEvaluation {
     pub state: OrderState,
     pub filled_price: Option<f64>,
+    pub symbol: Option<String>,
     pub timestamp: Option<DateTime<Utc>>,
 }
 
