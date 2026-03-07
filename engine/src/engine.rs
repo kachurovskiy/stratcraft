@@ -2111,7 +2111,7 @@ impl Engine {
                 }
 
                 if let Some(last_trade_date) = latest_live_trade_dates.get(&ticker) {
-                    if *last_trade_date >= target_date {
+                    if *last_trade_date > target_date {
                         notes.push(format!("signal_{}_already_traded", ticker));
                         record_skip(&ticker, SignalAction::Buy, "signal_already_traded", None);
                         continue;
@@ -3911,7 +3911,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_account_operations_skips_trades_already_recorded_for_date() {
+    fn test_plan_account_operations_allows_consecutive_day_signal_when_prior_trade_filled_today() {
         let mut engine = Engine::new(test_runtime_settings());
         engine.config.buy_discount_ratio = 0.0;
 
@@ -3955,8 +3955,64 @@ mod tests {
             .filter(|op| op.operation_type == AccountOperationType::OpenPosition)
             .count();
         assert_eq!(
+            open_count, 1,
+            "expected a new open operation when the previous signal filled on the current signal date"
+        );
+        assert!(
+            plan.notes
+                .iter()
+                .all(|note| !note.contains("already_traded")),
+            "should not mark the current signal as already traded"
+        );
+    }
+
+    #[test]
+    fn test_plan_account_operations_skips_trades_already_recorded_after_signal_date() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.buy_discount_ratio = 0.0;
+
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("DUPE", vec![50.0, 55.0, 60.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "DUPE".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(0.5),
+        }];
+        let state = sample_account_state_with_holdings(25_000.0, &[("DUPE", 10, 50.0)], None);
+
+        let existing_trade = sample_active_trade(
+            "dupe-existing",
+            "strategy",
+            "DUPE",
+            10,
+            50.0,
+            dates[history_offset + 2],
+            Some(45.0),
+        );
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            &HashSet::new(),
+            &[existing_trade],
+            0,
+            &HashMap::new(),
+        );
+
+        let open_count = plan
+            .operations
+            .iter()
+            .filter(|op| op.operation_type == AccountOperationType::OpenPosition)
+            .count();
+        assert_eq!(
             open_count, 0,
-            "expected no open operations when trade already exists for the date"
+            "expected no open operations once a later-dated live trade already exists"
         );
         assert!(
             plan.notes

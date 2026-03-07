@@ -31,6 +31,8 @@ const BACKTEST_ACCOUNTS_DB_NAME: &str = "stratcraft_test_backtest_accounts";
 const EXPORT_MARKET_DATA_DB_NAME: &str = "stratcraft_test_export_market_data";
 const OPTIMIZE_DB_NAME: &str = "stratcraft_test_optimize";
 const PLAN_OPERATIONS_DB_NAME: &str = "stratcraft_test_plan_operations";
+const PLAN_OPERATIONS_CONSECUTIVE_SIGNAL_DB_NAME: &str =
+    "stratcraft_test_plan_operations_consecutive_signal";
 const ORDER_LIFECYCLE_DB_NAME: &str = "stratcraft_test_order_lifecycle";
 const RECONCILE_TRADES_DB_NAME: &str = "stratcraft_test_reconcile_trades";
 const VERIFY_DB_NAME: &str = "stratcraft_test_verify";
@@ -482,6 +484,113 @@ async fn order_lifecycle_end_to_end() -> Result<()> {
         (trade.price - 101.0).abs() < 1e-6,
         "expected filled price for {}",
         trade.id
+    );
+
+    drop(stub);
+    test_db.cleanup().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn plan_operations_allows_consecutive_day_buy_after_previous_fill() -> Result<()> {
+    ensure_test_env();
+    let _guard = acquire_pipeline_test_lock().await;
+    std::env::set_var("RAYON_NUM_THREADS", "2");
+    let test_db =
+        TestDatabase::create_with_name(PLAN_OPERATIONS_CONSECUTIVE_SIGNAL_DB_NAME).await?;
+    test_db.apply_schema().await?;
+    test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
+    test_db
+        .seed_strategies(StrategySeedConfig {
+            allow_short_selling_override: None,
+        })
+        .await?;
+
+    let templates = load_templates()?;
+    let template = templates.first().ok_or_else(|| {
+        anyhow!("No templates available for consecutive plan operations regression")
+    })?;
+    let account_strategy = test_db.seed_account_strategy(template).await?;
+
+    let first_signal_date = baseline_start_date()
+        .and_hms_opt(0, 0, 0)
+        .expect("valid date")
+        .and_utc()
+        + ChronoDuration::days(10);
+    let second_signal_date = first_signal_date + ChronoDuration::days(1);
+
+    let first_signal = GeneratedSignal {
+        date: first_signal_date,
+        ticker: "AAA".to_string(),
+        action: SignalAction::Buy,
+        confidence: Some(0.9),
+    };
+
+    let mut db = Database::new(test_db.database_url()).await?;
+    db.upsert_strategy_signals(&account_strategy.id, &[first_signal])
+        .await?;
+
+    let stub = AlpacaStub::start(AlpacaStubResponses::filled_order(
+        "order-entry",
+        "AAA",
+        101.0,
+        second_signal_date,
+    ))?;
+    wait_for_alpaca_stub(&stub.base_url).await?;
+    test_db
+        .update_setting("ALPACA_PAPER_URL", &stub.base_url)
+        .await?;
+
+    let app_context = AppContext::initialize(Some(test_db.database_url().to_string())).await?;
+    plan_operations::run(&app_context).await?;
+
+    let first_operation = test_db
+        .fetch_pending_open_operation(&account_strategy.id)
+        .await?;
+    assert_eq!(first_operation.triggered_at, first_signal_date);
+
+    test_db
+        .dispatch_open_operation(&first_operation, "order-entry")
+        .await?;
+    reconcile_trades::run(&app_context).await?;
+
+    let live_trades = db.get_strategy_live_trades(&account_strategy.id).await?;
+    let first_trade = live_trades
+        .iter()
+        .find(|candidate| candidate.id == first_operation.trade_id)
+        .ok_or_else(|| {
+            anyhow!(
+                "Missing live trade {} after reconciliation",
+                first_operation.trade_id
+            )
+        })?;
+    assert_eq!(first_trade.status, TradeStatus::Active);
+    assert_eq!(first_trade.date, second_signal_date);
+
+    let second_signal = GeneratedSignal {
+        date: second_signal_date,
+        ticker: "AAA".to_string(),
+        action: SignalAction::Buy,
+        confidence: Some(0.9),
+    };
+    db.upsert_strategy_signals(&account_strategy.id, &[second_signal])
+        .await?;
+
+    plan_operations::run(&app_context).await?;
+
+    let second_operation = test_db
+        .fetch_pending_open_operation(&account_strategy.id)
+        .await?;
+    assert_eq!(second_operation.triggered_at, second_signal_date);
+    assert_eq!(second_operation.ticker, "AAA");
+    assert_ne!(second_operation.trade_id, first_operation.trade_id);
+
+    let operation_count = test_db
+        .count_account_operations(&account_strategy.id)
+        .await?;
+    assert_eq!(
+        operation_count, 2,
+        "expected one sent operation and one new pending operation"
     );
 
     drop(stub);
