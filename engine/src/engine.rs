@@ -1967,7 +1967,7 @@ impl Engine {
 
         match buying_power {
             Some(bp) => bp.min(remaining_by_leverage),
-            None => cash,
+            None => remaining_by_leverage,
         }
     }
 
@@ -3734,6 +3734,68 @@ mod tests {
         assert!(plan.notes.iter().any(|note| {
             note.contains("insufficient_cash") || note.contains("insufficient_size")
         }));
+    }
+
+    #[test]
+    fn test_effective_buying_power_uses_leverage_when_broker_value_missing() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.max_leverage = 2.0;
+
+        let buying_power = engine.effective_buying_power_for_account(&sample_account_state(100.0));
+        assert!((buying_power - 200.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_plan_account_operations_uses_leverage_when_broker_buying_power_missing() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.buy_discount_ratio = 0.0;
+        engine.config.max_leverage = 2.0;
+        engine.config.trade_size_ratio = 0.75;
+        engine.config.minimum_trade_size = 0.0;
+
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("MARG", vec![100.0, 100.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "MARG".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+        let state = sample_account_state(100.0);
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            &HashSet::new(),
+            &[],
+            0,
+            &HashMap::new(),
+        );
+
+        let buy = plan
+            .operations
+            .iter()
+            .find(|op| op.operation_type == AccountOperationType::OpenPosition)
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected leveraged buy op, notes={:?}, skips={:?}",
+                    plan.notes, plan.skipped_signals
+                )
+            });
+        assert_eq!(buy.ticker, "MARG");
+        assert_eq!(buy.quantity, Some(1));
+        assert!(
+            !plan
+                .notes
+                .iter()
+                .any(|note| note.contains("insufficient_size")),
+            "leveraged buying power should prevent insufficient_size skips"
+        );
     }
 
     #[test]
