@@ -520,13 +520,11 @@ function formatCurrency(amount) {
 }
 
 function formatRateAsPercent(value) {
-    // Handle both decimal (0.1 = 10%) and percentage (10 = 10%) formats
-    const decimalValue = value > 1 ? value / 100 : value;
     return new Intl.NumberFormat('en-US', {
         style: 'percent',
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-    }).format(decimalValue);
+    }).format(value);
 }
 
 function formatDate(date) {

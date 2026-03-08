@@ -51,7 +51,7 @@
     }
 
     .cagr-chart-wrapper {
-        height: 720px;
+        height: 360px;
     }
 
     .chart-empty-state {
@@ -133,7 +133,7 @@
         }
 
         .cagr-chart-wrapper {
-            height: 560px;
+            height: 280px;
         }
     }
 
@@ -648,8 +648,7 @@
         if (!Number.isFinite(numeric)) {
             return 'N/A';
         }
-        const decimal = numeric > 1 ? numeric / 100 : numeric;
-        return `${(decimal * 100).toFixed(2)}%`;
+        return `${(numeric * 100).toFixed(2)}%`;
     }
 
     function renderCagrChart() {
