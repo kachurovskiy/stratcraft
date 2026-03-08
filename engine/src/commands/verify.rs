@@ -2,7 +2,7 @@ use crate::commands::market_data_snapshot::ensure_market_data_file;
 use crate::config::require_setting_date;
 use crate::context::{AppContext, MarketDataFilters};
 use crate::data_context::TickerScope;
-use crate::optimizer::parameter_signature;
+use crate::param_utils::parameter_signature;
 use anyhow::Result;
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};

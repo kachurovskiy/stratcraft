@@ -105,14 +105,15 @@ flowchart LR
 
 ## 3. Optimization: How Parameter Search Works
 
-Optimization is local search, not blind brute force.
+Optimization is now coarse-to-fine search: deterministic multi-start exploration first, then local search refinement.
 
 ### 3.1 What gets optimized
 
 - Only numeric template parameters with `min`, `max`, and `step` are auto-detected.
 - Non-numeric parameters are ignored by the optimizer.
 - `allowShortSelling` can be removed from the search if short-selling optimization is disabled.
-- The search starts from the best known parameter set if the API can provide one; otherwise it starts from template defaults.
+- The optimizer keeps the best known parameter set if the API can provide one; otherwise it uses template defaults as the baseline seed.
+- Around that baseline, it generates a deterministic batch of exploratory seeds across the allowed parameter grid before local refinement begins.
 
 ### 3.2 Search loop
 
@@ -120,16 +121,16 @@ Optimization is local search, not blind brute force.
 flowchart TD
   A[Load template] --> B[Detect numeric parameters with min max step]
   B --> C[Load baseline parameters]
-  C --> D[Clamp baseline to bounds]
-  D --> E[Generate one-hop neighbors]
-  E --> F[Run parallel backtests on training tickers and training window]
-  F --> G{Max drawdown within limit?}
-  G -->|No| H[Reject candidate]
-  G -->|Yes| I[Score candidate by objective]
-  I --> J{Best neighbor improves current best?}
-  J -->|Yes| K[Move to that neighbor]
-  K --> E
-  J -->|No| L[Stop search]
+  C --> D[Build deterministic multi-start seed batch]
+  D --> E[Run seed backtests on training tickers and training window]
+  E --> F[Keep best feasible seed regions]
+  F --> G[Generate one-hop neighbors around each kept seed]
+  G --> H[Run parallel local-search backtests]
+  H --> I{Best neighbor improves current best?}
+  I -->|Yes| J[Move to that neighbor and repeat]
+  J --> G
+  I -->|No| K[Stop refinement for that seed]
+  K --> L[Choose overall best refined result]
   L --> M[Persist cache rows and optimization version]
 ```
 
@@ -144,6 +145,8 @@ Default step multipliers:
 ```
 
 If a parameter has `step = 0.5`, the neighbor proposals are current value plus or minus `0.5`, `1.0`, `1.5`, and `2.0`, while still respecting min and max bounds.
+
+The important difference now is that StratCraft does not rely on one starting point anymore. It first probes multiple seed locations, then applies the one-hop neighbor logic only to the strongest seed regions.
 
 ### 3.4 What objective wins
 

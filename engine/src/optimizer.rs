@@ -11,7 +11,10 @@ use crate::models::{
     encode_string_parameter, BacktestTask, BacktestTaskResult, Candle, OptimizationResult,
     ParameterRange, StrategyTemplate, Trade,
 };
-use crate::param_utils::{add_single_parameter_neighbor_variations, clamp_to_bounds};
+use crate::param_utils::{
+    add_single_parameter_neighbor_variations, build_multi_start_seeds, clamp_to_bounds,
+    collect_numeric_parameter_ranges, parameter_signature, target_multi_start_refinement_count,
+};
 use crate::strategy::create_strategy;
 use anyhow::{anyhow, Result};
 use chrono::prelude::*;
@@ -31,41 +34,12 @@ enum VariationOutcome {
     Improved(OptimizationResult),
 }
 
-pub(crate) fn parameter_signature(parameters: &HashMap<String, f64>) -> String {
-    let mut sorted: Vec<_> = parameters.iter().collect();
-    sorted.sort_by(|a, b| a.0.cmp(b.0));
-    format!("{:?}", sorted)
-}
-
 fn allow_short_selling_optimization_enabled(settings: &HashMap<String, String>) -> bool {
     settings
         .get(ALLOW_SHORT_SELLING_OPTIMIZATION_SETTING)
         .map(|value| value.trim())
         .map(|value| value.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
-}
-
-fn collect_numeric_parameter_ranges(
-    template: &StrategyTemplate,
-) -> (Vec<String>, HashMap<String, ParameterRange>) {
-    let mut parameters_to_optimize = Vec::new();
-    let mut parameter_ranges = HashMap::new();
-
-    for param in &template.parameters {
-        if param.r#type != "number" {
-            continue;
-        }
-
-        let (Some(min), Some(max), Some(step)) = (param.min, param.max, param.step) else {
-            continue;
-        };
-
-        let name = param.name.clone();
-        parameters_to_optimize.push(name.clone());
-        parameter_ranges.insert(name, ParameterRange { min, max, step });
-    }
-
-    (parameters_to_optimize, parameter_ranges)
 }
 
 pub struct OptimizationEngine<'a> {
@@ -194,99 +168,115 @@ impl<'a> OptimizationEngine<'a> {
             template_id
         );
 
-        let mut current_params = self.load_baseline_parameters(template_id, &template).await;
-        current_params.insert("initialCapital".to_string(), backtest_initial_capital);
+        let mut baseline_params = self.load_baseline_parameters(template_id, &template).await;
+        baseline_params.insert("initialCapital".to_string(), backtest_initial_capital);
 
         clamp_to_bounds(
-            &mut current_params,
+            &mut baseline_params,
             parameter_ranges,
             parameters_to_optimize,
         );
 
+        let multi_start_seeds =
+            build_multi_start_seeds(&baseline_params, parameters_to_optimize, parameter_ranges);
+        info!(
+            "Evaluating {} deterministic multi-start seed(s) for template {}",
+            multi_start_seeds.len(),
+            template_id
+        );
+
+        let seed_results = self
+            .run_parallel_backtests(template_id, &multi_start_seeds, true)
+            .await?;
+        if seed_results.is_empty() {
+            info!("No backtests were executed for multi-start seed evaluation.");
+            return Ok(());
+        }
+
+        let refinement_starts = Self::select_refinement_starts(
+            seed_results,
+            max_drawdown_ratio,
+            objective,
+            parameters_to_optimize.len(),
+        );
+        if refinement_starts.is_empty() {
+            info!(
+                "No multi-start seeds satisfied the {:.0}% drawdown limit; stopping optimization early.",
+                max_drawdown_ratio * 100.0
+            );
+            return Ok(());
+        }
+
+        info!(
+            "Refining {} seed(s) with local search for template {}",
+            refinement_starts.len(),
+            template_id
+        );
+        let refinement_total = refinement_starts.len();
+
         let mut best_result: Option<OptimizationResult> = None;
         let mut best_score = f64::NEG_INFINITY;
 
-        loop {
-            let mut seen_variations = HashSet::new();
-            let mut neighbor_variations = Vec::new();
-
-            clamp_to_bounds(
-                &mut current_params,
-                parameter_ranges,
-                parameters_to_optimize,
+        for (seed_index, seed_result) in refinement_starts.into_iter().enumerate() {
+            let seed_score = Self::objective_score(&seed_result, objective);
+            info!(
+                "Refining seed {}/{} from {} {:.4} (CAGR {:.2}%, max drawdown {:.2}%).",
+                seed_index + 1,
+                refinement_total,
+                objective_label,
+                seed_score,
+                seed_result.cagr * 100.0,
+                seed_result.max_drawdown_ratio * 100.0
             );
 
-            if best_result.is_none() {
-                neighbor_variations.push(current_params.clone());
-            }
-
-            add_single_parameter_neighbor_variations(
-                parameters_to_optimize,
-                parameter_ranges,
-                step_multipliers,
-                &current_params,
-                &mut seen_variations,
-                &mut neighbor_variations,
-            );
-
-            if neighbor_variations.is_empty() {
-                break;
-            }
-
-            match self
-                .evaluate_variation_batch(
+            let refined_result = self
+                .refine_local_search_from_start(
                     template_id,
-                    &neighbor_variations,
-                    best_score,
+                    seed_result,
+                    parameters_to_optimize,
+                    parameter_ranges,
+                    step_multipliers,
                     max_drawdown_ratio,
                     objective,
                 )
-                .await?
-            {
-                VariationOutcome::Improved(result) => {
-                    let score = Self::objective_score(&result, objective);
-                    if best_result.is_none() {
-                        info!(
-                            "Initial valid candidate: {} {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
-                            objective_label,
-                            score,
-                            result.cagr * 100.0,
-                            result.max_drawdown_ratio * 100.0
-                        );
-                    } else {
-                        info!(
-                            "New best {}: {:.4} (previous: {:.4}), CAGR {:.2}%, max drawdown {:.2}%.",
-                            objective_label,
-                            score,
-                            best_score,
-                            result.cagr * 100.0,
-                            result.max_drawdown_ratio * 100.0
-                        );
-                    }
+                .await?;
+            let refined_score = Self::objective_score(&refined_result, objective);
 
-                    let params_changed = result.parameters != current_params;
-                    best_score = score;
-                    current_params = result.parameters.clone();
-                    best_result = Some(result);
+            if best_result.is_none() {
+                info!(
+                    "Initial refined candidate: {} {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
+                    objective_label,
+                    refined_score,
+                    refined_result.cagr * 100.0,
+                    refined_result.max_drawdown_ratio * 100.0
+                );
+                best_score = refined_score;
+                best_result = Some(refined_result);
+                continue;
+            }
 
-                    if !params_changed {
-                        break;
-                    }
-                }
-                VariationOutcome::NoChange => break,
+            if refined_score > best_score {
+                info!(
+                    "New best {} after seed refinement: {:.4} (previous: {:.4}), CAGR {:.2}%, max drawdown {:.2}%.",
+                    objective_label,
+                    refined_score,
+                    best_score,
+                    refined_result.cagr * 100.0,
+                    refined_result.max_drawdown_ratio * 100.0
+                );
+                best_score = refined_score;
+                best_result = Some(refined_result);
             }
         }
 
         let Some(best_result) = best_result else {
-            info!(
-                "No backtests were executed for the starting batch; stopping optimization early."
-            );
+            info!("No refined candidates remained after multi-start search.");
             return Ok(());
         };
 
         let final_score = Self::objective_score(&best_result, objective);
         info!(
-            "Local search finished. Best {}: {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
+            "Multi-start local search finished. Best {}: {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
             objective_label,
             final_score,
             best_result.cagr * 100.0,
@@ -294,7 +284,7 @@ impl<'a> OptimizationEngine<'a> {
         );
 
         let final_results = self
-            .run_parallel_backtests(template_id, &[current_params.clone()], true)
+            .run_parallel_backtests(template_id, &[best_result.parameters.clone()], true)
             .await?;
 
         if final_results.is_empty() {
@@ -435,6 +425,105 @@ impl<'a> OptimizationEngine<'a> {
     ) -> Result<Vec<OptimizationResult>> {
         self.run_parallel_backtests(template_id, variations, use_cache)
             .await
+    }
+
+    fn select_refinement_starts(
+        seed_results: Vec<OptimizationResult>,
+        max_drawdown_ratio: f64,
+        objective: LocalOptimizationObjective,
+        parameter_count: usize,
+    ) -> Vec<OptimizationResult> {
+        let mut feasible_results: Vec<_> = seed_results
+            .into_iter()
+            .filter(|result| Self::is_drawdown_within_limit(result, max_drawdown_ratio))
+            .collect();
+        feasible_results.sort_by(|a, b| {
+            Self::objective_score(b, objective)
+                .partial_cmp(&Self::objective_score(a, objective))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let desired_count =
+            target_multi_start_refinement_count(parameter_count).min(feasible_results.len());
+        let mut selected = Vec::with_capacity(desired_count);
+        let mut seen_signatures = HashSet::new();
+
+        for result in feasible_results {
+            if !seen_signatures.insert(parameter_signature(&result.parameters)) {
+                continue;
+            }
+            selected.push(result);
+            if selected.len() >= desired_count {
+                break;
+            }
+        }
+
+        selected
+    }
+
+    async fn refine_local_search_from_start(
+        &mut self,
+        template_id: &str,
+        initial_result: OptimizationResult,
+        parameters_to_optimize: &[String],
+        parameter_ranges: &HashMap<String, ParameterRange>,
+        step_multipliers: &[f64],
+        max_drawdown_ratio: f64,
+        objective: LocalOptimizationObjective,
+    ) -> Result<OptimizationResult> {
+        let mut current_params = initial_result.parameters.clone();
+        let mut best_result = initial_result;
+        let mut best_score = Self::objective_score(&best_result, objective);
+
+        loop {
+            let mut seen_variations = HashSet::new();
+            let mut neighbor_variations = Vec::new();
+
+            clamp_to_bounds(
+                &mut current_params,
+                parameter_ranges,
+                parameters_to_optimize,
+            );
+
+            add_single_parameter_neighbor_variations(
+                parameters_to_optimize,
+                parameter_ranges,
+                step_multipliers,
+                &current_params,
+                &mut seen_variations,
+                &mut neighbor_variations,
+            );
+
+            if neighbor_variations.is_empty() {
+                break;
+            }
+
+            match self
+                .evaluate_variation_batch(
+                    template_id,
+                    &neighbor_variations,
+                    best_score,
+                    max_drawdown_ratio,
+                    objective,
+                )
+                .await?
+            {
+                VariationOutcome::Improved(result) => {
+                    let score = Self::objective_score(&result, objective);
+                    let params_changed = result.parameters != current_params;
+                    best_score = score;
+                    current_params = result.parameters.clone();
+                    best_result = result;
+
+                    if !params_changed {
+                        break;
+                    }
+                }
+                VariationOutcome::NoChange => break,
+            }
+        }
+
+        Ok(best_result)
     }
 
     async fn load_baseline_parameters(
@@ -853,4 +942,58 @@ fn extract_top_ticker_gains(trades: &[Trade]) -> (Option<String>, Option<String>
         top_absolute.map(|(ticker, _)| ticker),
         top_relative.map(|(ticker, _)| ticker),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_result(
+        parameters: &[(&str, f64)],
+        sharpe_ratio: f64,
+        cagr: f64,
+        max_drawdown_ratio: f64,
+    ) -> OptimizationResult {
+        let mut params = HashMap::new();
+        for (key, value) in parameters {
+            params.insert((*key).to_string(), *value);
+        }
+
+        OptimizationResult {
+            parameters: params,
+            cagr,
+            sharpe_ratio,
+            total_return: 1_000.0,
+            max_drawdown: 100.0,
+            max_drawdown_ratio,
+            win_rate: 0.5,
+            total_trades: 50,
+            calmar_ratio: 1.0,
+        }
+    }
+
+    #[test]
+    fn select_refinement_starts_filters_by_drawdown_and_dedupes() {
+        let seed_results = vec![
+            make_result(&[("length", 5.0)], 0.6, 0.12, 0.10),
+            make_result(&[("length", 5.0)], 0.7, 0.11, 0.10),
+            make_result(&[("length", 10.0)], 1.4, 0.18, 0.40),
+            make_result(&[("length", 15.0)], 1.1, 0.16, 0.20),
+        ];
+
+        let selected = OptimizationEngine::select_refinement_starts(
+            seed_results,
+            0.30,
+            LocalOptimizationObjective::Sharpe,
+            3,
+        );
+
+        assert_eq!(
+            selected.len(),
+            2,
+            "expected two unique feasible refinement starts"
+        );
+        assert_eq!(selected[0].parameters.get("length"), Some(&15.0));
+        assert_eq!(selected[1].parameters.get("length"), Some(&5.0));
+    }
 }

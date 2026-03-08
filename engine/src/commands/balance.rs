@@ -3,7 +3,7 @@ use crate::config::require_setting_date;
 use crate::context::{AppContext, MarketDataFilters};
 use crate::data_context::TickerScope;
 use crate::database::Database;
-use crate::optimizer::parameter_signature;
+use crate::param_utils::parameter_signature;
 use anyhow::Result;
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
