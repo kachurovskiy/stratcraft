@@ -337,12 +337,98 @@ fn apply_cancellation(trade: &mut Trade, changed_at: DateTime<Utc>) {
     trade.set_exit_date(None, changed_at);
     trade.set_stop_loss_triggered(Some(false), changed_at);
     trade.set_pnl(None, changed_at);
+    mark_order_cancelled(trade, TradeOrderKind::Entry, changed_at);
+    mark_order_cancelled(trade, TradeOrderKind::Stop, changed_at);
+    mark_order_cancelled(trade, TradeOrderKind::Exit, changed_at);
 }
 
 enum TradeOrderKind {
     Entry,
     Stop,
     Exit,
+}
+
+fn mark_order_cancelled(trade: &mut Trade, kind: TradeOrderKind, changed_at: DateTime<Utc>) {
+    let (order_id, status) = match kind {
+        TradeOrderKind::Entry => (
+            trade.entry_order_id.clone(),
+            trade.entry_order_status.clone(),
+        ),
+        TradeOrderKind::Stop => (trade.stop_order_id.clone(), trade.stop_order_status.clone()),
+        TradeOrderKind::Exit => (trade.exit_order_id.clone(), trade.exit_order_status.clone()),
+    };
+
+    let status_ref = status.as_deref();
+    let should_mark = should_mark_order_cancelled(order_id.as_deref(), status_ref);
+    let should_backfill_timestamp = !should_mark && is_cancelled_status(status_ref);
+
+    if should_mark {
+        match kind {
+            TradeOrderKind::Entry => {
+                trade.set_entry_order_status(Some("cancelled".to_string()), changed_at);
+                trade.entry_order_status_updated_at = Some(changed_at);
+            }
+            TradeOrderKind::Stop => {
+                trade.set_stop_order_status(Some("cancelled".to_string()), changed_at);
+                trade.stop_order_status_updated_at = Some(changed_at);
+            }
+            TradeOrderKind::Exit => {
+                trade.set_exit_order_status(Some("cancelled".to_string()), changed_at);
+                trade.exit_order_status_updated_at = Some(changed_at);
+            }
+        }
+        return;
+    }
+
+    if should_backfill_timestamp {
+        match kind {
+            TradeOrderKind::Entry => {
+                if trade.entry_order_status_updated_at.is_none() {
+                    trade.entry_order_status_updated_at = Some(changed_at);
+                }
+            }
+            TradeOrderKind::Stop => {
+                if trade.stop_order_status_updated_at.is_none() {
+                    trade.stop_order_status_updated_at = Some(changed_at);
+                }
+            }
+            TradeOrderKind::Exit => {
+                if trade.exit_order_status_updated_at.is_none() {
+                    trade.exit_order_status_updated_at = Some(changed_at);
+                }
+            }
+        }
+    }
+}
+
+fn should_mark_order_cancelled(order_id: Option<&str>, status: Option<&str>) -> bool {
+    let has_order_id = order_id
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    if !has_order_id {
+        return false;
+    }
+    if is_filled_status(status) || is_cancelled_status(status) {
+        return false;
+    }
+    true
+}
+
+fn is_filled_status(value: Option<&str>) -> bool {
+    matches!(normalize_order_status(value).as_deref(), Some("filled"))
+}
+
+fn is_cancelled_status(value: Option<&str>) -> bool {
+    matches!(
+        normalize_order_status(value).as_deref(),
+        Some("cancelled" | "canceled")
+    )
+}
+
+fn normalize_order_status(value: Option<&str>) -> Option<String> {
+    value
+        .map(|status| status.trim().to_lowercase())
+        .filter(|status| !status.is_empty())
 }
 
 fn update_order_status(
