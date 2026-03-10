@@ -694,13 +694,13 @@ default_weighted_momentum|2022-03-05|AAA|long|qty=61|entry=4.78@2022-03-05|exit=
 default_weighted_momentum|2022-03-06|AAA|long|qty=61|entry=4.78@2022-03-06|exit=3.93@2022-04-03|pnl=-51.89|fee=0.1200|status=closed
 default_weighted_momentum|2022-04-14|BBB|short|qty=-90|entry=3.12@2022-04-14|exit=3.10@2022-06-04|pnl=1.94|fee=0.2561|status=closed
 default_weighted_momentum|2022-04-27|AAA|short|qty=-84|entry=3.52@2022-04-27|exit=3.31@2022-06-08|pnl=17.02|fee=0.2350|status=closed
-default_weighted_momentum|2022-04-29|CCC|short|qty=-103|entry=2.33@2022-04-29|exit=2.75@2022-05-31|pnl=-43.14|fee=0.2162|status=closed
-default_weighted_momentum|2022-04-29|DDD|short|qty=-122|entry=1.99@2022-04-29|exit=2.35@2022-05-22|pnl=-43.63|fee=0.1976|status=closed
-default_weighted_momentum|2022-04-29|EEE|short|qty=-142|entry=1.69@2022-04-29|exit=1.99@2022-05-14|pnl=-42.92|fee=0.1759|status=closed
-default_weighted_momentum|2022-05-15|EEE|short|qty=-162|entry=1.74@2022-05-15|exit=2.04@2022-05-17|pnl=-50.09|fee=0.1710|status=closed
-default_weighted_momentum|2022-05-18|EEE|short|qty=-158|entry=1.80@2022-05-18|exit=2.12@2022-05-21|pnl=-50.87|fee=0.1756|status=closed
-default_weighted_momentum|2022-05-22|EEE|short|qty=-148|entry=1.94@2022-05-22|exit=2.29@2022-05-26|pnl=-51.55|fee=0.1807|status=closed
-default_weighted_momentum|2022-05-23|DDD|short|qty=-128|entry=2.30@2022-05-23|exit=2.44@2022-05-31|pnl=-17.35|fee=0.1765|status=closed
+default_weighted_momentum|2022-04-30|CCC|short|qty=-124|entry=2.34@2022-04-30|exit=2.76@2022-05-31|pnl=-52.02|fee=0.2579|status=closed
+default_weighted_momentum|2022-04-30|DDD|short|qty=-149|entry=2.02@2022-04-30|exit=2.38@2022-05-23|pnl=-54.02|fee=0.2446|status=closed
+default_weighted_momentum|2022-04-30|EEE|short|qty=-174|entry=1.71@2022-04-30|exit=2.02@2022-05-16|pnl=-53.40|fee=0.2217|status=closed
+default_weighted_momentum|2022-05-17|EEE|short|qty=-160|entry=1.77@2022-05-17|exit=2.08@2022-05-19|pnl=-50.43|fee=0.1722|status=closed
+default_weighted_momentum|2022-05-20|EEE|short|qty=-153|entry=1.87@2022-05-20|exit=2.20@2022-05-23|pnl=-50.83|fee=0.1764|status=closed
+default_weighted_momentum|2022-05-24|DDD|short|qty=-126|entry=2.34@2022-05-24|exit=2.44@2022-05-31|pnl=-12.86|fee=0.1712|status=closed
+default_weighted_momentum|2022-05-24|EEE|short|qty=-143|entry=2.01@2022-05-24|exit=2.10@2022-05-27|pnl=-13.04|fee=0.1573|status=closed
 default_weighted_momentum|2022-05-27|EEE|long|qty=138|entry=2.09@2022-05-27|exit=1.08@2022-06-28|pnl=-139.38|fee=0.0746|status=closed
 default_weighted_momentum|2022-05-28|EEE|long|qty=137|entry=2.11@2022-05-28|exit=1.08@2022-06-28|pnl=-140.84|fee=0.0741|status=closed
 default_weighted_momentum|2022-05-29|EEE|long|qty=136|entry=2.12@2022-05-29|exit=1.08@2022-06-28|pnl=-141.56|fee=0.0735|status=closed
@@ -1118,6 +1118,7 @@ default_weighted_momentum|2022-11-24|EEE|long|qty=264|entry=1.10@2022-11-24|exit
 default_weighted_momentum|2022-11-26|EEE|long|qty=269|entry=1.07@2022-11-26|exit=1.07@-|pnl=668.13|fee=0.0000|status=active
 default_weighted_momentum|2022-11-27|EEE|long|qty=273|entry=1.05@2022-11-27|exit=1.05@-|pnl=683.44|fee=0.0000|status=active
 default_weighted_momentum|2022-11-28|CCC|long|qty=246|entry=1.07@2022-11-28|exit=1.07@-|pnl=985.21|fee=0.0000|status=active
+default_weighted_momentum|2022-11-28|EEE|long|qty=277|entry=1.03@2022-11-28|exit=1.03@-|pnl=699.05|fee=0.0000|status=active
 default_weighted_momentum|2022-11-29|CCC|long|qty=250|entry=1.05@2022-11-29|exit=1.05@-|pnl=1006.01|fee=0.0000|status=active
 default_weighted_momentum|2022-11-29|EEE|long|qty=280|entry=1.01@2022-11-29|exit=1.01@-|pnl=712.02|fee=0.0000|status=active
 default_weighted_momentum|2022-11-30|CCC|long|qty=254|entry=1.04@2022-11-30|exit=1.04@-|pnl=1024.83|fee=0.0000|status=active
@@ -1152,7 +1153,6 @@ default_weighted_momentum|2022-12-12|DDD|long|qty=264|entry=1.00@2022-12-12|exit
 default_weighted_momentum|2022-12-12|EEE|long|qty=248|entry=1.09@2022-12-12|exit=1.09@-|pnl=610.28|fee=0.0000|status=active
 default_weighted_momentum|2022-12-13|DDD|long|qty=270|entry=1.00@2022-12-13|exit=1.00@-|pnl=885.88|fee=0.0000|status=active
 default_weighted_momentum|2022-12-13|EEE|long|qty=245|entry=1.10@2022-12-13|exit=1.10@-|pnl=600.94|fee=0.0000|status=active
-default_weighted_momentum|2022-12-14|DDD|long|qty=274|entry=1.00@2022-12-14|exit=1.00@-|pnl=899.00|fee=0.0000|status=active
 default_weighted_momentum|2022-12-14|EEE|long|qty=242|entry=1.11@2022-12-14|exit=1.11@-|pnl=592.35|fee=0.0000|status=active
 default_weighted_momentum|2022-12-15|DDD|long|qty=278|entry=1.00@2022-12-15|exit=1.00@-|pnl=912.13|fee=0.0000|status=active
 default_weighted_momentum|2022-12-22|DDD|long|qty=271|entry=1.06@2022-12-22|exit=1.06@-|pnl=873.03|fee=0.0000|status=active

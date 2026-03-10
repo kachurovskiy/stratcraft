@@ -39,10 +39,10 @@ default_psar|2021-03-24|EEE|long|qty=308|entry=1.36@2021-03-24|exit=1.29@2021-03
 default_psar|2021-03-25|EEE|short|qty=-304|entry=1.36@2021-03-25|exit=1.44@2021-03-25|pnl=-24.23|fee=0.2184|status=closed
 default_psar|2021-03-26|EEE|long|qty=303|entry=1.36@2021-03-26|exit=1.28@2021-03-26|pnl=-23.96|fee=0.1936|status=closed
 default_psar|2021-03-27|AAA|long|qty=167|entry=2.65@2021-03-27|exit=2.50@2021-03-27|pnl=-25.80|fee=0.2084|status=closed
-default_psar|2021-03-27|EEE|short|qty=-301|entry=1.34@2021-03-27|exit=1.42@2021-03-27|pnl=-23.74|fee=0.2140|status=closed
+default_psar|2021-03-27|EEE|short|qty=-301|entry=1.35@2021-03-27|exit=1.42@2021-03-27|pnl=-23.78|fee=0.2143|status=closed
 default_psar|2021-03-28|EEE|long|qty=303|entry=1.34@2021-03-28|exit=1.26@2021-03-28|pnl=-23.61|fee=0.1907|status=closed
 default_psar|2021-03-28|SPY|long|qty=44|entry=10.06@2021-03-28|exit=9.50@2021-05-07|pnl=-24.95|fee=0.2090|status=closed
-default_psar|2021-03-29|EEE|short|qty=-303|entry=1.32@2021-03-29|exit=1.40@2021-03-29|pnl=-23.45|fee=0.2114|status=closed
+default_psar|2021-03-29|EEE|short|qty=-303|entry=1.34@2021-03-29|exit=1.42@2021-03-29|pnl=-23.78|fee=0.2144|status=closed
 default_psar|2021-03-30|SPY|long|qty=44|entry=10.06@2021-03-30|exit=9.50@2021-05-07|pnl=-25.06|fee=0.2090|status=closed
 default_psar|2021-04-01|BBB|long|qty=198|entry=2.23@2021-04-01|exit=2.10@2021-04-01|pnl=-25.70|fee=0.2077|status=closed
 default_psar|2021-04-01|SPY|long|qty=44|entry=10.05@2021-04-01|exit=9.48@2021-05-08|pnl=-25.11|fee=0.2087|status=closed
@@ -95,7 +95,7 @@ default_psar|2021-05-10|DDD|long|qty=301|entry=1.46@2021-05-10|exit=1.38@2021-05
 default_psar|2021-05-10|SPY|long|qty=45|entry=9.80@2021-05-10|exit=9.24@2022-07-30|pnl=-25.72|fee=0.2078|status=closed
 default_psar|2021-05-12|BBB|long|qty=245|entry=1.80@2021-05-12|exit=1.70@2021-05-12|pnl=-25.74|fee=0.2080|status=closed
 default_psar|2021-05-13|CCC|long|qty=273|entry=1.48@2021-05-13|exit=1.40@2021-05-13|pnl=-23.61|fee=0.1907|status=closed
-default_psar|2021-05-14|CCC|short|qty=-272|entry=1.49@2021-05-14|exit=1.57@2021-05-14|pnl=-23.76|fee=0.2141|status=closed
+default_psar|2021-05-14|CCC|short|qty=-272|entry=1.49@2021-05-14|exit=1.58@2021-05-14|pnl=-23.79|fee=0.2145|status=closed
 default_psar|2021-05-15|CCC|long|qty=273|entry=1.51@2021-05-15|exit=1.43@2021-05-15|pnl=-24.08|fee=0.1945|status=closed
 default_psar|2021-05-16|BBB|short|qty=-231|entry=2.00@2021-05-16|exit=2.12@2021-05-16|pnl=-27.15|fee=0.2448|status=closed
 default_psar|2021-05-17|BBB|long|qty=231|entry=1.91@2021-05-17|exit=1.80@2021-05-17|pnl=-25.76|fee=0.2081|status=closed
@@ -240,7 +240,7 @@ default_psar|2021-11-10|AAA|short|qty=-254|entry=1.69@2021-11-10|exit=1.79@2021-
 default_psar|2021-11-10|SPY|long|qty=45|entry=9.79@2021-11-10|exit=9.23@2022-07-30|pnl=-25.38|fee=0.2077|status=closed
 default_psar|2021-11-12|SPY|long|qty=45|entry=9.80@2021-11-12|exit=9.24@2022-07-30|pnl=-25.72|fee=0.2078|status=closed
 default_psar|2021-11-13|BBB|long|qty=297|entry=1.36@2021-11-13|exit=1.28@2021-11-13|pnl=-23.55|fee=0.1902|status=closed
-default_psar|2021-11-14|BBB|short|qty=-299|entry=1.34@2021-11-14|exit=1.42@2021-11-14|pnl=-23.49|fee=0.2117|status=closed
+default_psar|2021-11-14|BBB|short|qty=-299|entry=1.35@2021-11-14|exit=1.43@2021-11-14|pnl=-23.77|fee=0.2143|status=closed
 default_psar|2021-11-14|CCC|long|qty=358|entry=1.23@2021-11-14|exit=1.16@2021-11-14|pnl=-25.66|fee=0.2073|status=closed
 default_psar|2021-11-15|AAA|long|qty=270|entry=1.53@2021-11-15|exit=1.45@2021-11-15|pnl=-24.15|fee=0.1951|status=closed
 default_psar|2021-11-16|AAA|short|qty=-271|entry=1.51@2021-11-16|exit=1.60@2021-11-16|pnl=-24.00|fee=0.2164|status=closed
@@ -279,7 +279,7 @@ default_psar|2021-12-23|DDD|long|qty=374|entry=1.18@2021-12-23|exit=1.11@2021-12
 default_psar|2021-12-24|AAA|short|qty=-270|entry=1.59@2021-12-24|exit=1.68@2021-12-24|pnl=-25.22|fee=0.2273|status=closed
 default_psar|2021-12-24|BBB|short|qty=-290|entry=1.48@2021-12-24|exit=1.57@2021-12-24|pnl=-25.25|fee=0.2276|status=closed
 default_psar|2021-12-24|CCC|long|qty=312|entry=1.29@2021-12-24|exit=1.22@2021-12-24|pnl=-23.52|fee=0.1900|status=closed
-default_psar|2021-12-25|CCC|short|qty=-314|entry=1.28@2021-12-25|exit=1.35@2021-12-25|pnl=-23.58|fee=0.2126|status=closed
+default_psar|2021-12-25|CCC|short|qty=-314|entry=1.29@2021-12-25|exit=1.37@2021-12-25|pnl=-23.83|fee=0.2148|status=closed
 default_psar|2021-12-28|AAA|long|qty=275|entry=1.55@2021-12-28|exit=1.46@2021-12-28|pnl=-24.83|fee=0.2006|status=closed
 default_psar|2021-12-28|BBB|long|qty=298|entry=1.42@2021-12-28|exit=1.34@2021-12-28|pnl=-24.74|fee=0.1999|status=closed
 default_psar|2021-12-29|BBB|short|qty=-295|entry=1.42@2021-12-29|exit=1.51@2021-12-29|pnl=-24.63|fee=0.2220|status=closed

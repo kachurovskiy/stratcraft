@@ -41,8 +41,8 @@ default_adx|2021-05-07|EEE|short|qty=-556|entry=1.18@2021-05-07|exit=1.42@2021-0
 default_adx|2021-05-08|CCC|short|qty=-340|entry=1.55@2021-05-08|exit=1.87@2021-05-08|pnl=-107.88|fee=0.3179|status=closed
 default_adx|2021-05-08|EEE|short|qty=-542|entry=1.20@2021-05-08|exit=1.44@2021-05-08|pnl=-130.73|fee=0.3898|status=closed
 default_adx|2021-05-09|CCC|short|qty=-343|entry=1.53@2021-05-09|exit=1.85@2021-05-09|pnl=-107.42|fee=0.3166|status=closed
-default_adx|2021-05-10|CCC|short|qty=-346|entry=1.51@2021-05-10|exit=1.82@2021-05-10|pnl=-106.65|fee=0.3143|status=closed
-default_adx|2021-05-11|CCC|short|qty=-349|entry=1.49@2021-05-11|exit=1.79@2021-05-11|pnl=-106.24|fee=0.3131|status=closed
+default_adx|2021-05-10|CCC|short|qty=-346|entry=1.52@2021-05-10|exit=1.83@2021-05-10|pnl=-107.31|fee=0.3162|status=closed
+default_adx|2021-05-11|CCC|short|qty=-349|entry=1.51@2021-05-11|exit=1.81@2021-05-11|pnl=-107.39|fee=0.3165|status=closed
 default_adx|2021-05-11|DDD|long|qty=396|entry=1.44@2021-05-11|exit=1.42@2021-07-10|pnl=-10.98|fee=0.2803|status=closed
 default_adx|2021-05-12|DDD|long|qty=393|entry=1.45@2021-05-12|exit=1.44@2021-07-11|pnl=-6.38|fee=0.2824|status=closed
 default_adx|2021-05-14|BBB|short|qty=-307|entry=1.93@2021-05-14|exit=2.10@2021-06-02|pnl=-51.54|fee=0.4223|status=closed
@@ -90,9 +90,9 @@ default_adx|2021-07-27|AAA|long|qty=308|entry=1.86@2021-07-27|exit=1.98@2021-09-
 default_adx|2021-07-27|DDD|short|qty=-366|entry=1.44@2021-07-27|exit=1.73@2021-07-27|pnl=-107.69|fee=0.3174|status=closed
 default_adx|2021-07-27|EEE|long|qty=431|entry=1.33@2021-07-27|exit=1.06@2021-08-08|pnl=-115.82|fee=0.2278|status=closed
 default_adx|2021-07-28|CCC|long|qty=365|entry=1.57@2021-07-28|exit=1.25@2021-08-11|pnl=-115.88|fee=0.2279|status=closed
-default_adx|2021-07-28|DDD|short|qty=-371|entry=1.41@2021-07-28|exit=1.70@2021-07-28|pnl=-107.03|fee=0.3154|status=closed
+default_adx|2021-07-28|DDD|short|qty=-371|entry=1.41@2021-07-28|exit=1.70@2021-07-28|pnl=-107.09|fee=0.3156|status=closed
 default_adx|2021-07-29|CCC|long|qty=361|entry=1.58@2021-07-29|exit=1.26@2021-08-10|pnl=-115.77|fee=0.2277|status=closed
-default_adx|2021-07-29|DDD|short|qty=-377|entry=1.39@2021-07-29|exit=1.67@2021-07-29|pnl=-106.92|fee=0.3151|status=closed
+default_adx|2021-07-29|DDD|short|qty=-377|entry=1.39@2021-07-29|exit=1.68@2021-07-29|pnl=-107.19|fee=0.3159|status=closed
 default_adx|2021-07-30|CCC|long|qty=358|entry=1.60@2021-07-30|exit=1.27@2021-08-10|pnl=-115.81|fee=0.2277|status=closed
 default_adx|2021-08-06|BBB|long|qty=326|entry=1.74@2021-08-06|exit=1.39@2021-08-22|pnl=-115.17|fee=0.2265|status=closed
 default_adx|2021-08-07|BBB|long|qty=322|entry=1.76@2021-08-07|exit=1.40@2021-08-22|pnl=-114.79|fee=0.2257|status=closed
@@ -145,8 +145,8 @@ default_adx|2021-12-15|AAA|long|qty=359|entry=1.59@2021-12-15|exit=5.08@2022-02-
 default_adx|2021-12-15|BBB|long|qty=391|entry=1.46@2021-12-15|exit=4.33@2022-02-13|pnl=1123.11|fee=0.8474|status=closed
 default_adx|2021-12-17|EEE|short|qty=-519|entry=1.10@2021-12-17|exit=1.32@2021-12-17|pnl=-116.61|fee=0.3437|status=closed
 default_adx|2021-12-18|EEE|long|qty=528|entry=1.08@2021-12-18|exit=2.45@2022-02-16|pnl=724.36|fee=0.6479|status=closed
-default_adx|2021-12-23|CCC|short|qty=-398|entry=1.31@2021-12-23|exit=1.57@2021-12-23|pnl=-106.18|fee=0.3129|status=closed
-default_adx|2021-12-24|CCC|short|qty=-402|entry=1.29@2021-12-24|exit=1.55@2021-12-24|pnl=-105.81|fee=0.3118|status=closed
+default_adx|2021-12-23|CCC|short|qty=-398|entry=1.32@2021-12-23|exit=1.59@2021-12-23|pnl=-107.29|fee=0.3162|status=closed
+default_adx|2021-12-24|CCC|short|qty=-402|entry=1.31@2021-12-24|exit=1.57@2021-12-24|pnl=-107.13|fee=0.3157|status=closed
 default_adx|2021-12-26|DDD|short|qty=-474|entry=1.30@2021-12-26|exit=1.33@2021-12-27|pnl=-14.13|fee=0.3212|status=closed
 default_adx|2021-12-27|DDD|long|qty=482|entry=1.18@2021-12-27|exit=2.87@2022-02-25|pnl=812.58|fee=0.6921|status=closed
 default_adx|2021-12-27|SPY|short|qty=-57|entry=10.12@2021-12-27|exit=11.07@2022-01-03|pnl=-54.61|fee=0.3518|status=closed
@@ -275,5 +275,5 @@ default_adx|2022-11-29|DDD|long|qty=519|entry=1.10@2022-11-29|exit=1.10@-|pnl=16
 default_adx|2022-12-06|SPY|short|qty=-57|entry=9.98@2022-12-06|exit=10.15@2022-12-20|pnl=-10.45|fee=0.3560|status=closed
 default_adx|2022-12-09|CCC|long|qty=493|entry=1.16@2022-12-09|exit=1.16@-|pnl=1931.44|fee=0.0000|status=active
 default_adx|2022-12-11|BBB|long|qty=496|entry=1.15@2022-12-11|exit=1.15@-|pnl=2250.78|fee=0.0000|status=active
-default_adx|2022-12-19|AAA|short|qty=-455|entry=1.15@2022-12-19|exit=5.68@2022-12-25|pnl=-2062.88|fee=1.4205|status=closed
+default_adx|2022-12-19|AAA|short|qty=-455|entry=1.15@2022-12-19|exit=5.68@2022-12-25|pnl=-2062.59|fee=1.4205|status=closed
 default_adx|2022-12-24|DDD|long|qty=532|entry=1.07@2022-12-24|exit=1.07@-|pnl=1707.48|fee=0.0000|status=active

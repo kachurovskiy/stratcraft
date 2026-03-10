@@ -993,7 +993,21 @@ impl Engine {
             }
         }
         if !is_limit_entry {
-            price = self.apply_entry_slippage_with_candle(price, false, next_candle);
+            let limit_price = self.market_order_limit_price(planning_close, true);
+            let Some(capped_price) =
+                self.capped_market_entry_price(planning_close, price, next_candle, false)
+            else {
+                return EntrySignalOutcome::Skipped {
+                    reason: "market_order_price_cap_exceeded",
+                    details: limit_price.map(|cap| {
+                        format!(
+                            "reference {:.2}, cap {:.2}, low {:.2}",
+                            planning_close, cap, next_candle.low
+                        )
+                    }),
+                };
+            };
+            price = capped_price;
         }
         debug_assert!(self.entry_price_supported(guard_price));
 
@@ -1188,7 +1202,21 @@ impl Engine {
                 details: None,
             };
         }
-        price = self.apply_entry_slippage_with_candle(price, true, next_candle);
+        let limit_price = self.market_order_limit_price(planning_close, false);
+        let Some(capped_price) =
+            self.capped_market_entry_price(planning_close, price, next_candle, true)
+        else {
+            return EntrySignalOutcome::Skipped {
+                reason: "market_order_price_cap_exceeded",
+                details: limit_price.map(|floor| {
+                    format!(
+                        "reference {:.2}, floor {:.2}, high {:.2}",
+                        planning_close, floor, next_candle.high
+                    )
+                }),
+            };
+        };
+        price = capped_price;
         debug_assert!(self.entry_price_supported(guard_price));
 
         let realized_vol = if (self.config.position_sizing.mode == 2
@@ -1613,6 +1641,64 @@ impl Engine {
             price * (1.0 + slippage_rate)
         } else {
             price * (1.0 - slippage_rate)
+        }
+    }
+
+    fn market_order_limit_price(&self, reference_price: f64, is_buy: bool) -> Option<f64> {
+        let cap_ratio = self.runtime_settings.market_order_price_cap_ratio;
+        if !cap_ratio.is_finite() || cap_ratio <= 0.0 {
+            return None;
+        }
+        if !reference_price.is_finite() || reference_price <= 0.0 {
+            return None;
+        }
+
+        let multiplier = if is_buy {
+            1.0 + cap_ratio
+        } else {
+            1.0 - cap_ratio
+        };
+        if !multiplier.is_finite() || multiplier <= 0.0 {
+            return None;
+        }
+
+        let limit_price = reference_price * multiplier;
+        if limit_price.is_finite() && limit_price > 0.0 {
+            Some(limit_price)
+        } else {
+            None
+        }
+    }
+
+    fn capped_market_entry_price(
+        &self,
+        reference_price: f64,
+        requested_price: f64,
+        execution_candle: &Candle,
+        is_short: bool,
+    ) -> Option<f64> {
+        let slipped_price =
+            self.apply_entry_slippage_with_candle(requested_price, is_short, execution_candle);
+        let Some(limit_price) = self.market_order_limit_price(reference_price, !is_short) else {
+            return Some(slipped_price);
+        };
+
+        if is_short {
+            if execution_candle.high + PRICE_EPSILON < limit_price {
+                return None;
+            }
+            Some(Self::clamp_price_to_candle_bounds(
+                slipped_price.max(limit_price),
+                execution_candle,
+            ))
+        } else {
+            if execution_candle.low - PRICE_EPSILON > limit_price {
+                return None;
+            }
+            Some(Self::clamp_price_to_candle_bounds(
+                slipped_price.min(limit_price),
+                execution_candle,
+            ))
         }
     }
 
@@ -2554,6 +2640,7 @@ mod tests {
             trade_close_fee_rate: 0.0005,
             trade_slippage_rate: 0.003,
             short_borrow_fee_annual_rate: 0.003,
+            market_order_price_cap_ratio: 0.08,
             trade_entry_price_min: 0.10,
             trade_entry_price_max: 1000.0,
             minimum_dollar_volume_for_entry: 150_000.0,
@@ -2963,6 +3050,76 @@ mod tests {
         ));
         assert!(active_trades.is_empty());
         assert!((cash - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_execute_buy_signal_skips_when_market_order_price_cap_is_not_reached() {
+        let mut settings = test_runtime_settings();
+        settings.trade_slippage_rate = 0.0;
+        let engine = Engine::new(settings);
+        let ticker = "MCAP".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 120.0]);
+        let entry_index = history_offset + 1;
+        candles[entry_index].high = 125.0;
+        candles[entry_index].low = 109.0;
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut cash = engine.config.initial_capital;
+        let mut active_trades = Vec::new();
+
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            refs.get(entry_index).copied(),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(
+            outcome,
+            EntrySignalOutcome::Skipped {
+                reason: "market_order_price_cap_exceeded",
+                ..
+            }
+        ));
+        assert!(active_trades.is_empty());
+        assert!((cash - engine.config.initial_capital).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_execute_buy_signal_caps_market_entry_price() {
+        let mut settings = test_runtime_settings();
+        settings.trade_slippage_rate = 0.0;
+        let engine = Engine::new(settings);
+        let ticker = "MCAPF".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 120.0]);
+        let entry_index = history_offset + 1;
+        candles[entry_index].high = 125.0;
+        candles[entry_index].low = 107.0;
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut cash = engine.config.initial_capital;
+        let mut active_trades = Vec::new();
+
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            refs.get(entry_index).copied(),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(outcome, EntrySignalOutcome::Executed));
+        assert_eq!(active_trades.len(), 1);
+        assert!((active_trades[0].price - 108.0).abs() < 1e-9);
     }
 
     #[test]
@@ -4547,6 +4704,39 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_short_entry_caps_market_entry_price() {
+        let mut settings = test_runtime_settings();
+        settings.trade_slippage_rate = 0.0;
+        let mut engine = Engine::new(settings);
+        engine.config.allow_short_selling = true;
+        let ticker = "SCAP".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 80.0]);
+        let entry_index = history_offset + 1;
+        candles[entry_index].high = 95.0;
+        candles[entry_index].low = 75.0;
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut active_trades = Vec::new();
+        let mut cash = engine.config.initial_capital;
+
+        let outcome = engine.execute_short_entry(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            Some(refs[entry_index]),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(outcome, EntrySignalOutcome::Executed));
+        assert_eq!(active_trades.len(), 1);
+        assert!((active_trades[0].price - 92.0).abs() < 1e-9);
+    }
+
+    #[test]
     fn test_close_short_positions_realizes_pnl() {
         let mut engine = Engine::new(test_runtime_settings());
         engine.config.allow_short_selling = true;
@@ -4728,9 +4918,11 @@ mod tests {
 
         let atr_components = [20.0, 12.0, 10.0];
         let expected_atr = atr_components.iter().sum::<f64>() / atr_components.len() as f64;
+        let signal_candle = &candles[history_offset + 2];
         let entry_candle = &candles[history_offset + 3];
-        let entry_price =
-            engine.apply_entry_slippage_with_candle(entry_candle.open, false, entry_candle);
+        let entry_price = engine
+            .capped_market_entry_price(signal_candle.close, entry_candle.open, entry_candle, false)
+            .expect("expected capped market entry");
         let expected_stop = entry_price - expected_atr;
         assert!(
             (trade.stop_loss.unwrap() - expected_stop).abs() < 1e-6,

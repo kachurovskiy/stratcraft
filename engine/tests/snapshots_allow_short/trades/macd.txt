@@ -7,7 +7,7 @@ default_macd|2021-03-13|CCC|long|qty=215|entry=2.08@2021-03-13|exit=1.66@2021-03
 default_macd|2021-03-16|DDD|long|qty=266|entry=1.70@2021-03-16|exit=1.35@2021-03-31|pnl=-91.47|fee=0.1799|status=closed
 default_macd|2021-03-27|AAA|long|qty=174|entry=2.65@2021-03-27|exit=2.11@2021-04-28|pnl=-93.48|fee=0.1838|status=closed
 default_macd|2021-04-01|BBB|long|qty=207|entry=2.23@2021-04-01|exit=1.72@2021-05-04|pnl=-105.59|fee=0.1777|status=closed
-default_macd|2021-04-02|EEE|short|qty=-334|entry=1.25@2021-04-02|exit=1.51@2021-04-02|pnl=-85.38|fee=0.2516|status=closed
+default_macd|2021-04-02|EEE|short|qty=-334|entry=1.27@2021-04-02|exit=1.53@2021-04-02|pnl=-86.59|fee=0.2552|status=closed
 default_macd|2021-04-06|CCC|long|qty=247|entry=1.86@2021-04-06|exit=1.49@2021-04-18|pnl=-93.33|fee=0.1835|status=closed
 default_macd|2021-04-10|DDD|long|qty=298|entry=1.55@2021-04-10|exit=1.23@2021-04-23|pnl=-93.38|fee=0.1836|status=closed
 default_macd|2021-04-14|EEE|long|qty=361|entry=1.28@2021-04-14|exit=1.02@2021-04-29|pnl=-93.38|fee=0.1836|status=closed
