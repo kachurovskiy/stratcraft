@@ -141,8 +141,11 @@ export const viewHelpers = {
   formatRateAsPercent(value: number) {
     return percentFormatter.format(value);
   },
-  formatPercentAsPercent(value: number) {
-    return `${value.toFixed(2)}%`;
+  formatPercentAsPercent(value: number | null | undefined) {
+    const numericValue = typeof value === 'number' ? value : null;
+    return numericValue !== null && Number.isFinite(numericValue)
+      ? `${numericValue.toFixed(2)}%`
+      : 'N/A';
   },
   formatPnlPercent(pnl: number, quantity: number, price: number) {
     if (!pnl || !quantity || !price) return 'N/A';
