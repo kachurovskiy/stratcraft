@@ -546,7 +546,7 @@ fn update_mark_to_market_pnl(
     trade: &mut Trade,
     last_close_by_ticker: &HashMap<String, f64>,
 ) -> bool {
-    if !matches!(trade.status, TradeStatus::Pending | TradeStatus::Active) {
+    if trade.status != TradeStatus::Active {
         return false;
     }
 
@@ -749,5 +749,16 @@ mod tests {
             detect_renamed_ticker(&trade, &positions, &None, &None, &None),
             Some("META".to_string())
         );
+    }
+
+    #[test]
+    fn update_mark_to_market_pnl_skips_pending_trades() {
+        let mut trade = sample_trade("AAA", 10, 100.0);
+        let prices = HashMap::from([(String::from("AAA"), 102.5)]);
+
+        let changed = update_mark_to_market_pnl(&mut trade, &prices);
+
+        assert!(!changed);
+        assert_eq!(trade.pnl, None);
     }
 }
