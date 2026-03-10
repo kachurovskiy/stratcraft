@@ -332,6 +332,14 @@ fn apply_closure(trade: &mut Trade, evaluation: &OrderEvaluation, is_stop: bool)
 }
 
 fn apply_cancellation(trade: &mut Trade, changed_at: DateTime<Utc>) {
+    if trade.status == TradeStatus::Pending {
+        if let Some(cancel_after) = trade.entry_cancel_after {
+            let expected_date = normalize_trade_date(cancel_after);
+            if trade.date != expected_date {
+                trade.set_date(expected_date, changed_at);
+            }
+        }
+    }
     trade.set_status(TradeStatus::Cancelled, changed_at);
     trade.set_exit_price(None, changed_at);
     trade.set_exit_date(None, changed_at);
@@ -846,5 +854,29 @@ mod tests {
 
         assert!(!changed);
         assert_eq!(trade.pnl, None);
+    }
+
+    #[test]
+    fn apply_cancellation_updates_date_from_entry_cancel_after() {
+        let mut trade = sample_trade("AAA", 10, 100.0);
+        trade.entry_cancel_after = Some(
+            Utc.with_ymd_and_hms(2026, 3, 9, 20, 0, 0)
+                .single()
+                .expect("valid cancel-after"),
+        );
+
+        let changed_at = Utc
+            .with_ymd_and_hms(2026, 3, 10, 5, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        apply_cancellation(&mut trade, changed_at);
+
+        assert_eq!(
+            trade.date,
+            Utc.with_ymd_and_hms(2026, 3, 9, 0, 0, 0)
+                .single()
+                .expect("valid date")
+        );
+        assert_eq!(trade.status, TradeStatus::Cancelled);
     }
 }
