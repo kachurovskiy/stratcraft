@@ -74,7 +74,6 @@ const SLIPPAGE_DEFAULT = 0.003;
 const SAMPLE_DAY_LIMIT = 5;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const SIGNAL_SKIP_LOOKBACK_DAYS = 4;
 
 export const BACKTEST_SCOPE_META: Record<BacktestScope, { label: string; badge: string }> = {
   validation: { label: 'Validation tickers', badge: 'bg-warning text-dark' },
@@ -403,21 +402,14 @@ const buildSignalSkipIndex = (skips: AccountSignalSkipRow[]): Map<string, Accoun
   return index;
 };
 
-const buildTrailingDateKeys = (value: Date, lookbackDays: number): string[] => {
-  const keys: string[] = [];
-  for (let offset = 0; offset <= lookbackDays; offset += 1) {
-    keys.push(toDateKey(new Date(value.getTime() - offset * ONE_DAY_MS)));
-  }
-  return keys;
-};
-
 const matchSignalSkip = (
   trade: Trade,
   source: string,
   index: Map<string, AccountSignalSkipRow[]>
 ): AccountSignalSkipRow | null => {
   const action = trade.quantity < 0 ? 'sell' : 'buy';
-  const dateKeys = buildTrailingDateKeys(trade.date, SIGNAL_SKIP_LOOKBACK_DAYS);
+  const tradeDate = trade.date;
+  const dateKeys = [toDateKey(tradeDate), toDateKey(new Date(tradeDate.getTime() - ONE_DAY_MS))];
   for (const dateKey of dateKeys) {
     const key = `${trade.ticker}|${action}|${source}|${dateKey}`;
     const matches = index.get(key);
