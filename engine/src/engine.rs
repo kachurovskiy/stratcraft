@@ -983,6 +983,13 @@ impl Engine {
         if self.config.buy_discount_ratio > 0.0 {
             let discounted_price = planning_close * (1.0 - self.config.buy_discount_ratio);
             if next_candle.low <= discounted_price {
+                let (filled, details) = self.should_fill_limit_buy(discounted_price, next_candle);
+                if !filled {
+                    return EntrySignalOutcome::Skipped {
+                        reason: "limit_not_filled",
+                        details,
+                    };
+                }
                 price = next_candle.open.min(discounted_price);
                 is_limit_entry = true;
                 sizing_price = discounted_price;
@@ -1701,6 +1708,65 @@ impl Engine {
                 execution_candle,
             ))
         }
+    }
+
+    fn should_fill_limit_buy(
+        &self,
+        limit_price: f64,
+        execution_candle: &Candle,
+    ) -> (bool, Option<String>) {
+        if !limit_price.is_finite() || limit_price <= 0.0 {
+            return (false, Some("invalid_limit_price".to_string()));
+        }
+        if execution_candle.low - PRICE_EPSILON > limit_price {
+            return (
+                false,
+                Some(format!(
+                    "low {:.2} above limit {:.2}",
+                    execution_candle.low, limit_price
+                )),
+            );
+        }
+        if execution_candle.volume_shares <= 0 {
+            return (false, Some("zero_volume".to_string()));
+        }
+
+        // Heuristic: balance how deep the low traded through the limit with
+        // current-day liquidity relative to the minimum volume requirement.
+        let min_volume = self.runtime_settings.minimum_dollar_volume_for_entry;
+        let mut dollar_volume = execution_candle.high * execution_candle.volume_shares as f64;
+        if !dollar_volume.is_finite() || dollar_volume < 0.0 {
+            dollar_volume = 0.0;
+        }
+        let volume_ratio = if min_volume > 0.0 {
+            dollar_volume / min_volume
+        } else {
+            1.0
+        };
+        let mut volume_score = (volume_ratio / 2.0).clamp(0.0, 1.0);
+        if !volume_score.is_finite() {
+            volume_score = 0.0;
+        }
+
+        let mut penetration_ratio = (limit_price - execution_candle.low) / limit_price;
+        if !penetration_ratio.is_finite() {
+            penetration_ratio = 0.0;
+        }
+        let mut penetration_score = (penetration_ratio / 0.005).clamp(0.0, 1.0);
+        if execution_candle.open <= limit_price + PRICE_EPSILON {
+            penetration_score = penetration_score.max(0.5);
+        }
+
+        let fill_score = (penetration_score + volume_score) / 2.0;
+        let filled = fill_score >= 0.5;
+        let details = Some(format!(
+            "fill_score {:.2}, penetration {:.3}%, volume_ratio {:.2}",
+            fill_score,
+            penetration_ratio * 100.0,
+            volume_ratio
+        ));
+
+        (filled, details)
     }
 
     fn apply_entry_slippage_with_candle(&self, price: f64, is_short: bool, candle: &Candle) -> f64 {
@@ -3003,6 +3069,47 @@ mod tests {
             (trade.price - slippage_entry).abs() > 1e-6,
             "limit entry should not include slippage"
         );
+    }
+
+    #[test]
+    fn test_limit_buy_skips_when_fill_unlikely() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.buy_discount_ratio = 0.01;
+
+        let ticker = "LIMF".to_string();
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 101.0]);
+        let limit_price = candles[history_offset].close * (1.0 - engine.config.buy_discount_ratio);
+        let exec = &mut candles[history_offset + 1];
+        exec.open = limit_price + 0.5;
+        exec.high = exec.open;
+        exec.low = limit_price - limit_price * 0.0005;
+        exec.close = exec.open;
+        exec.unadjusted_close = Some(exec.close);
+        exec.volume_shares = 1_000;
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut active_trades = Vec::new();
+        let mut cash = engine.config.initial_capital;
+
+        let outcome = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            Some(refs[history_offset + 1]),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        match outcome {
+            EntrySignalOutcome::Skipped { reason, .. } => {
+                assert_eq!(reason, "limit_not_filled");
+            }
+            _ => panic!("expected limit_not_filled"),
+        }
+        assert!(active_trades.is_empty());
     }
 
     #[test]
