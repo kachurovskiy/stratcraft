@@ -10,6 +10,7 @@ import { SystemLogsRepo } from './repos/SystemLogsRepo';
 import { TemplatesRepo } from './repos/TemplatesRepo';
 import { AccountOperationsRepo } from './repos/AccountOperationsRepo';
 import { BacktestCacheRepo } from './repos/BacktestCacheRepo';
+import { BacktestBestParamsRepo } from './repos/BacktestBestParamsRepo';
 import { BacktestResultsRepo } from './repos/BacktestResultsRepo';
 import { CandlesRepo } from './repos/CandlesRepo';
 import { LightgbmModelsRepo } from './repos/LightgbmModelsRepo';
@@ -70,6 +71,7 @@ export class Database {
   readonly accountSignalSkips: AccountSignalSkipsRepo;
   readonly backtestResults: BacktestResultsRepo;
   readonly backtestCache: BacktestCacheRepo;
+  readonly backtestBestParams: BacktestBestParamsRepo;
   readonly remoteOptimizerJobs: RemoteOptimizerJobsRepo;
   readonly lightgbmModels: LightgbmModelsRepo;
 
@@ -100,6 +102,7 @@ export class Database {
     this.accountSignalSkips = new AccountSignalSkipsRepo(this.core);
     this.backtestResults = new BacktestResultsRepo(this.core);
     this.backtestCache = new BacktestCacheRepo(this.core, this.settings);
+    this.backtestBestParams = new BacktestBestParamsRepo(this.core);
     this.remoteOptimizerJobs = new RemoteOptimizerJobsRepo(this.core);
     this.lightgbmModels = new LightgbmModelsRepo(this.core);
 

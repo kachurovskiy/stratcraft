@@ -1221,7 +1221,7 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
 
     const safeTemplate: StrategyTemplate = template;
 
-    let parameterSource: 'url' | 'best' | 'default' = 'default';
+    let parameterSource: 'url' | 'best' | 'saved' | 'default' = 'default';
     let initialParameters: Record<string, any> = {};
     let bestBacktestSummary: {
       sharpeRatio: number | null;
@@ -1270,6 +1270,12 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
         hasWinRate: typeof best.winRate === 'number',
         hasTotalTrades: typeof best.totalTrades === 'number'
       };
+    } else {
+      const savedBestParams = await req.db.backtestBestParams.getSavedBestParams(safeTemplate.id);
+      if (savedBestParams && typeof savedBestParams === 'object' && !Array.isArray(savedBestParams)) {
+        initialParameters = { ...savedBestParams };
+        parameterSource = 'saved';
+      }
     }
 
     if (Object.keys(initialParameters).length === 0) {
@@ -1310,6 +1316,8 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
       prefillNotice = 'Parameters pre-filled from shared configuration.';
     } else if (parameterSource === 'best' && bestBacktestSummary) {
       prefillNotice = 'Parameters pre-filled from the best known backtest for this template.';
+    } else if (parameterSource === 'saved') {
+      prefillNotice = 'Parameters pre-filled from the saved best params snapshot.';
     } else {
       prefillNotice = 'No optimized parameters found; using template defaults.';
     }

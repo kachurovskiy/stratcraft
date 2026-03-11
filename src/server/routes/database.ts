@@ -727,6 +727,38 @@ router.post('/backtest-cache/import', requireAuth, requireAdmin, upload.single('
   }
 });
 
+router.post('/backtest-best-params/snapshot', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const templateIds = await req.db.templates.getAllTemplateIds();
+    if (templateIds.length === 0) {
+      return res.redirect('/admin/database?error=No enabled templates available to snapshot');
+    }
+
+    const bestByTemplate = await req.db.backtestCache.getBestParamsByTemplateIds(templateIds);
+    const entries = Object.entries(bestByTemplate).map(([templateId, best]) => ({
+      templateId,
+      parameters: best.parameters
+    }));
+
+    const { saved, skipped } = await req.db.backtestBestParams.upsertSavedBestParamsBatch(entries);
+    const missingCount = Math.max(0, templateIds.length - entries.length);
+    const totalSkipped = skipped + missingCount;
+
+    const parts = [`Saved best params for ${saved} template${saved === 1 ? '' : 's'}`];
+    if (totalSkipped > 0) {
+      parts.push(
+        `Skipped ${totalSkipped} template${totalSkipped === 1 ? '' : 's'} without eligible cache entries`
+      );
+    }
+    const message = parts.join('. ');
+    res.redirect(`/admin/database?success=${encodeURIComponent(message)}`);
+  } catch (error) {
+    console.error('Error saving best params snapshot:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to save best params snapshot';
+    res.redirect(`/admin/database?error=${encodeURIComponent(errorMessage)}`);
+  }
+});
+
 // Clear all backtest cache entries (admin only)
 router.post('/clear-backtest-cache', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {

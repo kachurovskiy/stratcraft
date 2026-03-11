@@ -155,22 +155,31 @@ export class StrategyRegistry {
    */
   private async getLocalBestMergedParamsOrNull(template: StrategyTemplate): Promise<Record<string, any> | null> {
     try {
+      const mergeBestParams = (best: Record<string, any>): Record<string, any> => {
+        const merged: Record<string, any> = {};
+        for (const def of template.parameters) {
+          if (Object.prototype.hasOwnProperty.call(best, def.name) && best[def.name] !== undefined) {
+            merged[def.name] = best[def.name];
+          } else if (def.default !== undefined) {
+            merged[def.name] = def.default;
+          }
+        }
+        return merged;
+      };
+
       const local = await this.db.backtestCache.getBestParams(template.id);
-      if (!local || !local.parameters || typeof local.parameters !== 'object') {
-        return null;
+      if (local && local.parameters && typeof local.parameters === 'object' && !Array.isArray(local.parameters)) {
+        this.logging?.info('StrategyManager', `Using local DB best params for ${template.id}`);
+        return mergeBestParams(local.parameters as Record<string, any>);
       }
 
-      const best: Record<string, any> = local.parameters as Record<string, any>;
-      const merged: Record<string, any> = {};
-      for (const def of template.parameters) {
-        if (best && Object.prototype.hasOwnProperty.call(best, def.name) && best[def.name] !== undefined) {
-          merged[def.name] = best[def.name];
-        } else if (def.default !== undefined) {
-          merged[def.name] = def.default;
-        }
+      const saved = await this.db.backtestBestParams.getSavedBestParams(template.id);
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        this.logging?.info('StrategyManager', `Using saved best params snapshot for ${template.id}`);
+        return mergeBestParams(saved as Record<string, any>);
       }
-      this.logging?.info('StrategyManager', `Using local DB best params for ${template.id}`);
-      return merged;
+
+      return null;
     } catch (error) {
       this.logging?.error('StrategyManager', `Local best params lookup failed for ${template.id}`, {
         error: error instanceof Error ? error.message : String(error)
@@ -189,11 +198,17 @@ export class StrategyRegistry {
     );
     let mergedParams = await this.getBestMergedParamsOrNull(template);
     if (!mergedParams) {
-      this.logging?.warn('StrategyManager', `Remote best params unavailable for ${template.id}; trying local database cache`);
+      this.logging?.warn(
+        'StrategyManager',
+        `Remote best params unavailable for ${template.id}; trying local cache or saved snapshot`
+      );
       mergedParams = await this.getLocalBestMergedParamsOrNull(template);
     }
     if (!mergedParams) {
-      this.logging?.warn('StrategyManager', `No best params found (remote/local) for ${template.id}; using template defaults`);
+      this.logging?.warn(
+        'StrategyManager',
+        `No best params found (remote/local/saved) for ${template.id}; using template defaults`
+      );
       mergedParams = this.buildDefaultParameters(template);
     }
     return mergedParams;
@@ -591,5 +606,3 @@ export class StrategyRegistry {
     }
   }
 }
-
-

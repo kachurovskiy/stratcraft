@@ -186,6 +186,14 @@
         <div class="border rounded p-3 mt-4">
           <h6 class="text-uppercase text-muted small mb-3">Backtest Cache Tools</h6>
           <div class="d-grid gap-3">
+            <form method="POST" action="/admin/database/backtest-best-params/snapshot">
+                {{> csrf-field}}
+              <button type="submit" class="btn btn-outline-primary"
+                onclick="return confirm('Save the current top-score params from the backtest cache? This will overwrite any previously saved snapshot.');">
+                <i class="fas fa-thumbtack"></i>
+                Save best params snapshot
+              </button>
+            </form>
             <form method="POST" action="/admin/database/backtest-cache/import" enctype="multipart/form-data">
                 {{> csrf-field}}
               <div class="input-group">

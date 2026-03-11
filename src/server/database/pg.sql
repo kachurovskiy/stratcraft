@@ -323,6 +323,12 @@ ALTER TABLE backtest_cache
     ADD COLUMN IF NOT EXISTS balance_validation_cagr DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS balance_validation_max_drawdown_ratio DOUBLE PRECISION;
 
+CREATE TABLE IF NOT EXISTS backtest_best_params (
+    template_id TEXT PRIMARY KEY,
+    parameters TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS signals (
     id TEXT PRIMARY KEY,
     date DATE NOT NULL,

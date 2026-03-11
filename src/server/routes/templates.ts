@@ -436,6 +436,7 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
     );
 
     const backtestCacheRaw: TemplateBacktestCacheRow[] = await req.db.backtestCache.getBacktestCacheResultsForTemplate(templateId);
+    const savedBestParamsRaw = await req.db.backtestBestParams.getSavedBestParams(templateId);
 
     const scoredCacheSummary = await scoreBacktestParameters(
       backtestCacheRaw as BacktestCacheRow[],
@@ -564,6 +565,10 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
     const parameterMetadataMap = new Map<string, StrategyParameter>(
       template.parameters.map((param: StrategyParameter) => [param.name, param] as [string, StrategyParameter])
     );
+    const savedBestParams =
+      savedBestParamsRaw && typeof savedBestParamsRaw === 'object' && !Array.isArray(savedBestParamsRaw)
+        ? savedBestParamsRaw
+        : null;
     const parameterKeys = new Set<string>();
     displayedBacktestCacheEntries.forEach(entry => {
       Object.keys(entry.parameters ?? {}).forEach(key => parameterKeys.add(key));
@@ -617,6 +622,29 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
         parameterCells
       };
     });
+
+    const savedBestParamRows = (() => {
+      if (!savedBestParams) {
+        return [];
+      }
+
+      const savedKeys = new Set(Object.keys(savedBestParams));
+      const orderedSavedKeys = [
+        ...template.parameters
+          .map((param: StrategyParameter) => param.name)
+          .filter((key: string) => savedKeys.has(key)),
+        ...Array.from(savedKeys).filter(key => !parameterMetadataMap.has(key)).sort()
+      ];
+
+      return orderedSavedKeys.map((key) => ({
+        name: key,
+        label: parameterMetadataMap.get(key)?.label ?? key,
+        value: formatParameterDisplayValue(savedBestParams[key])
+      }));
+    })();
+    const savedBestParamsCompact = savedBestParamRows
+      .map((row) => `${row.label ?? row.name}: ${row.value}`)
+      .join(', ');
 
     const formatParameterSummary = (entry: typeof backtestCacheEntries[number]): string => {
       const summaryParts: string[] = [];
@@ -685,6 +713,11 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       backtestCacheParameterColumns,
       hasBacktestCacheParameterColumns: backtestCacheParameterColumns.length > 0,
       hasBacktestCache: backtestCacheEntries.length > 0,
+      savedBestParamRows,
+      savedBestParams,
+      hasSavedBestParams: savedBestParamRows.length > 0,
+      savedBestParamsCount: savedBestParamRows.length,
+      savedBestParamsCompact,
       performanceChartPoints,
       hasPerformanceChartData,
       hasCagrComparisonChartData,

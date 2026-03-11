@@ -335,6 +335,7 @@ export class TemplatesRepo {
       }
 
       await this.db.run(`DELETE FROM backtest_cache WHERE template_id IN (${tpl})`, normalized, client);
+      await this.db.run(`DELETE FROM backtest_best_params WHERE template_id IN (${tpl})`, normalized, client);
       await this.db.run(`DELETE FROM remote_optimizer_jobs WHERE template_id IN (${tpl})`, normalized, client);
       await this.db.run(`DELETE FROM templates WHERE id IN (${tpl})`, normalized, client);
       return normalized;

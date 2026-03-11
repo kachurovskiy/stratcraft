@@ -440,6 +440,7 @@ export class LightgbmModelsRepo {
       }
 
       await this.db.run('DELETE FROM backtest_cache WHERE template_id = ?', [templateId], client);
+      await this.db.run('DELETE FROM backtest_best_params WHERE template_id = ?', [templateId], client);
       await this.db.run('DELETE FROM remote_optimizer_jobs WHERE template_id = ?', [templateId], client);
       await this.db.run('DELETE FROM templates WHERE id = ?', [templateId], client);
       await this.db.run('DELETE FROM lightgbm_models WHERE id = ?', [trimmedId], client);

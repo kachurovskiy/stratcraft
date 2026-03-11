@@ -140,6 +140,7 @@ export class MaintenanceRepo {
       'account_operations',
       'accounts',
       'backtest_cache',
+      'backtest_best_params',
       'backtest_results',
       'candles',
       'lightgbm_models',
