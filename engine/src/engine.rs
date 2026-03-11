@@ -2,6 +2,7 @@ use crate::candle_utils::{
     group_candles_by_ticker_with, group_candles_for_tickers, normalize_ticker_symbol,
 };
 use crate::config::{EngineConfig, EngineRuntimeSettings};
+use crate::diagnostics::{format_buying_power_details, format_sizing_details};
 use crate::indicators::estimate_annualized_volatility_from_candles;
 use crate::models::*;
 use crate::param_utils::coerce_binary_param;
@@ -2097,7 +2098,8 @@ impl Engine {
             };
         }
 
-        let mut available_cash = self.resolve_account_buying_power(account_state);
+        let starting_buying_power = self.resolve_account_buying_power(account_state);
+        let mut available_cash = starting_buying_power;
         if available_cash <= 0.0 {
             notes.push("account_cash_unavailable".to_string());
         }
@@ -2282,6 +2284,29 @@ impl Engine {
                     None
                 };
 
+                let build_buying_power_details = |current_available_cash: f64| {
+                    format_buying_power_details(
+                        account_state,
+                        self.config.max_leverage,
+                        starting_buying_power,
+                        current_available_cash,
+                    )
+                };
+
+                let build_insufficient_size_details = || {
+                    format_sizing_details(
+                        price,
+                        available_cash,
+                        self.config.trade_size_ratio,
+                        self.config.minimum_trade_size,
+                        self.config.position_sizing.mode,
+                        signal_confidence,
+                        self.config.position_sizing.vol_target_annual,
+                        realized_vol,
+                        build_buying_power_details(available_cash),
+                    )
+                };
+
                 let allocation = match determine_position_size(PositionSizingParams {
                     price,
                     available_cash,
@@ -2295,7 +2320,12 @@ impl Engine {
                     PositionSizingOutcome::Sized(allocation) => allocation,
                     PositionSizingOutcome::TooSmall => {
                         notes.push(format!("signal_{}_insufficient_size", ticker));
-                        record_skip(&ticker, SignalAction::Buy, "insufficient_size", None);
+                        record_skip(
+                            &ticker,
+                            SignalAction::Buy,
+                            "insufficient_size",
+                            Some(build_insufficient_size_details()),
+                        );
                         continue;
                     }
                     PositionSizingOutcome::InsufficientCash { required } => {
@@ -2303,11 +2333,16 @@ impl Engine {
                             "insufficient_cash_for_signal_{} (need {:.2}, have {:.2})",
                             ticker, required, available_cash
                         ));
+                        let mut details =
+                            format!("need {:.2}, have {:.2}", required, available_cash);
+                        if let Some(leverage_details) = build_buying_power_details(available_cash) {
+                            details = format!("{}, {}", details, leverage_details);
+                        }
                         record_skip(
                             &ticker,
                             SignalAction::Buy,
                             "insufficient_cash",
-                            Some(format!("need {:.2}, have {:.2}", required, available_cash)),
+                            Some(details),
                         );
                         continue;
                     }

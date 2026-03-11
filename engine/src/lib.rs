@@ -9,6 +9,7 @@ pub mod config;
 pub mod context;
 pub mod data_context;
 pub mod database;
+mod diagnostics;
 pub mod engine;
 pub mod indicators;
 pub mod models;
