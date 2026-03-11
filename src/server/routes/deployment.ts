@@ -2,19 +2,16 @@ import express, { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { deploymentService } from '../services/DeploymentService';
 
 const execAsync = promisify(exec);
 
 const router = express.Router();
 
 const ADMIN_SERVER_RESTART_COMMAND = 'sudo /sbin/reboot';
-const DEPLOY_UPDATE_SCRIPT_PATH = '/usr/local/bin/stratcraft-update.sh';
-const DEPLOY_TRIGGER_SCRIPT_PATH = '/usr/local/bin/stratcraft-manual-update-check.sh';
-const DEPLOY_REPO_PATH = '/opt/stratcraft/stratcraft';
 const COMMAND_OUTPUT_MAX_CHARS = 500;
 const COMMAND_TIMEOUT_MS = 120000;
 const MAX_METRIC_POINTS = 5000;
-const MAX_DEPLOY_COMMITS = 100;
 const SSH_HELPER_PATH = '/usr/local/bin/stratcraft-ufw-ssh';
 const stripAnsiCodes = (value: string): string => value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
 
@@ -30,15 +27,6 @@ const sanitizeCommandOutput = (output?: string): string | undefined => {
     return `${trimmed.slice(0, COMMAND_OUTPUT_MAX_CHARS)}...`;
   }
   return trimmed;
-};
-
-type DeploymentCommitStatus = {
-  repoPath: string;
-  defaultBranch: string;
-  behindCount: number;
-  commitMessages: string[];
-  truncated: boolean;
-  error?: string;
 };
 
 type SshAccessState = {
@@ -165,98 +153,6 @@ async function disableSshAccess(): Promise<{ stdout: string; stderr: string; }> 
   return runSshHelperCommand('disable');
 }
 
-async function resolveDefaultBranch(repoPath: string): Promise<string> {
-  try {
-    const { stdout } = await runShellCommand(`git -C ${repoPath} symbolic-ref refs/remotes/origin/HEAD`);
-    const ref = stdout.trim();
-    if (ref) {
-      const parts = ref.split('/');
-      const branch = parts[parts.length - 1];
-      if (branch) {
-        return branch;
-      }
-    }
-  } catch {
-    // Fall back to master if origin/HEAD is unavailable.
-  }
-  return 'master';
-}
-
-function parseCommitMessages(output: string): string[] {
-  return output
-    .split(/\r?\n/)
-    .map(line => stripAnsiCodes(line).trim())
-    .filter(Boolean);
-}
-
-async function getDeploymentCommitStatus(): Promise<DeploymentCommitStatus> {
-  if (!fs.existsSync(DEPLOY_REPO_PATH)) {
-    return {
-      repoPath: DEPLOY_REPO_PATH,
-      defaultBranch: 'master',
-      behindCount: 0,
-      commitMessages: [],
-      truncated: false,
-      error: `Repository not found at ${DEPLOY_REPO_PATH}`
-    };
-  }
-
-  const defaultBranch = await resolveDefaultBranch(DEPLOY_REPO_PATH);
-
-  try {
-    await runShellCommand(`git -C ${DEPLOY_REPO_PATH} fetch origin --quiet`);
-  } catch (error) {
-    return {
-      repoPath: DEPLOY_REPO_PATH,
-      defaultBranch,
-      behindCount: 0,
-      commitMessages: [],
-      truncated: false,
-      error: buildCommandErrorMessage(error, 'Failed to fetch repository updates')
-    };
-  }
-
-  try {
-    const { stdout: countOutput } = await runShellCommand(
-      `git -C ${DEPLOY_REPO_PATH} rev-list --left-right --count HEAD...origin/${defaultBranch}`
-    );
-    const counts = countOutput.trim().split(/\s+/);
-    const behindCount = Number.parseInt(counts[1] || '0', 10) || 0;
-
-    const commitMessages: string[] = [];
-    if (behindCount > 0) {
-      const listCount = Math.min(behindCount, MAX_DEPLOY_COMMITS);
-      const { stdout: logOutput } = await runShellCommand(
-        `git -C ${DEPLOY_REPO_PATH} log --format=%s -n ${listCount} HEAD..origin/${defaultBranch}`
-      );
-      commitMessages.push(...parseCommitMessages(logOutput));
-    }
-
-    return {
-      repoPath: DEPLOY_REPO_PATH,
-      defaultBranch,
-      behindCount,
-      commitMessages,
-      truncated: behindCount > commitMessages.length
-    };
-  } catch (error) {
-    return {
-      repoPath: DEPLOY_REPO_PATH,
-      defaultBranch,
-      behindCount: 0,
-      commitMessages: [],
-      truncated: false,
-      error: buildCommandErrorMessage(error, 'Failed to read repository status')
-    };
-  }
-}
-
-function canUseDeploymentControls(): boolean {
-  if (process.platform !== 'linux') return false;
-  if (!Boolean(process.env.pm_id || process.env.PM2_HOME)) return false;
-  return fs.existsSync(DEPLOY_UPDATE_SCRIPT_PATH) && fs.existsSync(DEPLOY_TRIGGER_SCRIPT_PATH);
-}
-
 // Deployment panel
 router.get('/', (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAuth(req, res, next);
@@ -264,11 +160,11 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAdmin(req, res, next);
 }, async (req: Request, res: Response) => {
   try {
-    const deploymentControlsEnabled = canUseDeploymentControls();
+    const deploymentControlsEnabled = deploymentService.canUseDeploymentControls();
     const cpuMetrics = req.cpuMetricsService.getSummary(MAX_METRIC_POINTS);
     const memoryMetrics = req.cpuMetricsService.getMemorySummary(MAX_METRIC_POINTS);
     const [deploymentCommitStatus, sshAccessState] = await Promise.all([
-      deploymentControlsEnabled ? getDeploymentCommitStatus() : Promise.resolve(null),
+      deploymentControlsEnabled ? deploymentService.getDeploymentCommitStatus() : Promise.resolve(null),
       getSshAccessState()
     ]);
     const sshAccess = {
@@ -303,15 +199,14 @@ router.post('/trigger-update', (req: Request, res: Response, next: NextFunction)
   req.authMiddleware.requireAuth(req, res, next);
 }, (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAdmin(req, res, next);
-}, (req: Request, res: Response) => {
-  if (!canUseDeploymentControls()) {
+}, async (req: Request, res: Response) => {
+  if (!deploymentService.canUseDeploymentControls()) {
     res.redirect('/admin/deployment?error=Deployment controls are unavailable for this host');
     return;
   }
 
   try {
-    const triggerFile = '/tmp/stratcraft-manual-update-trigger';
-    fs.writeFileSync(triggerFile, '');
+    await deploymentService.triggerServerUpdate();
     const triggeredBy = req.user?.email || req.user?.userId || 'unknown';
     req.loggingService.info('admin', `Manual update triggered by ${triggeredBy}`);
     const message = 'Server update triggered successfully. The update will start within the next minute.';
@@ -329,7 +224,7 @@ router.post('/restart-app', (req: Request, res: Response, next: NextFunction) =>
 }, (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAdmin(req, res, next);
 }, async (req: Request, res: Response) => {
-  if (!canUseDeploymentControls()) {
+  if (!deploymentService.canUseDeploymentControls()) {
     res.status(400).type('text/plain').send('Deployment controls are unavailable for this host');
     return;
   }
@@ -369,7 +264,7 @@ router.post('/restart-server', (req: Request, res: Response, next: NextFunction)
 }, (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAdmin(req, res, next);
 }, async (req: Request, res: Response) => {
-  if (!canUseDeploymentControls()) {
+  if (!deploymentService.canUseDeploymentControls()) {
     res.redirect('/admin/deployment?error=Deployment controls are unavailable for this host');
     return;
   }

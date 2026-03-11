@@ -3,8 +3,10 @@ import { JobHandler, JobHandlerContext } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
 import type { TickerAssetRecord, TickerAssetType } from '../../database/types';
 import { SETTING_KEYS } from '../../constants';
+import { deploymentService } from '../../services/DeploymentService';
 
 const CANDLE_SOURCE = 'candle-job';
+const SERVER_UPDATE_SOURCE = 'system';
 
 type LeveragedExpenseRatios = Record<2 | 3 | 5, number>;
 
@@ -306,15 +308,29 @@ function classifyAssetFromName(
 export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandler {
   return async (ctx) => {
     const logMetadata = { jobId: ctx.job.id };
-    const [alwaysValidationTickersRaw, candleSyncSettings, autoDailyCandleSyncRaw, ignoredTickersRaw] = await Promise.all([
+    const [
+      alwaysValidationTickersRaw,
+      candleSyncSettings,
+      autoDailyCandleSyncRaw,
+      autoDailyServerUpdateRaw,
+      ignoredTickersRaw
+    ] = await Promise.all([
       deps.db.settings.getSettingArray(SETTING_KEYS.ALWAYS_VALIDATION_TICKERS),
       loadCandleSyncSettings(deps.db),
       deps.db.settings.getSettingValue(SETTING_KEYS.AUTO_DAILY_CANDLE_SYNC_ENABLED),
-      deps.db.settings.getSettingArray(SETTING_KEYS.IGNORED_TICKERS),
+      deps.db.settings.getSettingValue(SETTING_KEYS.AUTO_DAILY_SERVER_UPDATE_ENABLED),
+      deps.db.settings.getSettingArray(SETTING_KEYS.IGNORED_TICKERS)
     ]);
     const alwaysValidationTickers = new Set(alwaysValidationTickersRaw);
     const autoDailyCandleSyncEnabled = autoDailyCandleSyncRaw === 'true';
+    const autoDailyServerUpdateEnabled = autoDailyServerUpdateRaw === 'true';
     const ignoredTickers = new Set(ignoredTickersRaw);
+    if (autoDailyServerUpdateEnabled) {
+      const updateTriggered = await triggerServerUpdateIfBehind(ctx, logMetadata);
+      if (updateTriggered) {
+        return { message: 'Server update triggered instead of candle sync' };
+      }
+    }
     const filterIgnoredTickers = <T extends { symbol: string }>(items: T[]) =>
       ignoredTickers.size === 0 ? items : items.filter(item => !ignoredTickers.has(item.symbol));
     const loadFilteredTickers = async () => filterIgnoredTickers(await deps.db.tickers.getTickers());
@@ -574,7 +590,12 @@ async function determineTickersToRefresh(
   return missingTickers;
 }
 
-async function scheduleNext(deps: JobHandlerDependencies, ctx: JobHandlerContext, autoDailyCandleSyncEnabled: boolean, logMetadata: { jobId: string }): Promise<void> {
+async function scheduleNext(
+  deps: JobHandlerDependencies,
+  ctx: JobHandlerContext,
+  autoDailyCandleSyncEnabled: boolean,
+  logMetadata: { jobId: string }
+): Promise<void> {
   ctx.loggingService.info(CANDLE_SOURCE, 'Refreshing market data snapshot after candle update pass', logMetadata);
   await deps.engineCli.run('export-market-data', [], ctx.abortSignal, logMetadata);
 
@@ -592,19 +613,55 @@ async function scheduleNext(deps: JobHandlerDependencies, ctx: JobHandlerContext
     return;
   }
 
-  const nextCandleSyncAt = getNextDailyCandleSyncUtc();
+  const nextDailyRunAt = getNextDailyCandleSyncUtc();
   const alreadyScheduled = ctx.scheduler.hasPendingJob(job =>
     job.type === 'candle-sync' &&
-    Math.abs(job.scheduledFor.getTime() - nextCandleSyncAt.getTime()) < 60 * 1000
+    Math.abs(job.scheduledFor.getTime() - nextDailyRunAt.getTime()) < 60 * 1000
   );
 
   if (!alreadyScheduled) {
     ctx.scheduler.scheduleJob('candle-sync', {
-      startAt: nextCandleSyncAt,
+      startAt: nextDailyRunAt,
       description: 'Daily 2am London candle sync pass',
       metadata: { trigger: 'daily' }
     });
   }
+}
+
+async function triggerServerUpdateIfBehind(
+  ctx: JobHandlerContext,
+  logMetadata: { jobId: string }
+): Promise<boolean> {
+  const status = await deploymentService.getUpstreamBehindCount();
+  if (status.error) {
+    ctx.loggingService.warn(SERVER_UPDATE_SOURCE, 'Unable to check upstream commits for auto-update', {
+      ...logMetadata,
+      error: status.error
+    });
+    return false;
+  }
+
+  if (status.behindCount <= 0) {
+    return false;
+  }
+
+  try {
+    await deploymentService.triggerServerUpdate();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    ctx.loggingService.error(SERVER_UPDATE_SOURCE, 'Failed to trigger auto server update', {
+      ...logMetadata,
+      behindCount: status.behindCount,
+      error: message
+    });
+    throw error;
+  }
+
+  ctx.loggingService.warn(SERVER_UPDATE_SOURCE, 'Auto server update triggered before candle sync', {
+    ...logMetadata,
+    behindCount: status.behindCount
+  });
+  return true;
 }
 
 function getNextDailyCandleSyncUtc(): Date {

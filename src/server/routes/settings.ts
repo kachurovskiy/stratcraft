@@ -226,6 +226,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'text'
   },
   {
+    key: SETTING_KEYS.AUTO_DAILY_SERVER_UPDATE_ENABLED,
+    group: 'candle-sync',
+    label: 'Automatic Daily Server Update Enabled',
+    description: 'When true and upstream commits exist, candle sync triggers a server update instead (true/false).',
+    placeholder: 'false',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.ETF_BASE_EXPENSE_RATIO,
     group: 'expense-ratios',
     label: 'ETF Base Expense Ratio',
