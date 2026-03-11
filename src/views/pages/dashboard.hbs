@@ -186,6 +186,18 @@
                                             <span class="badge bg-secondary text-uppercase">Paper</span>
                                         {{/if}}
                                     </div>
+                                    <div class="mt-1">
+                                        {{#if strategies.length}}
+                                            <div class="d-flex flex-wrap align-items-center gap-1">
+                                                <span class="text-muted small">Strategies:</span>
+                                                {{#each strategies}}
+                                                    <a href="/strategies/{{id}}" class="badge bg-light text-dark text-decoration-none">{{name}}</a>
+                                                {{/each}}
+                                            </div>
+                                        {{else}}
+                                            <span class="text-muted small">No strategies</span>
+                                        {{/if}}
+                                    </div>
                                 </td>
                                 <td class="text-end" data-label="Cash">
                                     {{#if snapshot}}

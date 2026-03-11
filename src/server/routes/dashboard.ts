@@ -56,6 +56,23 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     });
     const hasStrategiesAwaitingBacktests = strategiesWithPerformance.length > 0 && strategies.length === 0;
 
+    const strategiesByAccount: Record<string, { id: string; name: string }[]> = {};
+    strategiesWithPerformance.forEach((strategy: Strategy) => {
+      if (!strategy.accountId) {
+        return;
+      }
+      if (!strategiesByAccount[strategy.accountId]) {
+        strategiesByAccount[strategy.accountId] = [];
+      }
+      strategiesByAccount[strategy.accountId].push({
+        id: strategy.id,
+        name: strategy.name
+      });
+    });
+    Object.values(strategiesByAccount).forEach((list) => {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    });
+
     const strategyIds = strategies.map((strategy: Strategy) => strategy.id);
     let strategySharpeMedianMap: Record<string, number | null> = {};
     let strategyCalmarMedianMap: Record<string, number | null> = {};
@@ -89,7 +106,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         snapshotBadge: getSnapshotBadgeMeta(snapshot),
         snapshotMessage: snapshot?.message ?? null,
         excludedTickers,
-        excludedTickerCount: excludedTickers.length
+        excludedTickerCount: excludedTickers.length,
+        strategies: strategiesByAccount[account.id] ?? []
       };
     });
 
