@@ -623,28 +623,9 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       };
     });
 
-    const savedBestParamRows = (() => {
-      if (!savedBestParams) {
-        return [];
-      }
-
-      const savedKeys = new Set(Object.keys(savedBestParams));
-      const orderedSavedKeys = [
-        ...template.parameters
-          .map((param: StrategyParameter) => param.name)
-          .filter((key: string) => savedKeys.has(key)),
-        ...Array.from(savedKeys).filter(key => !parameterMetadataMap.has(key)).sort()
-      ];
-
-      return orderedSavedKeys.map((key) => ({
-        name: key,
-        label: parameterMetadataMap.get(key)?.label ?? key,
-        value: formatParameterDisplayValue(savedBestParams[key])
-      }));
-    })();
-    const savedBestParamsCompact = savedBestParamRows
-      .map((row) => `${row.label ?? row.name}: ${row.value}`)
-      .join(', ');
+    const hasSavedBestParams = savedBestParams
+      ? Object.keys(savedBestParams).length > 0
+      : false;
 
     const formatParameterSummary = (entry: typeof backtestCacheEntries[number]): string => {
       const summaryParts: string[] = [];
@@ -682,16 +663,30 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       typeof point.verifyCagr === 'number'
     ).length;
     const hasCagrComparisonChartData = cagrComparisonPointCount > 0;
-    const parameterViews = template.parameters.map((param: StrategyParameter) => ({
-      ...param,
-      hasDefaultValue: param.default !== undefined && param.default !== null,
-      defaultDisplay: param.default !== undefined && param.default !== null
-        ? (typeof param.default === 'boolean' ? (param.default ? 'true' : 'false') : String(param.default))
-        : null,
-      hasMin: typeof param.min === 'number',
-      hasMax: typeof param.max === 'number',
-      hasStep: typeof param.step === 'number'
-    }));
+    const parameterViews = template.parameters.map((param: StrategyParameter) => {
+      const hasDefaultValue = param.default !== undefined && param.default !== null;
+      const hasSavedBestValue = Boolean(
+        savedBestParams && Object.prototype.hasOwnProperty.call(savedBestParams, param.name)
+      );
+      const savedBestValue = hasSavedBestValue && savedBestParams ? savedBestParams[param.name] : undefined;
+      const savedBestDifferentFromDefault = hasSavedBestValue && hasDefaultValue
+        ? getComparableParameterValue(savedBestValue) !== getComparableParameterValue(param.default)
+        : false;
+
+      return {
+        ...param,
+        hasDefaultValue,
+        defaultDisplay: hasDefaultValue
+          ? (typeof param.default === 'boolean' ? (param.default ? 'true' : 'false') : String(param.default))
+          : null,
+        hasMin: typeof param.min === 'number',
+        hasMax: typeof param.max === 'number',
+        hasStep: typeof param.step === 'number',
+        hasSavedBestValue,
+        savedBestDisplay: hasSavedBestValue ? formatParameterDisplayValue(savedBestValue) : null,
+        savedBestDifferentFromDefault
+      };
+    });
 
     const summary = {
       parameterCount: parameterViews.length,
@@ -713,11 +708,7 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
       backtestCacheParameterColumns,
       hasBacktestCacheParameterColumns: backtestCacheParameterColumns.length > 0,
       hasBacktestCache: backtestCacheEntries.length > 0,
-      savedBestParamRows,
-      savedBestParams,
-      hasSavedBestParams: savedBestParamRows.length > 0,
-      savedBestParamsCount: savedBestParamRows.length,
-      savedBestParamsCompact,
+      hasSavedBestParams,
       performanceChartPoints,
       hasPerformanceChartData,
       hasCagrComparisonChartData,

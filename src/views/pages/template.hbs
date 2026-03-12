@@ -69,6 +69,9 @@
             <th>Label</th>
             <th>Name</th>
             <th>Type</th>
+            {{#if hasSavedBestParams}}
+              <th>Saved Best Params</th>
+            {{/if}}
             <th>Defaults &amp; Constraints</th>
             <th>Description</th>
           </tr>
@@ -83,6 +86,15 @@
                 <td class="fw-semibold text-nowrap ps-3">{{label}}</td>
                 <td class="text-nowrap"><code>{{name}}</code></td>
                 <td class="text-capitalize text-nowrap">{{type}}</td>
+                {{#if ../hasSavedBestParams}}
+                  <td class="small text-nowrap{{#if savedBestDifferentFromDefault}} table-warning fw-semibold{{/if}}">
+                    {{#if hasSavedBestValue}}
+                      <code>{{savedBestDisplay}}</code>
+                    {{else}}
+                      <span class="text-muted">—</span>
+                    {{/if}}
+                  </td>
+                {{/if}}
                 <td class="small text-muted text-nowrap">
                   {{#if hasDefaultValue}}
                     Default: <code>{{defaultDisplay}}</code>
@@ -101,36 +113,15 @@
             {{/each}}
           {{else}}
             <tr>
-              <td colspan="5" class="text-center text-muted py-4">No parameters defined for this template.</td>
+              <td colspan="{{#if hasSavedBestParams}}6{{else}}5{{/if}}" class="text-center text-muted py-4">
+                No parameters defined for this template.
+              </td>
             </tr>
           {{/if}}
         </tbody>
       </table>
     </div>
   </div>
-</div>
-
-<div class="card mb-4">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <div>
-      <h5 class="mb-0">Saved Best Params</h5>
-      <small class="text-muted">Admin-saved snapshot used when cache is empty.</small>
-    </div>
-    {{#if hasSavedBestParams}}
-      <span class="badge bg-light text-dark">{{savedBestParamsCount}} params</span>
-    {{/if}}
-  </div>
-  {{#if hasSavedBestParams}}
-    <div class="card-body">
-      <p class="text-muted small mb-0 text-truncate" title="{{savedBestParamsCompact}}">
-        {{savedBestParamsCompact}}
-      </p>
-    </div>
-  {{else}}
-    <div class="card-body text-center text-muted py-4">
-      No saved best params snapshot yet.
-    </div>
-  {{/if}}
 </div>
 
 <div class="card mb-4">
