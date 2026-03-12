@@ -219,6 +219,8 @@ function getLatestOperationForOrder(operations: AccountOperation[] | undefined |
 function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | undefined | null): TradeOrderView[] {
   const operationList = Array.isArray(operations) ? operations : [];
   const operationsByOrder = new Map<string, AccountOperation[]>();
+  const hasStatusReason = (value: string | null | undefined): value is string =>
+    typeof value === 'string' && value.trim().length > 0;
 
   const normalizeBrokerStatus = (value: string | null | undefined): TradeOrderStatus | null => {
     if (typeof value !== 'string') {
@@ -282,6 +284,36 @@ function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | und
     };
   };
 
+  const deriveOrderStatusReason = (
+    status: TradeOrderStatus,
+    type: TradeOrderType,
+    statusUpdatedAt: Date | null
+  ): string | null => {
+    if (status === 'pending') {
+      if (type === 'stop') {
+        return 'Stop order working';
+      }
+      if (type === 'exit') {
+        return 'Awaiting exit fill';
+      }
+      if (trade.entryCancelAfter) {
+        return 'Awaiting fill (auto-cancels after market close)';
+      }
+      return 'Awaiting fill';
+    }
+    if (status === 'cancelled') {
+      if (type === 'entry' && trade.entryCancelAfter) {
+        const cancelAt = trade.entryCancelAfter.getTime();
+        const updatedAt = statusUpdatedAt?.getTime() ?? null;
+        if (updatedAt && updatedAt >= cancelAt - 60_000) {
+          return 'Cancelled after market close';
+        }
+      }
+      return 'Cancelled by broker';
+    }
+    return null;
+  };
+
   operationList.forEach(operation => {
     const orderId = normalizeTradeOrderIdValue(operation.orderId);
     if (!orderId) {
@@ -324,6 +356,12 @@ function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | und
       if (trade.exitDate) {
         triggeredAt = trade.exitDate;
         statusUpdatedAt = trade.exitDate;
+      }
+    }
+    if (!hasStatusReason(statusReason)) {
+      const derivedReason = deriveOrderStatusReason(status, type, statusUpdatedAt);
+      if (derivedReason) {
+        statusReason = derivedReason;
       }
     }
 

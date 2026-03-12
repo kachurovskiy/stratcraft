@@ -24,6 +24,7 @@ import {
   buildPortfolioValueDataFromSnapshots,
   type PortfolioValuePoint
 } from '../utils/backtestCharts';
+import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
 import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { getReqUserId, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
@@ -760,10 +761,10 @@ const normalizeSkipDate = (raw: unknown): string | null => {
 };
 
 const buildSkipReasonLine = (reason: SkipReasonAggregate): string => {
-  const reasonLabel = reason.reason;
-  let text = `${reasonLabel}`;
-  if (reason.details) {
-    text += ` (${reason.details})`;
+  const { label, detail } = formatSignalSkipReason(reason.reason, reason.details);
+  let text = label;
+  if (detail) {
+    text += ` (${detail})`;
   }
   if (reason.count > 1) {
     text += ` x${reason.count}`;
@@ -969,8 +970,9 @@ const buildSkipComparisonRows = (
     .map((reason) => {
       const backtestCount = summaryReasonCounts.backtest.get(reason) ?? 0;
       const planCount = summaryReasonCounts.planOperations.get(reason) ?? 0;
+      const { label } = formatSignalSkipReason(reason, null);
       return {
-        label: reason,
+        label,
         backtest: backtestCount,
         planOperations: planCount,
         total: backtestCount + planCount
@@ -2004,12 +2006,13 @@ router.get<StrategyTickerParams>('/strategies/:strategyId/tickers/:ticker', requ
         badge: 'secondary'
       };
       const signalDate = skip.signal_date ? new Date(`${skip.signal_date}T00:00:00Z`) : null;
+      const { label, detail } = formatSignalSkipReason(skip.reason, skip.details);
       return {
         id: skip.id,
         action: skip.action,
         source: skip.source,
-        reason: skip.reason,
-        details: skip.details,
+        reason: label,
+        details: detail,
         signalDate,
         createdAt: skip.created_at,
         actionLabel: actionMeta.label,

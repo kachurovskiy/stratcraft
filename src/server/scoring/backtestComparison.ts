@@ -2,6 +2,7 @@ import type { Database } from '../database/Database';
 import type { AccountSignalSkipRow, BacktestResultRecord } from '../database/types';
 import type { BacktestScope, Trade } from '../../shared/types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
+import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
 
 type BacktestComparisonSummary = {
   label: string;
@@ -422,14 +423,17 @@ const matchSignalSkip = (
 
 const buildSignalSkipReason = (skip: AccountSignalSkipRow, source: string): TradeDifferenceReason => {
   const sourceLabel = SKIP_SOURCE_LABELS[source] ?? source;
-  const detailParts = [`Skipped in ${sourceLabel}`];
-  if (skip.details) {
-    detailParts.push(skip.details);
+  const { label, detail } = formatSignalSkipReason(skip.reason, skip.details);
+  const normalizedReason = typeof skip.reason === 'string' ? skip.reason.trim().toLowerCase() : '';
+  const prefix = normalizedReason === 'operation_requested' ? 'Planned in' : 'Skipped in';
+  const detailParts = [`${prefix} ${sourceLabel}`];
+  if (detail) {
+    detailParts.push(detail);
   }
 
   return {
-    label: skip.reason,
-    detail: detailParts.join(' • '),
+    label,
+    detail: detailParts.join(' | '),
     badge: 'bg-secondary'
   };
 };
