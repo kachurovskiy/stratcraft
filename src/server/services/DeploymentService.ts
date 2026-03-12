@@ -17,12 +17,18 @@ export type DeploymentCommitStatus = {
   repoPath: string;
   defaultBranch: string;
   behindCount: number;
-  commitMessages: string[];
+  commitMessages: DeploymentCommitEntry[];
   truncated: boolean;
   error?: string;
 };
 
 export type UpstreamStatus = { behindCount: number; error?: string };
+export type DeploymentCommitEntry = {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  url?: string;
+};
 
 async function runShellCommand(command: string): Promise<{ stdout: string; stderr: string }> {
   return execAsync(command, {
@@ -42,11 +48,70 @@ function buildCommandErrorMessage(error: unknown, fallback: string): string {
   return stderr || stdout || fallback;
 }
 
-function parseCommitMessages(output: string): string[] {
-  return output
-    .split(/\r?\n/)
-    .map(line => stripAnsiCodes(line).trim())
-    .filter(Boolean);
+function normalizeRepoWebUrl(originUrl: string): string | null {
+  const trimmed = originUrl.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const stripSuffix = (value: string): string => value.replace(/\.git$/i, '').replace(/\/+$/, '');
+
+  const sshMatch = trimmed.match(/^git@([^:]+):(.+)$/i);
+  if (sshMatch) {
+    const host = sshMatch[1];
+    const repoPath = stripSuffix(sshMatch[2]);
+    return host && repoPath ? `https://${host}/${repoPath}` : null;
+  }
+
+  const sshUrlMatch = trimmed.match(/^ssh:\/\/git@([^/]+)\/(.+)$/i);
+  if (sshUrlMatch) {
+    const host = sshUrlMatch[1];
+    const repoPath = stripSuffix(sshUrlMatch[2]);
+    return host && repoPath ? `https://${host}/${repoPath}` : null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.host;
+    const repoPath = stripSuffix(parsed.pathname.replace(/^\/+/, ''));
+    return host && repoPath ? `https://${host}/${repoPath}` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveRepoWebUrl(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await runShellCommand(`git -C ${repoPath} config --get remote.origin.url`);
+    return normalizeRepoWebUrl(stdout);
+  } catch {
+    return null;
+  }
+}
+
+function parseCommitEntries(output: string, repoWebUrl: string | null): DeploymentCommitEntry[] {
+  const entries: DeploymentCommitEntry[] = [];
+  const lines = output.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = stripAnsiCodes(rawLine).trim();
+    if (!line) {
+      continue;
+    }
+    const [hash, ...subjectParts] = line.split('\t');
+    const trimmedHash = hash?.trim();
+    if (!trimmedHash) {
+      continue;
+    }
+    const subject = subjectParts.join('\t').trim() || trimmedHash.slice(0, 7);
+    const shortHash = trimmedHash.slice(0, 7);
+    entries.push({
+      hash: trimmedHash,
+      shortHash,
+      subject,
+      url: repoWebUrl ? `${repoWebUrl}/commit/${trimmedHash}` : undefined
+    });
+  }
+  return entries;
 }
 
 async function resolveDefaultBranch(repoPath: string): Promise<string> {
@@ -93,6 +158,7 @@ export class DeploymentService {
     }
 
     const defaultBranch = await resolveDefaultBranch(DEPLOY_REPO_PATH);
+    const repoWebUrl = await resolveRepoWebUrl(DEPLOY_REPO_PATH);
 
     try {
       await runShellCommand(`git -C ${DEPLOY_REPO_PATH} fetch origin --quiet`);
@@ -114,13 +180,13 @@ export class DeploymentService {
       const counts = countOutput.trim().split(/\s+/);
       const behindCount = Number.parseInt(counts[1] || '0', 10) || 0;
 
-      const commitMessages: string[] = [];
+      const commitMessages: DeploymentCommitEntry[] = [];
       if (behindCount > 0) {
         const listCount = Math.min(behindCount, MAX_DEPLOY_COMMITS);
         const { stdout: logOutput } = await runShellCommand(
-          `git -C ${DEPLOY_REPO_PATH} log --format=%s -n ${listCount} HEAD..origin/${defaultBranch}`
+          `git -C ${DEPLOY_REPO_PATH} log --format=%H\t%s -n ${listCount} HEAD..origin/${defaultBranch}`
         );
-        commitMessages.push(...parseCommitMessages(logOutput));
+        commitMessages.push(...parseCommitEntries(logOutput, repoWebUrl));
       }
 
       return {

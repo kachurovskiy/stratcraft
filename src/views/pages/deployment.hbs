@@ -315,7 +315,13 @@
                   <div class="text-muted small mb-2">Latest commits on the remote branch:</div>
                   <ul class="mb-0 ps-3">
                     {{#each deploymentCommitStatus.commitMessages}}
-                      <li>{{this}}</li>
+                      <li>
+                        {{#if this.url}}
+                          <a href="{{this.url}}" target="_blank" rel="noopener noreferrer">{{this.subject}}</a>
+                        {{else}}
+                          {{this.subject}}
+                        {{/if}}
+                      </li>
                     {{/each}}
                   </ul>
                   {{#if deploymentCommitStatus.truncated}}
