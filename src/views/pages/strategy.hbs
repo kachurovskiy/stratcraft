@@ -700,68 +700,58 @@
                     {{/if}}
                 </div>
                 {{#if hasStrategyLogs}}
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th scope="col">Level</th>
-                                <th scope="col">Source</th>
-                                <th scope="col">Message</th>
-                                {{#if metadataColumns.length}}
-                                {{#each metadataColumns}}
-                                <th scope="col">{{this}}</th>
-                                {{/each}}
-                                {{else}}
-                                <th scope="col">Metadata</th>
-                                {{/if}}
-                                <th scope="col" class="text-end">Recorded</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {{#each strategyLogs}}
-                            <tr>
-                                <td class="text-nowrap">
+                <div class="strategy-log-list">
+                    {{#each strategyLogs}}
+                    <details class="strategy-log-entry">
+                        <summary class="strategy-log-summary">
+                            <div class="strategy-log-summary-main">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
                                     <span class="badge {{levelBadgeClass}}">{{levelLabel}}</span>
-                                </td>
-                                <td class="text-uppercase small text-muted">{{source}}</td>
-                                <td class="fw-semibold">{{message}}</td>
-                                {{#if ../metadataColumns.length}}
-                                    {{#each ../metadataColumns}}
-                                    <td class="small text-break">
-                                        {{#with (lookup ../metadataByLabel this)}}
-                                        {{this}}
-                                        {{else}}
-                                        <span class="text-muted">&mdash;</span>
-                                        {{/with}}
-                                    </td>
-                                    {{/each}}
-                                {{else}}
-                                <td>
+                                    <span class="text-uppercase small text-muted">{{source}}</span>
+                                </div>
+                                <div class="strategy-log-summary-message fw-semibold mt-2">{{message}}</div>
+                            </div>
+                            <div class="strategy-log-summary-side">
+                                <div class="text-muted small text-lg-end">
+                                    {{#if createdAt}}
+                                    <div class="text-nowrap">{{formatDateTimeShort createdAt}}</div>
+                                    <div class="text-nowrap">{{formatTimeAgoShort createdAt}}</div>
+                                    {{else}}
+                                    <div>&mdash;</div>
+                                    {{/if}}
+                                </div>
+                                {{#if metadataPairs.length}}
+                                <span class="badge bg-light text-dark border">
+                                    {{metadataPairs.length}} detail{{#if (ne metadataPairs.length 1)}}s{{/if}}
+                                </span>
+                                {{/if}}
+                            </div>
+                        </summary>
+                        <div class="strategy-log-body">
+                            <div class="row g-3">
+                                <div class="col-12 col-xl-7">
+                                    <div class="text-muted small text-uppercase fw-semibold mb-2">Message</div>
+                                    <div class="strategy-log-full-message">{{message}}</div>
+                                </div>
+                                <div class="col-12 col-xl-5">
+                                    <div class="text-muted small text-uppercase fw-semibold mb-2">Metadata</div>
                                     {{#if metadataPairs.length}}
-                                    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-2 small">
+                                    <div class="strategy-log-meta-grid">
                                         {{#each metadataPairs}}
-                                        <div class="col">
-                                            <div class="fw-semibold text-muted">{{label}}</div>
-                                            <div class="text-break">{{value}}</div>
+                                        <div class="strategy-log-meta-item">
+                                            <div class="strategy-log-meta-label">{{label}}</div>
+                                            <div class="strategy-log-meta-value">{{value}}</div>
                                         </div>
                                         {{/each}}
                                     </div>
                                     {{else}}
-                                    <span class="text-muted">&mdash;</span>
+                                    <p class="text-muted mb-0 small">No extra metadata.</p>
                                     {{/if}}
-                                </td>
-                                {{/if}}
-                                <td class="text-muted text-end text-nowrap">
-                                    {{#if createdAt}}
-                                    {{formatDateTime createdAt}}, {{formatHoursAgo createdAt}}
-                                    {{else}}
-                                    &mdash;
-                                    {{/if}}
-                                </td>
-                            </tr>
-                            {{/each}}
-                        </tbody>
-                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+                    {{/each}}
                 </div>
                 {{else}}
                 <div class="card-body">

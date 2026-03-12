@@ -1633,11 +1633,6 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       });
     };
     const strategyLogViews = rawStrategyLogs.map((entry: LogEntry) => buildStrategyLogView(entry));
-    const metadataColumns = Array.from(
-      new Set(
-        strategyLogViews.flatMap((entry: StrategyLogView) => entry.metadataPairs.map((pair) => pair.label))
-      )
-    ).sort((a, b) => a.localeCompare(b));
     const backtestInitialCapital = resolveBacktestInitialCapitalSetting(rawBacktestInitialCapital);
     const initialCapital = resolveStrategyInitialCapital(strategy, backtestInitialCapital);
     const hasInitialCapital = Number.isFinite(initialCapital) && initialCapital > 0;
@@ -1847,7 +1842,6 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       strategyAccountWarning,
       clearBacktestConfirmMessage,
       backtestComparison,
-      metadataColumns,
       strategyLogs: strategyLogViews,
       hasStrategyLogs: strategyLogViews.length > 0,
       success: req.query.success as string,
