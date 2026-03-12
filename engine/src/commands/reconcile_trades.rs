@@ -114,8 +114,17 @@ pub async fn run(app: &AppContext) -> Result<()> {
             }
         }
 
+        let trades_snapshot = trades.clone();
         for mut trade in trades {
-            match reconcile_trade(&client, &mut trade, &position_prices, &positions).await {
+            match reconcile_trade(
+                &client,
+                &mut trade,
+                &position_prices,
+                &positions,
+                &trades_snapshot,
+            )
+            .await
+            {
                 Ok(true) => {
                     db.ensure_ticker_exists(&trade.ticker).await?;
                     db.persist_trade_reconciliation(&trade).await?;
@@ -148,6 +157,7 @@ async fn reconcile_trade(
     trade: &mut Trade,
     position_prices: &HashMap<String, f64>,
     positions: &[AccountPositionState],
+    trades: &[Trade],
 ) -> Result<bool> {
     if !(trade.entry_order_id.is_some()
         || trade.stop_order_id.is_some()
@@ -229,9 +239,14 @@ async fn reconcile_trade(
         }
     }
 
-    if let Some(ticker) =
-        detect_renamed_ticker(trade, positions, &entry_eval, &stop_eval, &exit_eval)
-    {
+    if let Some(ticker) = detect_renamed_ticker(
+        trade,
+        positions,
+        &entry_eval,
+        &stop_eval,
+        &exit_eval,
+        trades,
+    ) {
         trade.set_ticker(ticker, Utc::now());
         changed = true;
     }
@@ -554,6 +569,7 @@ fn detect_renamed_ticker(
     entry_eval: &Option<OrderEvaluation>,
     stop_eval: &Option<OrderEvaluation>,
     exit_eval: &Option<OrderEvaluation>,
+    trades: &[Trade],
 ) -> Option<String> {
     if trade.status != TradeStatus::Active {
         return None;
@@ -567,7 +583,11 @@ fn detect_renamed_ticker(
         return Some(symbol);
     }
 
-    find_renamed_position_match(trade, positions).map(|position| position.ticker.clone())
+    let position = find_renamed_position_match(trade, positions)?;
+    if has_trade_shape_collision(trade, &position.ticker, trades) {
+        return None;
+    }
+    Some(position.ticker.clone())
 }
 
 fn resolve_renamed_order_symbol(
@@ -617,6 +637,16 @@ fn find_renamed_position_match<'a>(
     }
 
     None
+}
+
+fn has_trade_shape_collision(trade: &Trade, ticker: &str, trades: &[Trade]) -> bool {
+    trades.iter().any(|other| {
+        other.id != trade.id
+            && matches!(other.status, TradeStatus::Pending | TradeStatus::Active)
+            && other.ticker == ticker
+            && other.quantity == trade.quantity
+            && prices_close(other.price, trade.price)
+    })
 }
 
 fn prices_close(a: f64, b: f64) -> bool {
@@ -808,7 +838,7 @@ mod tests {
         }];
 
         assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &None, &None),
+            detect_renamed_ticker(&trade, &positions, &None, &None, &None, &[]),
             None
         );
     }
@@ -824,7 +854,7 @@ mod tests {
         }];
 
         assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &sample_eval("META"), &None),
+            detect_renamed_ticker(&trade, &positions, &None, &sample_eval("META"), &None, &[]),
             Some("META".to_string())
         );
     }
@@ -840,8 +870,26 @@ mod tests {
         }];
 
         assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &None, &None),
+            detect_renamed_ticker(&trade, &positions, &None, &None, &None, &[]),
             Some("META".to_string())
+        );
+    }
+
+    #[test]
+    fn detect_renamed_ticker_skips_when_shape_collision_exists() {
+        let trade = sample_active_trade("CDXS", 120, 3.5);
+        let positions = vec![AccountPositionState {
+            ticker: "HUMA".to_string(),
+            quantity: 120,
+            avg_entry_price: 3.5,
+            current_price: Some(3.6),
+        }];
+        let other_trade = sample_active_trade("HUMA", 120, 3.5);
+        let trades = vec![trade.clone(), other_trade];
+
+        assert_eq!(
+            detect_renamed_ticker(&trade, &positions, &None, &None, &None, &trades),
+            None
         );
     }
 
