@@ -1754,7 +1754,13 @@ impl Engine {
         if !penetration_ratio.is_finite() {
             penetration_ratio = 0.0;
         }
-        let mut penetration_score = (penetration_ratio / 0.005).clamp(0.0, 1.0);
+        let penetration_threshold = self.runtime_settings.limit_buy_penetration_ratio;
+        let mut penetration_score =
+            if penetration_threshold.is_finite() && penetration_threshold > 0.0 {
+                (penetration_ratio / penetration_threshold).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
         if execution_candle.open <= limit_price + PRICE_EPSILON {
             penetration_score = penetration_score.max(0.5);
         }
@@ -2742,6 +2748,7 @@ mod tests {
         EngineRuntimeSettings {
             trade_close_fee_rate: 0.0005,
             trade_slippage_rate: 0.003,
+            limit_buy_penetration_ratio: 0.005,
             short_borrow_fee_annual_rate: 0.003,
             market_order_price_cap_ratio: 0.08,
             trade_entry_price_min: 0.10,

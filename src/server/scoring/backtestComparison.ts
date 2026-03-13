@@ -1,6 +1,6 @@
 import type { Database } from '../database/Database';
 import type { AccountSignalSkipRow, BacktestResultRecord } from '../database/types';
-import type { BacktestScope, Trade } from '../../shared/types/StrategyTemplate';
+import type { BacktestScope, Candle, Trade } from '../../shared/types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
 import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
@@ -20,6 +20,15 @@ type BacktestComparisonSlippage = {
   setting: number | null;
   impliedAvg: number | null;
   impliedAvgAbs: number | null;
+  gap: number | null;
+  gapClass: string;
+  matchedEntries: number;
+};
+
+type BacktestComparisonPenetration = {
+  hasData: boolean;
+  setting: number | null;
+  impliedAvg: number | null;
   gap: number | null;
   gapClass: string;
   matchedEntries: number;
@@ -71,11 +80,13 @@ export type BacktestComparisonView = {
   engine?: BacktestComparisonSummary;
   live?: BacktestComparisonSummary;
   slippage?: BacktestComparisonSlippage;
+  penetration?: BacktestComparisonPenetration;
   expenseRatio?: BacktestComparisonExpenseRatio;
   sampleDays: TradeEntrySampleDay[];
 };
 
 const SLIPPAGE_DEFAULT = 0.003;
+const PENETRATION_DEFAULT = 0.005;
 const SAMPLE_DAY_LIMIT = 5;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -122,6 +133,34 @@ const formatPercentValue = (value: number): string | null => {
   }
   const formatted = value.toFixed(2);
   return formatted.replace(/\.?0+$/, '');
+};
+
+const parseNumericValue = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const selectSizingPrice = (candle: Candle | null | undefined): number | null => {
+  if (!candle) {
+    return null;
+  }
+  if (Number.isFinite(candle.close) && candle.close > 0) {
+    return candle.close;
+  }
+  if (Number.isFinite(candle.unadjustedClose ?? NaN) && (candle.unadjustedClose ?? 0) > 0) {
+    return candle.unadjustedClose ?? null;
+  }
+  return null;
 };
 
 const formatLowLimitDetail = (low: number | null, limit: number | null): string | null => {
@@ -548,6 +587,23 @@ const buildSnapshotMap = (
   return map;
 };
 
+type CandleIndex = {
+  candles: Candle[];
+  indexByDate: Map<string, number>;
+};
+
+const buildCandleIndex = (candlesByTicker: Record<string, Candle[]>): Map<string, CandleIndex> => {
+  const index = new Map<string, CandleIndex>();
+  for (const [ticker, candles] of Object.entries(candlesByTicker)) {
+    const indexByDate = new Map<string, number>();
+    candles.forEach((candle, idx) => {
+      indexByDate.set(toDateKey(candle.date), idx);
+    });
+    index.set(ticker, { candles, indexByDate });
+  }
+  return index;
+};
+
 const buildSignalSkipIndex = (skips: AccountSignalSkipRow[]): Map<string, AccountSignalSkipRow[]> => {
   const index = new Map<string, AccountSignalSkipRow[]>();
   for (const skip of skips) {
@@ -710,6 +766,96 @@ const buildExclusiveTradeReasonMap = ({
     .forEach(trade => addReason(trade, 'live'));
 
   return reasonByTradeId;
+};
+
+const buildPenetrationFallback = (setting: number | null): BacktestComparisonPenetration => ({
+  hasData: false,
+  setting,
+  impliedAvg: null,
+  gap: null,
+  gapClass: 'text-muted',
+  matchedEntries: 0
+});
+
+const computePenetration = ({
+  trades,
+  candlesByTicker,
+  buyDiscountRatio,
+  setting
+}: {
+  trades: Trade[];
+  candlesByTicker: Record<string, Candle[]>;
+  buyDiscountRatio: number | null;
+  setting: number | null;
+}): BacktestComparisonPenetration => {
+  if (!buyDiscountRatio || buyDiscountRatio <= 0) {
+    return buildPenetrationFallback(setting);
+  }
+
+  const candleIndex = buildCandleIndex(candlesByTicker);
+  let weightedSum = 0;
+  let weightTotal = 0;
+  let matched = 0;
+
+  for (const trade of trades) {
+    if (trade.quantity <= 0) {
+      continue;
+    }
+    const notional = Math.abs(trade.quantity * trade.price);
+    if (!Number.isFinite(notional) || notional <= 0) {
+      continue;
+    }
+    const tickerIndex = candleIndex.get(trade.ticker);
+    if (!tickerIndex) {
+      continue;
+    }
+    const tradeKey = toDateKey(trade.date);
+    const candlePosition = tickerIndex.indexByDate.get(tradeKey);
+    if (candlePosition === undefined || candlePosition <= 0) {
+      continue;
+    }
+    const executionCandle = tickerIndex.candles[candlePosition];
+    const signalCandle = tickerIndex.candles[candlePosition - 1];
+    const planningClose = selectSizingPrice(signalCandle);
+    if (planningClose === null || !Number.isFinite(planningClose)) {
+      continue;
+    }
+    const limitPrice = planningClose * (1 - buyDiscountRatio);
+    if (!Number.isFinite(limitPrice) || limitPrice <= 0) {
+      continue;
+    }
+    const low = executionCandle.low;
+    if (!Number.isFinite(low)) {
+      continue;
+    }
+    const penetrationRatio = (limitPrice - low) / limitPrice;
+    if (!Number.isFinite(penetrationRatio) || penetrationRatio < 0) {
+      continue;
+    }
+    weightedSum += penetrationRatio * notional;
+    weightTotal += notional;
+    matched += 1;
+  }
+
+  const hasData = matched > 0 && weightTotal > 0;
+  const impliedAvg = hasData ? weightedSum / weightTotal : null;
+  const gap = impliedAvg !== null && setting !== null ? impliedAvg - setting : null;
+  const gapClass = gap === null
+    ? 'text-muted'
+    : gap > 0
+      ? 'text-danger'
+      : gap < 0
+        ? 'text-success'
+        : 'text-muted';
+
+  return {
+    hasData,
+    setting,
+    impliedAvg,
+    gap,
+    gapClass,
+    matchedEntries: matched
+  };
 };
 
 const computeSlippage = (
@@ -877,17 +1023,21 @@ export const buildBacktestComparisonView = async ({
     };
   }
 
-  const [slippageRaw, engineTradesRaw, liveTradesRaw] = await Promise.all([
+  const [slippageRaw, penetrationRaw, engineTradesRaw, liveTradesRaw, strategy] = await Promise.all([
     db.settings.getSettingValue(SETTING_KEYS.TRADE_SLIPPAGE_RATE),
+    db.settings.getSettingValue(SETTING_KEYS.LIMIT_BUY_PENETRATION_RATIO),
     db.trades.getTrades(strategyId, undefined, undefined, undefined, undefined, engineBacktest!.id, userId),
-    db.trades.getTrades(strategyId, undefined, undefined, undefined, undefined, liveBacktest!.id, userId)
+    db.trades.getTrades(strategyId, undefined, undefined, undefined, undefined, liveBacktest!.id, userId),
+    db.strategies.getStrategy(strategyId, userId)
   ]);
 
   const slippageSetting = parseSettingNumber(slippageRaw, SLIPPAGE_DEFAULT);
+  const penetrationSetting = parseSettingNumber(penetrationRaw, PENETRATION_DEFAULT);
   const engineTrades = engineTradesRaw.filter(isEntryTrade);
   const liveTrades = liveTradesRaw.filter(isEntryTrade);
   const engineCancelledTrades = engineTradesRaw.filter(isCancelledTrade);
   const liveCancelledTrades = liveTradesRaw.filter(isCancelledTrade);
+  const buyDiscountRatio = parseNumericValue(strategy?.parameters?.buyDiscountRatio ?? null);
 
   const engineAggregation = buildEntryAggregation(engineTrades);
   const liveAggregation = buildEntryAggregation(liveTrades);
@@ -958,6 +1108,23 @@ export const buildBacktestComparisonView = async ({
     reasonByTradeId
   );
   const slippage = computeSlippage(engineAggregation.entriesByKey, liveAggregation.entriesByKey, slippageSetting);
+  let penetration = buildPenetrationFallback(penetrationSetting);
+  if (buyDiscountRatio !== null && buyDiscountRatio > 0) {
+    const liveLongTrades = liveTrades.filter((trade) => trade.quantity > 0);
+    if (liveLongTrades.length > 0) {
+      const tradeTimes = liveLongTrades.map((trade) => trade.date.getTime());
+      const start = new Date(Math.min(...tradeTimes) - ONE_DAY_MS * 10);
+      const end = new Date(Math.max(...tradeTimes));
+      const tickers = Array.from(new Set(liveLongTrades.map((trade) => trade.ticker)));
+      const candlesByTicker = await db.candles.getCandles(tickers, start, end);
+      penetration = computePenetration({
+        trades: liveLongTrades,
+        candlesByTicker,
+        buyDiscountRatio,
+        setting: penetrationSetting
+      });
+    }
+  }
 
   const tickers = [
     ...engineTrades.map((trade) => trade.ticker),
@@ -983,6 +1150,7 @@ export const buildBacktestComparisonView = async ({
     engine: buildSummary(engineBacktest!, 'Engine backtest'),
     live: buildSummary(liveBacktest!, 'Live trades backtest'),
     slippage,
+    penetration,
     expenseRatio: {
       hasData: engineExpense.avg !== null || liveExpense.avg !== null,
       engineAvg: engineExpense.avg,

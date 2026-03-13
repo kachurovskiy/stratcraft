@@ -215,7 +215,7 @@
                     </div>
                     <div class="border-top px-3 py-3">
                         <div class="row g-3">
-                            <div class="col-lg-6">
+                            <div class="col-lg-4">
                                 <div class="border rounded p-3 h-100">
                                     <div class="fw-semibold">Slippage</div>
                                     {{#if backtestComparison.slippage.hasData}}
@@ -243,7 +243,31 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-lg-6">
+                            <div class="col-lg-4">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="fw-semibold">Limit Penetration</div>
+                                    {{#if backtestComparison.penetration.hasData}}
+                                    <div class="display-6">
+                                        {{formatRateAsPercent backtestComparison.penetration.impliedAvg}}
+                                    </div>
+                                    <div class="text-muted small">
+                                        Avg low penetration across {{backtestComparison.penetration.matchedEntries}} live limit entries.
+                                    </div>
+                                    {{else}}
+                                    <div class="text-muted small">No limit entries to estimate penetration.</div>
+                                    {{/if}}
+                                    <div class="text-muted small mt-2">
+                                        Setting:
+                                        {{formatRateAsPercent backtestComparison.penetration.setting}}
+                                        {{#if (and (defined backtestComparison.penetration.gap) (ne backtestComparison.penetration.gap null))}}
+                                        <span class="{{backtestComparison.penetration.gapClass}}">
+                                            ({{formatRateAsPercent backtestComparison.penetration.gap}})
+                                        </span>
+                                        {{/if}}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
                                 <div class="border rounded p-3 h-100">
                                     <div class="fw-semibold">Expense Ratios</div>
                                     {{#if backtestComparison.expenseRatio.hasData}}

@@ -324,6 +324,15 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     min: '0'
   },
   {
+    key: SETTING_KEYS.LIMIT_BUY_PENETRATION_RATIO,
+    group: 'engine',
+    label: 'Limit Buy Penetration Ratio',
+    description: 'Penetration ratio needed to fully score limit-buy fills (e.g. 0.005 = 0.5%).',
+    placeholder: '0.005',
+    inputType: 'number',
+    min: '0'
+  },
+  {
     key: SETTING_KEYS.SHORT_BORROW_FEE_ANNUAL_RATE,
     group: 'engine',
     label: 'Short Borrow Fee (Annual)',

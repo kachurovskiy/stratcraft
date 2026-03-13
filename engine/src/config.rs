@@ -5,6 +5,7 @@ use std::collections::HashMap;
 const BACKTEST_INITIAL_CAPITAL_SETTING: &str = "BACKTEST_INITIAL_CAPITAL";
 const DEFAULT_BACKTEST_INITIAL_CAPITAL: f64 = 100000.0;
 const DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO: f64 = 0.08;
+const DEFAULT_LIMIT_BUY_PENETRATION_RATIO: f64 = 0.005;
 
 pub fn resolve_backtest_initial_capital(settings: &HashMap<String, String>) -> f64 {
     let raw = settings
@@ -85,6 +86,7 @@ impl LocalOptimizationObjective {
 pub struct EngineRuntimeSettings {
     pub trade_close_fee_rate: f64,
     pub trade_slippage_rate: f64,
+    pub limit_buy_penetration_ratio: f64,
     pub short_borrow_fee_annual_rate: f64,
     pub market_order_price_cap_ratio: f64,
     pub trade_entry_price_min: f64,
@@ -103,6 +105,9 @@ impl EngineRuntimeSettings {
             require_setting_f64(settings, "TRADE_CLOSE_FEE_RATE", Some(0.0), None)?;
         let trade_slippage_rate =
             require_setting_f64(settings, "TRADE_SLIPPAGE_RATE", Some(0.0), None)?;
+        let limit_buy_penetration_ratio =
+            require_setting_f64(settings, "LIMIT_BUY_PENETRATION_RATIO", Some(0.0), None)
+                .unwrap_or(DEFAULT_LIMIT_BUY_PENETRATION_RATIO);
         let short_borrow_fee_annual_rate =
             require_setting_f64(settings, "SHORT_BORROW_FEE_ANNUAL_RATE", Some(0.0), None)?;
         let market_order_price_cap_ratio =
@@ -141,6 +146,7 @@ impl EngineRuntimeSettings {
         Ok(Self {
             trade_close_fee_rate,
             trade_slippage_rate,
+            limit_buy_penetration_ratio,
             short_borrow_fee_annual_rate,
             market_order_price_cap_ratio,
             trade_entry_price_min,
