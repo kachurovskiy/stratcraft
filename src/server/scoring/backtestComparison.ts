@@ -53,6 +53,7 @@ type TradeEntrySampleRow = {
   ticker: string;
   engine: TradeEntrySampleCell;
   live: TradeEntrySampleCell;
+  quantityNote: string | null;
 };
 
 type TradeEntrySampleDay = {
@@ -319,6 +320,59 @@ const groupTradeLinksByTicker = (tradeLinks: TradeTickerLink[]): Map<string, Tra
   return index;
 };
 
+const groupTradesByTicker = (trades: Trade[]): Map<string, Trade[]> => {
+  const index = new Map<string, Trade[]>();
+
+  for (const trade of trades) {
+    const bucket = index.get(trade.ticker);
+    if (bucket) {
+      bucket.push(trade);
+    } else {
+      index.set(trade.ticker, [trade]);
+    }
+  }
+
+  return index;
+};
+
+const sumTradeQuantity = (trades: Trade[]): number => {
+  let total = 0;
+  for (const trade of trades) {
+    const quantity = Math.abs(trade.quantity);
+    if (Number.isFinite(quantity) && quantity > 0) {
+      total += quantity;
+    }
+  }
+  return total;
+};
+
+const formatQuantityDifferenceNote = (engineTrades: Trade[], liveTrades: Trade[]): string | null => {
+  if (engineTrades.length === 0 || liveTrades.length === 0) {
+    return null;
+  }
+  const engineQuantity = sumTradeQuantity(engineTrades);
+  const liveQuantity = sumTradeQuantity(liveTrades);
+  if (engineQuantity <= 0 || liveQuantity <= 0) {
+    return null;
+  }
+  const diff = engineQuantity - liveQuantity;
+  if (Math.abs(diff) < 1e-8) {
+    return null;
+  }
+  const largerLabel = diff > 0 ? 'Engine' : 'Live';
+  const largerQuantity = diff > 0 ? engineQuantity : liveQuantity;
+  const smallerQuantity = diff > 0 ? liveQuantity : engineQuantity;
+  if (smallerQuantity <= 0) {
+    return null;
+  }
+  const percentDiff = ((largerQuantity - smallerQuantity) / smallerQuantity) * 100;
+  const percentLabel = formatPercentValue(percentDiff);
+  if (!percentLabel) {
+    return null;
+  }
+  return `${largerLabel} larger by ${percentLabel}%`;
+};
+
 const buildExclusiveReasonIndex = (
   trades: Trade[],
   exclusiveIds: Set<string>,
@@ -435,18 +489,20 @@ const buildSampleDays = (
     );
     const engineCancelledLinks = engineCancelled.map(trade => buildCancelledTradeLink(trade, cancelledLowByKey));
     const liveCancelledLinks = liveCancelled.map(trade => buildCancelledTradeLink(trade, cancelledLowByKey));
-    const engineTradesByTicker = groupTradeLinksByTicker(engineTradeLinks);
-    const liveTradesByTicker = groupTradeLinksByTicker(liveTradeLinks);
+    const engineTradeLinksByTicker = groupTradeLinksByTicker(engineTradeLinks);
+    const liveTradeLinksByTicker = groupTradeLinksByTicker(liveTradeLinks);
     const engineCancelledByTicker = groupTradeLinksByTicker(engineCancelledLinks);
     const liveCancelledByTicker = groupTradeLinksByTicker(liveCancelledLinks);
+    const engineTradesByTicker = groupTradesByTicker(engineTrades);
+    const liveTradesByTicker = groupTradesByTicker(liveTrades);
     const engineReasonsByTicker = buildExclusiveReasonIndex(engineTrades, engineOnlyIds, reasonByTradeId);
     const liveReasonsByTicker = buildExclusiveReasonIndex(liveTrades, liveOnlyIds, reasonByTradeId);
     const tickers = Array.from(
-      new Set<string>([...engineTradesByTicker.keys(), ...liveTradesByTicker.keys()])
+      new Set<string>([...engineTradeLinksByTicker.keys(), ...liveTradeLinksByTicker.keys()])
     ).sort((a, b) => a.localeCompare(b));
     const rows: TradeEntrySampleRow[] = tickers.map(ticker => {
-      const engineEntryTrades = engineTradesByTicker.get(ticker) ?? [];
-      const liveEntryTrades = liveTradesByTicker.get(ticker) ?? [];
+      const engineEntryTrades = engineTradeLinksByTicker.get(ticker) ?? [];
+      const liveEntryTrades = liveTradeLinksByTicker.get(ticker) ?? [];
       const engineCancelledTrades = engineCancelledByTicker.get(ticker) ?? [];
       const liveCancelledTrades = liveCancelledByTicker.get(ticker) ?? [];
 
@@ -459,7 +515,11 @@ const buildSampleDays = (
         live: {
           trades: liveEntryTrades.length > 0 ? liveEntryTrades : liveCancelledTrades,
           reasons: engineReasonsByTicker.get(ticker) ?? []
-        }
+        },
+        quantityNote: formatQuantityDifferenceNote(
+          engineTradesByTicker.get(ticker) ?? [],
+          liveTradesByTicker.get(ticker) ?? []
+        )
       };
     });
 

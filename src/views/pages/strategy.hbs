@@ -315,6 +315,9 @@
                                                     <td class="ps-3">
                                                         <a href="/strategies/{{../../strategy.id}}/tickers?ticker={{ticker}}"
                                                             class="text-decoration-none fw-semibold">{{ticker}}</a>
+                                                        {{#if quantityNote}}
+                                                        <div class="text-muted small">Qty diff: {{quantityNote}}</div>
+                                                        {{/if}}
                                                     </td>
                                                     <td>
                                                         {{#if engine.trades.length}}
