@@ -282,7 +282,6 @@ type TradeBucket = {
 type ExclusiveTradeSets = {
   engineOnlyIds: Set<string>;
   liveOnlyIds: Set<string>;
-  differenceDates: Set<string>;
 };
 
 type TradeDifferenceReason = {
@@ -441,17 +440,11 @@ const buildExclusiveReasonIndex = (
 const buildExclusiveTradeSets = (buckets: Map<string, TradeBucket>): ExclusiveTradeSets => {
   const engineOnlyIds = new Set<string>();
   const liveOnlyIds = new Set<string>();
-  const differenceDates = new Set<string>();
 
   for (const [entryKey, bucket] of buckets.entries()) {
     const engineSorted = [...bucket.engine].sort(sortTradesForMatch);
     const liveSorted = [...bucket.live].sort(sortTradesForMatch);
     const matchedCount = Math.min(engineSorted.length, liveSorted.length);
-
-    if (engineSorted.length !== liveSorted.length) {
-      const [dateKey] = entryKey.split('|');
-      differenceDates.add(dateKey);
-    }
 
     for (const trade of engineSorted.slice(matchedCount)) {
       engineOnlyIds.add(trade.id);
@@ -462,7 +455,17 @@ const buildExclusiveTradeSets = (buckets: Map<string, TradeBucket>): ExclusiveTr
     }
   }
 
-  return { engineOnlyIds, liveOnlyIds, differenceDates };
+  return { engineOnlyIds, liveOnlyIds };
+};
+
+const buildSampleDateKeys = (
+  engineByDate: Map<string, Trade[]>,
+  liveByDate: Map<string, Trade[]>
+): string[] => {
+  const dateKeys = new Set<string>([...engineByDate.keys(), ...liveByDate.keys()]);
+  return Array.from(dateKeys)
+    .sort((a, b) => b.localeCompare(a))
+    .slice(0, SAMPLE_DAY_LIMIT);
 };
 
 const buildTradeLink = (
@@ -505,10 +508,9 @@ const buildSampleDays = (
   cancelledLowByKey: Map<string, number>,
   engineOnlyIds: Set<string>,
   liveOnlyIds: Set<string>,
-  differenceDates: Set<string>,
+  dateKeys: string[],
   reasonByTradeId: Map<string, TradeDifferenceReason>
 ): TradeEntrySampleDay[] => {
-  const dateKeys = Array.from(differenceDates).sort();
   const sampleDays: TradeEntrySampleDay[] = [];
 
   for (const dateKey of dateKeys) {
@@ -568,10 +570,6 @@ const buildSampleDays = (
       liveCount: liveTrades.length,
       rows
     });
-
-    if (sampleDays.length >= SAMPLE_DAY_LIMIT) {
-      break;
-    }
   }
 
   return sampleDays;
@@ -1042,14 +1040,16 @@ export const buildBacktestComparisonView = async ({
   const engineAggregation = buildEntryAggregation(engineTrades);
   const liveAggregation = buildEntryAggregation(liveTrades);
   const tradeBuckets = buildTradeBuckets(engineTrades, liveTrades);
-  const { engineOnlyIds, liveOnlyIds, differenceDates } = buildExclusiveTradeSets(tradeBuckets);
+  const { engineOnlyIds, liveOnlyIds } = buildExclusiveTradeSets(tradeBuckets);
   const engineTradesByDate = buildTradesByDate(engineTrades);
   const liveTradesByDate = buildTradesByDate(liveTrades);
   const engineCancelledByDate = buildTradesByDate(engineCancelledTrades);
   const liveCancelledByDate = buildTradesByDate(liveCancelledTrades);
+  const sampleDateKeys = buildSampleDateKeys(engineTradesByDate, liveTradesByDate);
+  const sampleDateSet = new Set(sampleDateKeys);
   const cancelledLowByKey = new Map<string, number>();
   const cancelledTrades = [...engineCancelledTrades, ...liveCancelledTrades].filter(trade =>
-    differenceDates.has(toDateKey(trade.date))
+    sampleDateSet.has(toDateKey(trade.date))
   );
   if (cancelledTrades.length > 0) {
     const tickers = Array.from(new Set(cancelledTrades.map(trade => trade.ticker)));
@@ -1104,7 +1104,7 @@ export const buildBacktestComparisonView = async ({
     cancelledLowByKey,
     engineOnlyIds,
     liveOnlyIds,
-    differenceDates,
+    sampleDateKeys,
     reasonByTradeId
   );
   const slippage = computeSlippage(engineAggregation.entriesByKey, liveAggregation.entriesByKey, slippageSetting);

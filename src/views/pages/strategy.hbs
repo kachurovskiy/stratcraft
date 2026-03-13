@@ -312,7 +312,7 @@
                     <div class="border-top px-3 py-3">
                         <div class="d-flex justify-content-between align-items-center">
                             <h6 class="fw-bold mb-0">Entry Samples (5 Days)</h6>
-                            <span class="text-muted small">Up to 5 days</span>
+                            <span class="text-muted small">Last 5 trade days</span>
                         </div>
                         <div class="text-muted small mt-1">Each day lists traded tickers; badges highlight exclusive entries and empty cells show skip reasons.</div>
                         {{#if backtestComparison.sampleDays.length}}
@@ -402,9 +402,9 @@
                             </div>
                             {{/each}}
                         </div>
-                        <div class="text-muted small mt-2">Showing the first {{backtestComparison.sampleDays.length}} day{{#if (ne backtestComparison.sampleDays.length 1)}}s{{/if}} with entry differences.</div>
+                        <div class="text-muted small mt-2">Showing the last {{backtestComparison.sampleDays.length}} trade day{{#if (ne backtestComparison.sampleDays.length 1)}}s{{/if}}.</div>
                         {{else}}
-                        <div class="text-muted small mt-2">No entry differences found yet.</div>
+                        <div class="text-muted small mt-2">No recent trade days found yet.</div>
                         {{/if}}
                     </div>
                     {{else}}
