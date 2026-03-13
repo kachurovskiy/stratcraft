@@ -184,7 +184,7 @@ export class DeploymentService {
       if (behindCount > 0) {
         const listCount = Math.min(behindCount, MAX_DEPLOY_COMMITS);
         const { stdout: logOutput } = await runShellCommand(
-          `git -C ${DEPLOY_REPO_PATH} log --format=%H\t%s -n ${listCount} HEAD..origin/${defaultBranch}`
+          `git -C ${DEPLOY_REPO_PATH} log --format=%H%x09%s -n ${listCount} HEAD..origin/${defaultBranch}`
         );
         commitMessages.push(...parseCommitEntries(logOutput, repoWebUrl));
       }
