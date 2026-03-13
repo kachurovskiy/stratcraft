@@ -1,9 +1,9 @@
-default_adx|adx|start=2021-01-04|end=2023-01-03|final=91467.50|total_return=-8532.499630|sharpe=-0.369914|trades=279|tickers=6
-default_atr|atr|start=2021-01-04|end=2023-01-03|final=137530.91|total_return=37530.909104|sharpe=0.472356|trades=47|tickers=6
-default_buy_and_hold|buy_and_hold|start=2021-01-04|end=2023-01-03|final=198484.32|total_return=98484.320335|sharpe=0.568659|trades=2|tickers=6
+default_adx|adx|start=2021-01-04|end=2023-01-03|final=92172.54|total_return=-7827.458484|sharpe=-0.350195|trades=277|tickers=6
+default_atr|atr|start=2021-01-04|end=2023-01-03|final=137581.24|total_return=37581.242590|sharpe=0.473030|trades=47|tickers=6
+default_buy_and_hold|buy_and_hold|start=2021-01-04|end=2023-01-03|final=199016.12|total_return=99016.115489|sharpe=0.569038|trades=2|tickers=6
 default_lightgbm|lightgbm|start=2021-01-04|end=2023-01-03|final=100000.00|total_return=0.000000|sharpe=0.000000|trades=0|tickers=6
-default_macd|macd|start=2021-01-04|end=2023-01-03|final=112333.07|total_return=12333.067581|sharpe=0.209962|trades=113|tickers=6
-default_psar|psar|start=2021-01-04|end=2023-01-03|final=98704.81|total_return=-1295.191194|sharpe=-0.194689|trades=461|tickers=6
-default_rsi|rsi|start=2021-01-04|end=2023-01-03|final=187887.94|total_return=87887.940524|sharpe=0.566928|trades=1332|tickers=6
-default_weighted_momentum|weighted_momentum|start=2021-01-04|end=2023-01-03|final=183762.31|total_return=83762.313805|sharpe=0.439948|trades=1172|tickers=6
-default_williams_r|williams_r|start=2021-01-04|end=2023-01-03|final=223432.88|total_return=123432.877101|sharpe=0.546538|trades=279|tickers=6
+default_macd|macd|start=2021-01-04|end=2023-01-03|final=112439.58|total_return=12439.580595|sharpe=0.212439|trades=113|tickers=6
+default_psar|psar|start=2021-01-04|end=2023-01-03|final=99410.59|total_return=-589.412834|sharpe=-0.172434|trades=461|tickers=6
+default_rsi|rsi|start=2021-01-04|end=2023-01-03|final=189108.87|total_return=89108.867289|sharpe=0.572283|trades=1331|tickers=6
+default_weighted_momentum|weighted_momentum|start=2021-01-04|end=2023-01-03|final=186277.51|total_return=86277.512014|sharpe=0.442479|trades=1174|tickers=6
+default_williams_r|williams_r|start=2021-01-04|end=2023-01-03|final=223599.05|total_return=123599.046925|sharpe=0.547170|trades=279|tickers=6

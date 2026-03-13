@@ -1654,6 +1654,32 @@ impl Engine {
         }
     }
 
+    fn slippage_rate_for_candle(&self, candle: &Candle) -> f64 {
+        let base = self.runtime_settings.trade_slippage_rate;
+        if !base.is_finite() || base <= 0.0 {
+            return 0.0;
+        }
+
+        let min_volume = self.runtime_settings.minimum_dollar_volume_for_entry;
+        if !min_volume.is_finite() || min_volume <= 0.0 {
+            return base;
+        }
+
+        let dollar_volume = candle.high * candle.volume_shares as f64;
+        if !dollar_volume.is_finite() || dollar_volume <= 0.0 {
+            return base;
+        }
+
+        // Scale baseline slippage by liquidity: higher dollar volume means less slippage.
+        let volume_ratio = min_volume / dollar_volume;
+        let scaled = base * volume_ratio;
+        if scaled.is_finite() {
+            scaled.max(0.0)
+        } else {
+            base
+        }
+    }
+
     fn market_order_limit_price(&self, reference_price: f64, is_buy: bool) -> Option<f64> {
         let cap_ratio = self.runtime_settings.market_order_price_cap_ratio;
         if !cap_ratio.is_finite() || cap_ratio <= 0.0 {
@@ -1778,12 +1804,22 @@ impl Engine {
     }
 
     fn apply_entry_slippage_with_candle(&self, price: f64, is_short: bool, candle: &Candle) -> f64 {
-        let slipped = self.apply_entry_slippage(price, is_short);
+        let slippage_rate = self.slippage_rate_for_candle(candle);
+        let slipped = if is_short {
+            price * (1.0 - slippage_rate)
+        } else {
+            price * (1.0 + slippage_rate)
+        };
         Self::clamp_price_to_candle_bounds(slipped, candle)
     }
 
     fn apply_exit_slippage_with_candle(&self, price: f64, is_short: bool, candle: &Candle) -> f64 {
-        let slipped = self.apply_exit_slippage(price, is_short);
+        let slippage_rate = self.slippage_rate_for_candle(candle);
+        let slipped = if is_short {
+            price * (1.0 + slippage_rate)
+        } else {
+            price * (1.0 - slippage_rate)
+        };
         Self::clamp_price_to_candle_bounds(slipped, candle)
     }
 
