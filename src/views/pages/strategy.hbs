@@ -320,7 +320,12 @@
                                                         {{#if engine.trades.length}}
                                                         <div class="d-flex flex-wrap gap-2">
                                                             {{#each engine.trades}}
-                                                            <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">Trade</a>
+                                                            <div class="d-flex flex-column">
+                                                                <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none align-self-start">{{label}}</a>
+                                                                {{#if detail}}
+                                                                <div class="text-muted small">{{detail}}</div>
+                                                                {{/if}}
+                                                            </div>
                                                             {{/each}}
                                                         </div>
                                                         {{else if engine.reasons.length}}
@@ -340,7 +345,12 @@
                                                         {{#if live.trades.length}}
                                                         <div class="d-flex flex-wrap gap-2">
                                                             {{#each live.trades}}
-                                                            <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none">Trade</a>
+                                                            <div class="d-flex flex-column">
+                                                                <a href="{{tradeUrl}}" class="badge {{badgeClass}} text-decoration-none align-self-start">{{label}}</a>
+                                                                {{#if detail}}
+                                                                <div class="text-muted small">{{detail}}</div>
+                                                                {{/if}}
+                                                            </div>
                                                             {{/each}}
                                                         </div>
                                                         {{else if live.reasons.length}}

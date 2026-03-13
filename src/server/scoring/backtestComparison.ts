@@ -3,6 +3,7 @@ import type { AccountSignalSkipRow, BacktestResultRecord } from '../database/typ
 import type { BacktestScope, Trade } from '../../shared/types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
+import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
 
 type BacktestComparisonSummary = {
   label: string;
@@ -39,6 +40,8 @@ type TradeTickerLink = {
   ticker: string;
   tradeUrl: string;
   badgeClass: string;
+  label: string;
+  detail: string | null;
 };
 
 type TradeEntrySampleCell = {
@@ -102,6 +105,81 @@ type EntryAggregation = {
 const toDateKey = (value: Date): string => value.toISOString().slice(0, 10);
 
 const isEntryTrade = (trade: Trade): boolean => ENTRY_STATUS.has(trade.status);
+const isCancelledTrade = (trade: Trade): boolean => trade.status === 'cancelled';
+
+const formatTradePrice = (value: number): string | null => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  const formatted = value.toFixed(4);
+  return formatted.replace(/\.?0+$/, '');
+};
+
+const formatPercentValue = (value: number): string | null => {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  const formatted = value.toFixed(2);
+  return formatted.replace(/\.?0+$/, '');
+};
+
+const formatLowLimitDetail = (low: number | null, limit: number | null): string | null => {
+  const lowValue = typeof low === 'number' ? low : null;
+  const limitValue = typeof limit === 'number' ? limit : null;
+  const lowLabel = lowValue !== null ? formatTradePrice(lowValue) : null;
+  const limitLabel = limitValue !== null ? formatTradePrice(limitValue) : null;
+
+  if (lowLabel && limitLabel && lowValue !== null && limitValue !== null) {
+    const diff = limitValue - lowValue;
+    if (Math.abs(diff) < 1e-8) {
+      return `Low ${lowLabel} (at limit ${limitLabel})`;
+    }
+    const diffLabel = formatTradePrice(Math.abs(diff));
+    const percentValue = limitValue > 0 ? (Math.abs(diff) / limitValue) * 100 : null;
+    const percentLabel = percentValue !== null ? formatPercentValue(percentValue) : null;
+    if (diffLabel) {
+      const relation = diff > 0 ? 'below' : 'above';
+      const percentSuffix = percentLabel ? `, ${percentLabel}%` : '';
+      return `Low ${lowLabel} (${diffLabel} ${relation} limit ${limitLabel}${percentSuffix})`;
+    }
+    return `Low ${lowLabel} | Limit ${limitLabel}`;
+  }
+
+  if (lowLabel) {
+    return `Low ${lowLabel}`;
+  }
+
+  if (limitLabel) {
+    return `Limit ${limitLabel}`;
+  }
+
+  return null;
+};
+
+const formatCancelledTradeDetail = (trade: Trade, candleLow: number | null): string | null => {
+  const detailParts: string[] = [];
+  const limit = Number.isFinite(trade.price) ? trade.price : null;
+  const lowLimitDetail = formatLowLimitDetail(candleLow, limit);
+  if (lowLimitDetail) {
+    detailParts.push(lowLimitDetail);
+  }
+  const reason = resolveEntryOrderCancellationReason(
+    {
+      cancellationSource: trade.cancellationSource ?? null,
+      entryCancelAfter: trade.entryCancelAfter ?? null,
+      entryOrderStatus: trade.entryOrderStatus ?? null,
+      entryOrderStatusUpdatedAt: trade.entryOrderStatusUpdatedAt ?? null
+    },
+    {
+      includeEntryStatus: true,
+      defaultToAutoCancel: true
+    }
+  );
+  if (reason) {
+    detailParts.push(reason);
+  }
+  return detailParts.length > 0 ? detailParts.join(' | ') : null;
+};
 
 const formatPeriodLabel = (periodMonths: number | null, periodDays: number | null): string => {
   if (periodMonths && periodMonths > 0) {
@@ -307,13 +385,31 @@ const buildTradeLink = (
       ? side === 'engine'
         ? 'bg-danger'
         : 'bg-success'
-      : 'bg-light text-dark'
+      : 'bg-light text-dark',
+    label: 'Trade',
+    detail: null
+  };
+};
+
+const buildCancelledTradeLink = (trade: Trade, candleLowByKey: Map<string, number>): TradeTickerLink => {
+  const lowKey = `${trade.ticker}|${toDateKey(trade.date)}`;
+  const candleLow = candleLowByKey.get(lowKey) ?? null;
+  return {
+    id: trade.id,
+    ticker: trade.ticker,
+    tradeUrl: `/trades/${trade.id}`,
+    badgeClass: 'bg-secondary',
+    label: 'Cancelled',
+    detail: formatCancelledTradeDetail(trade, candleLow)
   };
 };
 
 const buildSampleDays = (
   engineByDate: Map<string, Trade[]>,
   liveByDate: Map<string, Trade[]>,
+  engineCancelledByDate: Map<string, Trade[]>,
+  liveCancelledByDate: Map<string, Trade[]>,
+  cancelledLowByKey: Map<string, number>,
   engineOnlyIds: Set<string>,
   liveOnlyIds: Set<string>,
   differenceDates: Set<string>,
@@ -325,6 +421,8 @@ const buildSampleDays = (
   for (const dateKey of dateKeys) {
     const engineTrades = (engineByDate.get(dateKey) ?? []).sort(sortTradesForDisplay);
     const liveTrades = (liveByDate.get(dateKey) ?? []).sort(sortTradesForDisplay);
+    const engineCancelled = (engineCancelledByDate.get(dateKey) ?? []).sort(sortTradesForDisplay);
+    const liveCancelled = (liveCancelledByDate.get(dateKey) ?? []).sort(sortTradesForDisplay);
     if (engineTrades.length === 0 && liveTrades.length === 0) {
       continue;
     }
@@ -335,24 +433,35 @@ const buildSampleDays = (
     const liveTradeLinks = liveTrades.map(trade =>
       buildTradeLink(trade, liveOnlyIds.has(trade.id), 'live')
     );
+    const engineCancelledLinks = engineCancelled.map(trade => buildCancelledTradeLink(trade, cancelledLowByKey));
+    const liveCancelledLinks = liveCancelled.map(trade => buildCancelledTradeLink(trade, cancelledLowByKey));
     const engineTradesByTicker = groupTradeLinksByTicker(engineTradeLinks);
     const liveTradesByTicker = groupTradeLinksByTicker(liveTradeLinks);
+    const engineCancelledByTicker = groupTradeLinksByTicker(engineCancelledLinks);
+    const liveCancelledByTicker = groupTradeLinksByTicker(liveCancelledLinks);
     const engineReasonsByTicker = buildExclusiveReasonIndex(engineTrades, engineOnlyIds, reasonByTradeId);
     const liveReasonsByTicker = buildExclusiveReasonIndex(liveTrades, liveOnlyIds, reasonByTradeId);
     const tickers = Array.from(
       new Set<string>([...engineTradesByTicker.keys(), ...liveTradesByTicker.keys()])
     ).sort((a, b) => a.localeCompare(b));
-    const rows: TradeEntrySampleRow[] = tickers.map(ticker => ({
-      ticker,
-      engine: {
-        trades: engineTradesByTicker.get(ticker) ?? [],
-        reasons: liveReasonsByTicker.get(ticker) ?? []
-      },
-      live: {
-        trades: liveTradesByTicker.get(ticker) ?? [],
-        reasons: engineReasonsByTicker.get(ticker) ?? []
-      }
-    }));
+    const rows: TradeEntrySampleRow[] = tickers.map(ticker => {
+      const engineEntryTrades = engineTradesByTicker.get(ticker) ?? [];
+      const liveEntryTrades = liveTradesByTicker.get(ticker) ?? [];
+      const engineCancelledTrades = engineCancelledByTicker.get(ticker) ?? [];
+      const liveCancelledTrades = liveCancelledByTicker.get(ticker) ?? [];
+
+      return {
+        ticker,
+        engine: {
+          trades: engineEntryTrades.length > 0 ? engineEntryTrades : engineCancelledTrades,
+          reasons: liveReasonsByTicker.get(ticker) ?? []
+        },
+        live: {
+          trades: liveEntryTrades.length > 0 ? liveEntryTrades : liveCancelledTrades,
+          reasons: engineReasonsByTicker.get(ticker) ?? []
+        }
+      };
+    });
 
     sampleDays.push({
       date: new Date(`${dateKey}T00:00:00Z`),
@@ -717,6 +826,8 @@ export const buildBacktestComparisonView = async ({
   const slippageSetting = parseSettingNumber(slippageRaw, SLIPPAGE_DEFAULT);
   const engineTrades = engineTradesRaw.filter(isEntryTrade);
   const liveTrades = liveTradesRaw.filter(isEntryTrade);
+  const engineCancelledTrades = engineTradesRaw.filter(isCancelledTrade);
+  const liveCancelledTrades = liveTradesRaw.filter(isCancelledTrade);
 
   const engineAggregation = buildEntryAggregation(engineTrades);
   const liveAggregation = buildEntryAggregation(liveTrades);
@@ -724,6 +835,27 @@ export const buildBacktestComparisonView = async ({
   const { engineOnlyIds, liveOnlyIds, differenceDates } = buildExclusiveTradeSets(tradeBuckets);
   const engineTradesByDate = buildTradesByDate(engineTrades);
   const liveTradesByDate = buildTradesByDate(liveTrades);
+  const engineCancelledByDate = buildTradesByDate(engineCancelledTrades);
+  const liveCancelledByDate = buildTradesByDate(liveCancelledTrades);
+  const cancelledLowByKey = new Map<string, number>();
+  const cancelledTrades = [...engineCancelledTrades, ...liveCancelledTrades].filter(trade =>
+    differenceDates.has(toDateKey(trade.date))
+  );
+  if (cancelledTrades.length > 0) {
+    const tickers = Array.from(new Set(cancelledTrades.map(trade => trade.ticker)));
+    const timestamps = cancelledTrades.map(trade => trade.date.getTime());
+    const start = new Date(Math.min(...timestamps));
+    const end = new Date(Math.max(...timestamps));
+    const candlesByTicker = await db.candles.getCandles(tickers, start, end);
+    for (const [ticker, candles] of Object.entries(candlesByTicker)) {
+      for (const candle of candles) {
+        if (Number.isFinite(candle.low)) {
+          const key = `${ticker}|${toDateKey(candle.date)}`;
+          cancelledLowByKey.set(key, candle.low);
+        }
+      }
+    }
+  }
   const exclusiveCandidates = [
     ...engineTrades.filter(trade => engineOnlyIds.has(trade.id)),
     ...liveTrades.filter(trade => liveOnlyIds.has(trade.id))
@@ -757,6 +889,9 @@ export const buildBacktestComparisonView = async ({
   const sampleDays = buildSampleDays(
     engineTradesByDate,
     liveTradesByDate,
+    engineCancelledByDate,
+    liveCancelledByDate,
+    cancelledLowByKey,
     engineOnlyIds,
     liveOnlyIds,
     differenceDates,

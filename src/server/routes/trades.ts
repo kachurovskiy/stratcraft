@@ -8,6 +8,7 @@ import {
   AccountOperationStatus
 } from '../../shared/types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
+import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -303,19 +304,15 @@ function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | und
     }
     if (status === 'cancelled') {
       if (type === 'entry') {
-        if (trade.cancellationSource === 'expiry') {
-          return 'Cancelled after market close';
-        }
-        if (trade.cancellationSource === 'exchange') {
-          return 'Cancelled by broker';
-        }
-        if (trade.entryCancelAfter) {
-          const cancelAt = trade.entryCancelAfter.getTime();
-          const updatedAt = statusUpdatedAt?.getTime() ?? null;
-          if (updatedAt && updatedAt >= cancelAt - 60_000) {
-            return 'Cancelled after market close';
-          }
-        }
+        return resolveEntryOrderCancellationReason(
+          {
+            cancellationSource: trade.cancellationSource ?? null,
+            entryCancelAfter: trade.entryCancelAfter ?? null,
+            entryOrderStatus: trade.entryOrderStatus ?? null,
+            entryOrderStatusUpdatedAt: statusUpdatedAt ?? null
+          },
+          { fallbackToBroker: true }
+        );
       }
       return 'Cancelled by broker';
     }
