@@ -999,7 +999,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id, entry_order_status, entry_order_status_updated_at, stop_order_status, stop_order_status_updated_at, exit_order_status, exit_order_status_updated_at
+                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id, entry_order_status, entry_order_status_updated_at, stop_order_status, stop_order_status_updated_at, exit_order_status, exit_order_status_updated_at, cancellation_source
                  FROM trades t
                  WHERE t.strategy_id = $1
                    AND t.entry_order_id IS NOT NULL
@@ -1039,7 +1039,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT t.id, t.ticker, t.quantity, t.price, t.date, t.status, t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered, t.changes, t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, s.account_id, t.strategy_id
+                "SELECT t.id, t.ticker, t.quantity, t.price, t.date, t.status, t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered, t.changes, t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.cancellation_source, s.account_id, t.strategy_id
                  FROM trades t
                  INNER JOIN strategies s ON s.id = t.strategy_id
                  WHERE s.account_id IS NOT NULL
@@ -1052,11 +1052,11 @@ impl Database {
 
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
-            let account_id: String = row.get(23);
+            let account_id: String = row.get(24);
             if account_id.trim().is_empty() {
                 continue;
             }
-            let strategy_id: String = row.get(24);
+            let strategy_id: String = row.get(25);
             let trade = Self::map_trade_row(&row, &strategy_id)?;
             result.push(TradeReconciliationCandidate { trade, account_id });
         }
@@ -1236,7 +1236,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id, entry_order_status, entry_order_status_updated_at, stop_order_status, stop_order_status_updated_at, exit_order_status, exit_order_status_updated_at
+                "SELECT id, ticker, quantity, price, date, status, pnl, fee, exit_price, exit_date, stop_loss, stop_loss_triggered, changes, entry_order_id, entry_cancel_after, stop_order_id, exit_order_id, entry_order_status, entry_order_status_updated_at, stop_order_status, stop_order_status_updated_at, exit_order_status, exit_order_status_updated_at, cancellation_source
                  FROM trades
                  WHERE backtest_result_id = $1
                  ORDER BY date, id",
@@ -1260,6 +1260,10 @@ impl Database {
             .map_err(|err| anyhow!("Failed to serialize trade changes: {}", err))?;
         let fee_value = trade.fee.unwrap_or(0.0);
         let status = trade.status.as_str();
+        let cancellation_source = trade
+            .cancellation_source
+            .as_ref()
+            .map(TradeCancellationSource::as_str);
 
         self.client
             .execute(
@@ -1280,8 +1284,9 @@ impl Database {
                      stop_order_status = $14,
                      stop_order_status_updated_at = $15,
                      exit_order_status = $16,
-                     exit_order_status_updated_at = $17
-                 WHERE id = $18",
+                     exit_order_status_updated_at = $17,
+                     cancellation_source = $18
+                 WHERE id = $19",
                 &[
                     &status,
                     &trade.pnl,
@@ -1300,6 +1305,7 @@ impl Database {
                     &trade.stop_order_status_updated_at,
                     &trade.exit_order_status,
                     &trade.exit_order_status_updated_at,
+                    &cancellation_source,
                     &trade.id,
                 ],
             )
@@ -1492,6 +1498,9 @@ impl Database {
         let stop_order_status_updated_at: Option<DateTime<Utc>> = row.get(20);
         let exit_order_status: Option<String> = row.get(21);
         let exit_order_status_updated_at: Option<DateTime<Utc>> = row.get(22);
+        let cancellation_source: Option<String> = row.get(23);
+        let cancellation_source =
+            cancellation_source.and_then(|value| TradeCancellationSource::from_str(&value).ok());
         let changes: Vec<TradeChange> = serde_json::from_str(&changes_json)
             .map_err(|err| anyhow!("Failed to parse trade changes JSON: {}", err))?;
         let fee_value: Option<f64> = row.get(7);
@@ -1510,6 +1519,7 @@ impl Database {
             exit_date: exit_date.map(naive_date_to_datetime),
             stop_loss: row.get(10),
             stop_loss_triggered: row.get(11),
+            cancellation_source,
             entry_order_id,
             entry_cancel_after,
             stop_order_id,

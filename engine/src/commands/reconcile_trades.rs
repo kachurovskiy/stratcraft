@@ -2,7 +2,7 @@ use crate::alpaca::{AlpacaClient, OrderEvaluation, OrderState};
 use crate::context::AppContext;
 use crate::database::Database;
 use crate::engine::AccountPositionState;
-use crate::models::{Trade, TradeStatus};
+use crate::models::{Trade, TradeCancellationSource, TradeStatus};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use log::{info, warn};
@@ -211,7 +211,7 @@ async fn reconcile_trade(
                     "Cancelled pending entry order {} for trade {} on strategy {}",
                     order_id, trade.id, trade.strategy_id
                 );
-                apply_cancellation(trade, Utc::now());
+                apply_cancellation(trade, Utc::now(), TradeCancellationSource::Expiry);
                 return Ok(true);
             }
         }
@@ -321,7 +321,7 @@ async fn reconcile_trade(
         &exit_eval,
         position_match.is_some(),
     ) {
-        apply_cancellation(trade, Utc::now());
+        apply_cancellation(trade, Utc::now(), TradeCancellationSource::Exchange);
         return Ok(true);
     }
 
@@ -346,7 +346,11 @@ fn apply_closure(trade: &mut Trade, evaluation: &OrderEvaluation, is_stop: bool)
     }
 }
 
-fn apply_cancellation(trade: &mut Trade, changed_at: DateTime<Utc>) {
+fn apply_cancellation(
+    trade: &mut Trade,
+    changed_at: DateTime<Utc>,
+    source: TradeCancellationSource,
+) {
     if trade.status == TradeStatus::Pending {
         if let Some(cancel_after) = trade.entry_cancel_after {
             let expected_date = normalize_trade_date(cancel_after);
@@ -355,6 +359,7 @@ fn apply_cancellation(trade: &mut Trade, changed_at: DateTime<Utc>) {
             }
         }
     }
+    trade.set_cancellation_source(Some(source), changed_at);
     trade.set_status(TradeStatus::Cancelled, changed_at);
     trade.set_exit_price(None, changed_at);
     trade.set_exit_date(None, changed_at);
@@ -765,6 +770,7 @@ mod tests {
             stop_loss_triggered: Some(false),
             entry_order_id: Some("entry-order".to_string()),
             entry_cancel_after: None,
+            cancellation_source: None,
             stop_order_id: None,
             exit_order_id: None,
             entry_order_status: None,
@@ -917,7 +923,7 @@ mod tests {
             .with_ymd_and_hms(2026, 3, 10, 5, 0, 0)
             .single()
             .expect("valid timestamp");
-        apply_cancellation(&mut trade, changed_at);
+        apply_cancellation(&mut trade, changed_at, TradeCancellationSource::Expiry);
 
         assert_eq!(
             trade.date,
@@ -926,5 +932,9 @@ mod tests {
                 .expect("valid date")
         );
         assert_eq!(trade.status, TradeStatus::Cancelled);
+        assert_eq!(
+            trade.cancellation_source,
+            Some(TradeCancellationSource::Expiry)
+        );
     }
 }

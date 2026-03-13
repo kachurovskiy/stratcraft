@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS trades (
     price DOUBLE PRECISION NOT NULL,
     date DATE NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
+    cancellation_source TEXT,
     pnl DOUBLE PRECISION,
     fee DOUBLE PRECISION NOT NULL DEFAULT 0,
     exit_price DOUBLE PRECISION,
@@ -214,7 +215,8 @@ ALTER TABLE trades
     ADD COLUMN IF NOT EXISTS stop_order_status TEXT,
     ADD COLUMN IF NOT EXISTS stop_order_status_updated_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS exit_order_status TEXT,
-    ADD COLUMN IF NOT EXISTS exit_order_status_updated_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS exit_order_status_updated_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS cancellation_source TEXT;
 
 CREATE TABLE IF NOT EXISTS account_operations (
     id TEXT PRIMARY KEY,

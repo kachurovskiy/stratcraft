@@ -40,6 +40,8 @@ pub struct Trade {
     pub price: f64,
     pub date: DateTime<Utc>,
     pub status: TradeStatus,
+    #[serde(default)]
+    pub cancellation_source: Option<TradeCancellationSource>,
     pub pnl: Option<f64>,
     #[serde(default)]
     pub fee: Option<f64>,
@@ -124,6 +126,34 @@ impl TradeStatus {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeCancellationSource {
+    Expiry,
+    Exchange,
+}
+
+impl TradeCancellationSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TradeCancellationSource::Expiry => "expiry",
+            TradeCancellationSource::Exchange => "exchange",
+        }
+    }
+}
+
+impl FromStr for TradeCancellationSource {
+    type Err = anyhow::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_lowercase().as_str() {
+            "expiry" => Ok(TradeCancellationSource::Expiry),
+            "exchange" => Ok(TradeCancellationSource::Exchange),
+            other => Err(anyhow!("Unknown trade cancellation source '{}'", other)),
+        }
+    }
+}
+
 impl Trade {
     pub fn record_change<V>(
         &mut self,
@@ -179,6 +209,16 @@ impl Trade {
         let old = self.status.clone();
         self.record_change("status", &old, &status, changed_at);
         self.status = status;
+    }
+
+    pub fn set_cancellation_source(
+        &mut self,
+        value: Option<TradeCancellationSource>,
+        changed_at: DateTime<Utc>,
+    ) {
+        let old = self.cancellation_source.clone();
+        self.record_change("cancellationSource", &old, &value, changed_at);
+        self.cancellation_source = value;
     }
 
     pub fn set_stop_loss(&mut self, value: Option<f64>, changed_at: DateTime<Utc>) {

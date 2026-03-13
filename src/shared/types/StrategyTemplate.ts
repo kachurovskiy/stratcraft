@@ -154,6 +154,8 @@ export interface TradeChange {
   changedAt: Date;
 }
 
+export type TradeCancellationSource = 'expiry' | 'exchange';
+
 export interface Trade {
   id: string;
   strategyId: string;
@@ -164,6 +166,7 @@ export interface Trade {
   price: number;
   date: Date;
   status: 'pending' | 'active' | 'closed' | 'cancelled';
+  cancellationSource?: TradeCancellationSource | null;
   pnl?: number;
   fee?: number | null;
   exitPrice?: number;

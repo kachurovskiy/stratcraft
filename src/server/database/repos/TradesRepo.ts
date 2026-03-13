@@ -1,5 +1,11 @@
 import type { QueryResultRow } from 'pg';
-import type { AccountOperation, AccountOperationType, Trade, TradeChange } from '../../../shared/types/StrategyTemplate';
+import type {
+  AccountOperation,
+  AccountOperationType,
+  Trade,
+  TradeCancellationSource,
+  TradeChange
+} from '../../../shared/types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
 import type { EntryFillGapHistogram, TradeTickerStats, TradeVolumeSegmentStats } from '../types';
@@ -15,6 +21,7 @@ type TradeRow = QueryResultRow & {
   price: number;
   date: string;
   status: string;
+  cancellation_source: string | null;
   pnl: number | null;
   fee: number;
   exit_price: number | null;
@@ -140,6 +147,13 @@ export class TradesRepo {
     const exitOrderStatusUpdatedAt =
       row.exit_order_status_updated_at ? new Date(row.exit_order_status_updated_at) : undefined;
 
+    const cancellationSourceRaw =
+      typeof row.cancellation_source === 'string' ? row.cancellation_source.trim().toLowerCase() : '';
+    const cancellationSource: TradeCancellationSource | undefined =
+      cancellationSourceRaw === 'expiry' || cancellationSourceRaw === 'exchange'
+        ? (cancellationSourceRaw as TradeCancellationSource)
+        : undefined;
+
     return {
       id: row.id,
       strategyId: row.strategy_id,
@@ -150,6 +164,7 @@ export class TradesRepo {
       price: row.price,
       date: new Date(row.date),
       status,
+      cancellationSource,
       pnl: row.pnl ?? undefined,
       fee: row.fee ?? null,
       exitPrice: row.exit_price ?? undefined,
@@ -334,6 +349,7 @@ export class TradesRepo {
   ): Promise<Trade[]> {
     let sql = `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
+             t.cancellation_source,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
              t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
@@ -518,6 +534,7 @@ export class TradesRepo {
     const rows = await this.db.all<TradeRow>(
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
+             t.cancellation_source,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
              t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
@@ -551,6 +568,7 @@ export class TradesRepo {
     const rows = await this.db.all<TradeWithStrategyRow>(
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
+             t.cancellation_source,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
              t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id,
@@ -637,6 +655,7 @@ export class TradesRepo {
     const rows = await this.db.all<TradeRow>(
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
+             t.cancellation_source,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
              t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
@@ -673,6 +692,7 @@ export class TradesRepo {
     const rows = await this.db.all<TradeRow>(
       `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
+             t.cancellation_source,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
              t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at,
              COALESCE(t.user_id, s.user_id) as user_id
@@ -716,6 +736,7 @@ export class TradesRepo {
   async getTrade(tradeId: string, userId: number): Promise<Trade | null> {
     const sql = `
       SELECT t.id, t.strategy_id, t.backtest_result_id, t.ticker, t.quantity, t.price, t.date, t.status,
+             t.cancellation_source,
              t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered,
              t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.changes, t.created_at, t.user_id as user_id
       FROM trades t
@@ -1066,3 +1087,4 @@ export class TradesRepo {
     };
   }
 }
+

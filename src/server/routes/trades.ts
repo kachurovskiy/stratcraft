@@ -302,11 +302,19 @@ function buildTradeOrderViews(trade: Trade, operations: AccountOperation[] | und
       return 'Awaiting fill';
     }
     if (status === 'cancelled') {
-      if (type === 'entry' && trade.entryCancelAfter) {
-        const cancelAt = trade.entryCancelAfter.getTime();
-        const updatedAt = statusUpdatedAt?.getTime() ?? null;
-        if (updatedAt && updatedAt >= cancelAt - 60_000) {
+      if (type === 'entry') {
+        if (trade.cancellationSource === 'expiry') {
           return 'Cancelled after market close';
+        }
+        if (trade.cancellationSource === 'exchange') {
+          return 'Cancelled by broker';
+        }
+        if (trade.entryCancelAfter) {
+          const cancelAt = trade.entryCancelAfter.getTime();
+          const updatedAt = statusUpdatedAt?.getTime() ?? null;
+          if (updatedAt && updatedAt >= cancelAt - 60_000) {
+            return 'Cancelled after market close';
+          }
         }
       }
       return 'Cancelled by broker';
