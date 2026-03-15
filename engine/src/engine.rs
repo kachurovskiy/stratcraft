@@ -2661,6 +2661,29 @@ impl Engine {
                         continue;
                     }
 
+                    if let Some(existing_stop) = self.find_matching_stop_price(account_state, trade)
+                    {
+                        if !Self::are_prices_close(existing_stop, curr_stop) {
+                            operations.push(AccountOperationPlan {
+                                trade_id: trade.id.clone(),
+                                ticker: trade.ticker.clone(),
+                                quantity: Some(trade.quantity),
+                                price: Some(planning_close),
+                                stop_loss: Some(curr_stop),
+                                previous_stop_loss: Some(existing_stop),
+                                triggered_at: current_date,
+                                operation_type: AccountOperationType::UpdateStopLoss,
+                                reason: Some("stop_mismatch".to_string()),
+                                order_type: None,
+                                discount_applied: None,
+                                signal_confidence: None,
+                                account_cash_at_plan: None,
+                                days_held: None,
+                            });
+                            continue;
+                        }
+                    }
+
                     if let Some(update) = compute_trailing_stop(TrailingStopParams {
                         stop_loss_mode: self.config.stop_loss.mode,
                         atr_multiplier: self.config.stop_loss.atr_multiplier,
@@ -2768,6 +2791,41 @@ impl Engine {
         };
 
         !has_side_order
+    }
+
+    fn find_matching_stop_price(
+        &self,
+        account_state: &AccountStateSnapshot,
+        trade: &Trade,
+    ) -> Option<f64> {
+        let desired_side = if trade.quantity < 0 { "buy" } else { "sell" };
+        let desired_qty = trade.quantity.abs();
+        account_state
+            .stop_orders
+            .get(&trade.ticker)
+            .and_then(|orders| {
+                orders
+                    .iter()
+                    .find(|order| {
+                        order.quantity.abs() == desired_qty
+                            && order.side.eq_ignore_ascii_case(desired_side)
+                            && order.stop_price.is_finite()
+                            && order.stop_price > 0.0
+                    })
+                    .map(|order| order.stop_price)
+            })
+    }
+
+    fn are_prices_close(a: f64, b: f64) -> bool {
+        if !a.is_finite() || !b.is_finite() {
+            return false;
+        }
+        let tolerance = if a.abs() >= 1.0 || b.abs() >= 1.0 {
+            0.01
+        } else {
+            0.0001
+        };
+        (a - b).abs() <= tolerance
     }
 }
 
@@ -4716,6 +4774,47 @@ mod tests {
             .expect("expected stop repair operation");
         assert_eq!(op.reason.as_deref(), Some("stop_missing"));
         assert_eq!(op.stop_loss, Some(90.0));
+    }
+
+    #[test]
+    fn test_plan_account_operations_updates_mismatched_stop() {
+        let engine = Engine::new(test_runtime_settings());
+
+        let (candles, dates) = generate_candles("DIFF", vec![100.0, 101.0]);
+        let signals = Vec::<GeneratedSignal>::new();
+        let state = sample_account_state_with_holdings(0.0, &[("DIFF", 10, 100.0)], Some(80.0));
+
+        let existing_trade = sample_active_trade(
+            "mismatch-stop",
+            "strategy",
+            "DIFF",
+            10,
+            100.0,
+            dates[0],
+            Some(90.0),
+        );
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            dates[1],
+            &state,
+            &HashSet::new(),
+            &[existing_trade],
+            0,
+            &HashMap::new(),
+        );
+
+        let op = plan
+            .operations
+            .iter()
+            .find(|op| op.operation_type == AccountOperationType::UpdateStopLoss)
+            .expect("expected stop mismatch update");
+        assert_eq!(op.reason.as_deref(), Some("stop_mismatch"));
+        assert_eq!(op.stop_loss, Some(90.0));
+        assert_eq!(op.previous_stop_loss, Some(80.0));
     }
 
     #[test]

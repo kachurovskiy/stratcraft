@@ -1,4 +1,5 @@
 use crate::alpaca::{AlpacaClient, OrderEvaluation, OrderState};
+use crate::config::{EngineConfig, StopLossConfig};
 use crate::context::AppContext;
 use crate::database::Database;
 use crate::engine::AccountPositionState;
@@ -114,6 +115,17 @@ pub async fn run(app: &AppContext) -> Result<()> {
             }
         }
 
+        let stop_loss_configs = match fetch_stop_loss_configs(&db, &trades).await {
+            Ok(configs) => configs,
+            Err(err) => {
+                warn!(
+                    "Failed to load stop loss configs for account {}: {}",
+                    account_id, err
+                );
+                HashMap::new()
+            }
+        };
+
         let trades_snapshot = trades.clone();
         for mut trade in trades {
             match reconcile_trade(
@@ -121,6 +133,7 @@ pub async fn run(app: &AppContext) -> Result<()> {
                 &mut trade,
                 &position_prices,
                 &positions,
+                &stop_loss_configs,
                 &trades_snapshot,
             )
             .await
@@ -157,6 +170,7 @@ async fn reconcile_trade(
     trade: &mut Trade,
     position_prices: &HashMap<String, f64>,
     positions: &[AccountPositionState],
+    stop_loss_configs: &HashMap<String, Option<StopLossConfig>>,
     trades: &[Trade],
 ) -> Result<bool> {
     if !(trade.entry_order_id.is_some()
@@ -181,6 +195,9 @@ async fn reconcile_trade(
     } else {
         None
     };
+    let stop_loss_config = stop_loss_configs
+        .get(trade.strategy_id.as_str())
+        .and_then(|config| config.as_ref());
 
     let mut changed = false;
     if let Some(eval) = entry_eval.as_ref() {
@@ -229,6 +246,7 @@ async fn reconcile_trade(
         if let Some(price) = eval.filled_price {
             if trade.price != price {
                 trade.set_price(price, changed_at);
+                update_stop_loss_for_fill(trade, price, changed_at, stop_loss_config);
                 changed = true;
             }
         }
@@ -267,6 +285,12 @@ async fn reconcile_trade(
                 && (trade.price - position.avg_entry_price).abs() > PNL_EPSILON
             {
                 trade.set_price(position.avg_entry_price, changed_at);
+                update_stop_loss_for_fill(
+                    trade,
+                    position.avg_entry_price,
+                    changed_at,
+                    stop_loss_config,
+                );
             }
             let filled_date = normalize_trade_date(changed_at);
             if trade.date != filled_date {
@@ -282,7 +306,14 @@ async fn reconcile_trade(
             && position.avg_entry_price > 0.0
             && (trade.price - position.avg_entry_price).abs() > PNL_EPSILON
         {
-            trade.set_price(position.avg_entry_price, Utc::now());
+            let changed_at = Utc::now();
+            trade.set_price(position.avg_entry_price, changed_at);
+            update_stop_loss_for_fill(
+                trade,
+                position.avg_entry_price,
+                changed_at,
+                stop_loss_config,
+            );
             changed = true;
         }
     }
@@ -696,6 +727,50 @@ fn update_mark_to_market_pnl(
     false
 }
 
+fn update_stop_loss_for_fill(
+    trade: &mut Trade,
+    fill_price: f64,
+    changed_at: DateTime<Utc>,
+    stop_loss_config: Option<&StopLossConfig>,
+) -> bool {
+    let Some(config) = stop_loss_config else {
+        return false;
+    };
+    if config.mode != 0 {
+        return false;
+    }
+    if trade.stop_loss.is_none() {
+        return false;
+    }
+    if !fill_price.is_finite() || fill_price <= 0.0 {
+        return false;
+    }
+    if !config.ratio.is_finite() || config.ratio <= 0.0 || config.ratio >= 1.0 {
+        return false;
+    }
+
+    let is_short = trade.quantity < 0;
+    let new_stop = if is_short {
+        fill_price * (1.0 + config.ratio)
+    } else {
+        fill_price * (1.0 - config.ratio)
+    };
+    if !new_stop.is_finite() || new_stop <= 0.0 {
+        return false;
+    }
+
+    if trade
+        .stop_loss
+        .map(|value| (value - new_stop).abs() > PNL_EPSILON)
+        .unwrap_or(true)
+    {
+        trade.set_stop_loss(Some(new_stop), changed_at);
+        return true;
+    }
+
+    false
+}
+
 fn should_cancel_trade(
     trade: &Trade,
     entry: &Option<OrderEvaluation>,
@@ -743,6 +818,30 @@ fn entry_order_ready_for_cancellation(trade: &Trade, entry: &Option<OrderEvaluat
         .as_ref()
         .map(|evaluation| matches!(evaluation.state, OrderState::Pending))
         .unwrap_or(false)
+}
+
+async fn fetch_stop_loss_configs(
+    db: &Database,
+    trades: &[Trade],
+) -> Result<HashMap<String, Option<StopLossConfig>>> {
+    let mut configs = HashMap::new();
+    for trade in trades {
+        if configs.contains_key(&trade.strategy_id) {
+            continue;
+        }
+        let config = match db.get_strategy_config(&trade.strategy_id).await? {
+            Some(strategy) => Some(EngineConfig::from_parameters(&strategy.parameters).stop_loss),
+            None => {
+                warn!(
+                    "Missing strategy config for trade {} on strategy {}",
+                    trade.id, trade.strategy_id
+                );
+                None
+            }
+        };
+        configs.insert(trade.strategy_id.clone(), config);
+    }
+    Ok(configs)
 }
 
 #[cfg(test)]
@@ -936,5 +1035,26 @@ mod tests {
             trade.cancellation_source,
             Some(TradeCancellationSource::Expiry)
         );
+    }
+
+    #[test]
+    fn update_stop_loss_for_fill_updates_percent_stop() {
+        let mut trade = sample_trade("AAA", 10, 100.0);
+        trade.stop_loss = Some(95.0);
+        let config = StopLossConfig {
+            mode: 0,
+            ratio: 0.05,
+            atr_period: 14,
+            atr_multiplier: 2.0,
+        };
+        let changed_at = Utc
+            .with_ymd_and_hms(2026, 3, 11, 0, 0, 0)
+            .single()
+            .expect("valid timestamp");
+
+        let updated = update_stop_loss_for_fill(&mut trade, 90.0, changed_at, Some(&config));
+
+        assert!(updated);
+        assert!((trade.stop_loss.unwrap() - 85.5).abs() < 1e-6);
     }
 }
