@@ -63,6 +63,7 @@ type TradeEntrySampleRow = {
   engine: TradeEntrySampleCell;
   live: TradeEntrySampleCell;
   quantityNote: string | null;
+  entryPriceGap: string | null;
 };
 
 type TradeEntrySampleDay = {
@@ -133,6 +134,15 @@ const formatPercentValue = (value: number): string | null => {
   }
   const formatted = value.toFixed(2);
   return formatted.replace(/\.?0+$/, '');
+};
+
+const formatSignedPercentOneDecimal = (value: number): string | null => {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  const formatted = value.toFixed(1);
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${formatted}%`;
 };
 
 const parseNumericValue = (value: unknown): number | null => {
@@ -384,6 +394,43 @@ const sumTradeQuantity = (trades: Trade[]): number => {
   return total;
 };
 
+const computeAverageEntryPrice = (trades: Trade[]): number | null => {
+  let notional = 0;
+  let quantity = 0;
+  for (const trade of trades) {
+    const tradeQuantity = Math.abs(trade.quantity);
+    if (!Number.isFinite(tradeQuantity) || tradeQuantity <= 0) {
+      continue;
+    }
+    const tradeNotional = Math.abs(trade.quantity * trade.price);
+    if (!Number.isFinite(tradeNotional) || tradeNotional <= 0) {
+      continue;
+    }
+    notional += tradeNotional;
+    quantity += tradeQuantity;
+  }
+  if (notional <= 0 || quantity <= 0) {
+    return null;
+  }
+  return notional / quantity;
+};
+
+const computeEntryPriceGap = (engineTrades: Trade[], liveTrades: Trade[]): string | null => {
+  if (engineTrades.length === 0 || liveTrades.length === 0) {
+    return null;
+  }
+  const engineAvg = computeAverageEntryPrice(engineTrades);
+  const liveAvg = computeAverageEntryPrice(liveTrades);
+  if (engineAvg === null || liveAvg === null || engineAvg <= 0) {
+    return null;
+  }
+  const gapPercent = ((liveAvg - engineAvg) / engineAvg) * 100;
+  if (!Number.isFinite(gapPercent) || Math.abs(gapPercent) <= 0.1) {
+    return null;
+  }
+  return formatSignedPercentOneDecimal(gapPercent);
+};
+
 const formatQuantityDifferenceNote = (engineTrades: Trade[], liveTrades: Trade[]): string | null => {
   if (engineTrades.length === 0 || liveTrades.length === 0) {
     return null;
@@ -558,6 +605,10 @@ const buildSampleDays = (
           reasons: engineReasonsByTicker.get(ticker) ?? []
         },
         quantityNote: formatQuantityDifferenceNote(
+          engineTradesByTicker.get(ticker) ?? [],
+          liveTradesByTicker.get(ticker) ?? []
+        ),
+        entryPriceGap: computeEntryPriceGap(
           engineTradesByTicker.get(ticker) ?? [],
           liveTradesByTicker.get(ticker) ?? []
         )

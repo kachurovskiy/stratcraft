@@ -342,6 +342,9 @@
                                                         {{#if quantityNote}}
                                                         <div class="text-muted small">Qty diff: {{quantityNote}}</div>
                                                         {{/if}}
+                                                        {{#if entryPriceGap}}
+                                                        <div class="text-muted small">Live vs engine: {{entryPriceGap}}</div>
+                                                        {{/if}}
                                                     </td>
                                                     <td>
                                                         {{#if engine.trades.length}}
