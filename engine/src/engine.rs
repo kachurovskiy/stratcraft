@@ -2850,6 +2850,7 @@ mod tests {
             minimum_dollar_volume_for_entry: 150_000.0,
             minimum_dollar_volume_lookback: 5,
             local_optimization_version: 9,
+            local_optimization_multi_start_seeds: 0,
             local_optimization_step_multipliers: vec![
                 -5.0, -4.0, -3.0, -2.0, -1.0, 1.0, 2.0, 3.0, 4.0, 5.0,
             ],

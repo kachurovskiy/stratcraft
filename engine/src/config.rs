@@ -94,6 +94,7 @@ pub struct EngineRuntimeSettings {
     pub minimum_dollar_volume_for_entry: f64,
     pub minimum_dollar_volume_lookback: usize,
     pub local_optimization_version: i32,
+    pub local_optimization_multi_start_seeds: usize,
     pub local_optimization_step_multipliers: Vec<f64>,
     pub local_optimization_objective: LocalOptimizationObjective,
     pub max_allowed_drawdown_ratio: f64,
@@ -123,6 +124,40 @@ impl EngineRuntimeSettings {
             require_setting_usize(settings, "MINIMUM_DOLLAR_VOLUME_LOOKBACK", 0)?;
         let local_optimization_version =
             require_setting_i32(settings, "LOCAL_OPTIMIZATION_VERSION", 0)?;
+        let local_optimization_multi_start_seeds = match settings
+            .get("LOCAL_OPTIMIZATION_MULTI_START_SEEDS")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            Some(raw) => {
+                let value = raw.parse::<f64>().map_err(|_| {
+                    anyhow!(
+                        "Setting LOCAL_OPTIMIZATION_MULTI_START_SEEDS must be a number (value: {})",
+                        raw
+                    )
+                })?;
+                if !value.is_finite() {
+                    return Err(anyhow!(
+                        "Setting LOCAL_OPTIMIZATION_MULTI_START_SEEDS must be finite (value: {})",
+                        raw
+                    ));
+                }
+                if value.fract() != 0.0 {
+                    return Err(anyhow!(
+                        "Setting LOCAL_OPTIMIZATION_MULTI_START_SEEDS must be an integer (value: {})",
+                        raw
+                    ));
+                }
+                if value < 0.0 {
+                    return Err(anyhow!(
+                        "Setting LOCAL_OPTIMIZATION_MULTI_START_SEEDS must be >= 0 (value: {})",
+                        raw
+                    ));
+                }
+                value as usize
+            }
+            None => 0,
+        };
         let local_optimization_step_multipliers =
             require_setting_f64_list(settings, "LOCAL_OPTIMIZATION_STEP_MULTIPLIERS")?;
         let raw_local_optimization_objective = settings
@@ -154,6 +189,7 @@ impl EngineRuntimeSettings {
             minimum_dollar_volume_for_entry,
             minimum_dollar_volume_lookback,
             local_optimization_version,
+            local_optimization_multi_start_seeds,
             local_optimization_step_multipliers,
             local_optimization_objective,
             max_allowed_drawdown_ratio,

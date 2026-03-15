@@ -12,7 +12,7 @@ use crate::models::{
     ParameterRange, StrategyTemplate, Trade,
 };
 use crate::param_utils::{
-    add_single_parameter_neighbor_variations, build_multi_start_seeds, clamp_to_bounds,
+    add_single_parameter_neighbor_variations, build_multi_start_seeds_with_limit, clamp_to_bounds,
     collect_numeric_parameter_ranges, parameter_signature, target_multi_start_refinement_count,
 };
 use crate::strategy::create_strategy;
@@ -177,8 +177,12 @@ impl<'a> OptimizationEngine<'a> {
             parameters_to_optimize,
         );
 
-        let multi_start_seeds =
-            build_multi_start_seeds(&baseline_params, parameters_to_optimize, parameter_ranges);
+        let multi_start_seeds = build_multi_start_seeds_with_limit(
+            &baseline_params,
+            parameters_to_optimize,
+            parameter_ranges,
+            Some(runtime_settings.local_optimization_multi_start_seeds),
+        );
         info!(
             "Evaluating {} deterministic multi-start seed(s) for template {}",
             multi_start_seeds.len(),

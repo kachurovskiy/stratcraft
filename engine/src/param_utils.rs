@@ -274,7 +274,25 @@ pub fn build_multi_start_seeds(
     parameters_to_optimize: &[String],
     parameter_ranges: &HashMap<String, ParameterRange>,
 ) -> Vec<HashMap<String, f64>> {
-    let target_seed_count = target_multi_start_seed_count(parameters_to_optimize.len());
+    build_multi_start_seeds_with_limit(
+        baseline_params,
+        parameters_to_optimize,
+        parameter_ranges,
+        None,
+    )
+}
+
+pub fn build_multi_start_seeds_with_limit(
+    baseline_params: &HashMap<String, f64>,
+    parameters_to_optimize: &[String],
+    parameter_ranges: &HashMap<String, ParameterRange>,
+    seed_limit: Option<usize>,
+) -> Vec<HashMap<String, f64>> {
+    let target_seed_count = match seed_limit {
+        Some(0) => 1,
+        Some(count) => count.max(1),
+        None => target_multi_start_seed_count(parameters_to_optimize.len()),
+    };
     let mut seeds = Vec::with_capacity(target_seed_count);
     let mut seen_signatures = HashSet::new();
 

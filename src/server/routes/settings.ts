@@ -595,6 +595,15 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'number'
   },
   {
+    key: SETTING_KEYS.LOCAL_OPTIMIZATION_MULTI_START_SEEDS,
+    group: 'optimizer',
+    label: 'Local Optimization Multi-Start Seeds',
+    description: 'Number of multi-start seeds to evaluate before local search (0 = baseline only).',
+    placeholder: '0',
+    inputType: 'number',
+    min: '0'
+  },
+  {
     key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE,
     group: 'optimizer',
     label: 'Optimization Objective',
