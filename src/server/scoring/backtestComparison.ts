@@ -96,6 +96,7 @@ const PENETRATION_DEFAULT = 0.005;
 const SAMPLE_DAY_LIMIT = 5;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const SIGNAL_SKIP_LOOKBACK_DAYS = 3;
 
 export const BACKTEST_SCOPE_META: Record<BacktestScope, { label: string; badge: string }> = {
   validation: { label: 'Validation tickers', badge: 'bg-warning text-dark' },
@@ -689,14 +690,22 @@ const buildSignalSkipIndex = (skips: AccountSignalSkipRow[]): Map<string, Accoun
   return index;
 };
 
+const buildSignalSkipDateKeys = (tradeDate: Date): string[] => {
+  const keys = [toDateKey(tradeDate)];
+  const maxOffsetDays = tradeDate.getUTCDay() === 1 ? SIGNAL_SKIP_LOOKBACK_DAYS : 1;
+  for (let offset = 1; offset <= maxOffsetDays; offset += 1) {
+    keys.push(toDateKey(new Date(tradeDate.getTime() - ONE_DAY_MS * offset)));
+  }
+  return keys;
+};
+
 const matchSignalSkip = (
   trade: Trade,
   source: string,
   index: Map<string, AccountSignalSkipRow[]>
 ): AccountSignalSkipRow | null => {
   const action = trade.quantity < 0 ? 'sell' : 'buy';
-  const tradeDate = trade.date;
-  const dateKeys = [toDateKey(tradeDate), toDateKey(new Date(tradeDate.getTime() - ONE_DAY_MS))];
+  const dateKeys = buildSignalSkipDateKeys(trade.date);
   for (const dateKey of dateKeys) {
     const key = `${trade.ticker}|${action}|${source}|${dateKey}`;
     const matches = index.get(key);
@@ -1138,7 +1147,7 @@ export const buildBacktestComparisonView = async ({
     const timestamps = exclusiveCandidates.map(trade => trade.date.getTime());
     const minTime = Math.min(...timestamps);
     const maxTime = Math.max(...timestamps);
-    const start = new Date(minTime - ONE_DAY_MS);
+    const start = new Date(minTime - ONE_DAY_MS * SIGNAL_SKIP_LOOKBACK_DAYS);
     const end = new Date(maxTime + ONE_DAY_MS);
     const skips = await db.accountSignalSkips.getAccountSignalSkipsForStrategyInRange(strategyId, start, end, [
       'backtest',
