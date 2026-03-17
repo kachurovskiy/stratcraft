@@ -58,12 +58,17 @@ type TradeEntrySampleCell = {
   reasons: TradeDifferenceReason[];
 };
 
+type EntryPriceGapSummary = {
+  label: string;
+  className: string;
+};
+
 type TradeEntrySampleRow = {
   ticker: string;
   engine: TradeEntrySampleCell;
   live: TradeEntrySampleCell;
   quantityNote: string | null;
-  entryPriceGap: string | null;
+  entryPriceGap: EntryPriceGapSummary | null;
 };
 
 type TradeEntrySampleDay = {
@@ -415,7 +420,7 @@ const computeAverageEntryPrice = (trades: Trade[]): number | null => {
   return notional / quantity;
 };
 
-const computeEntryPriceGap = (engineTrades: Trade[], liveTrades: Trade[]): string | null => {
+const computeEntryPriceGap = (engineTrades: Trade[], liveTrades: Trade[]): EntryPriceGapSummary | null => {
   if (engineTrades.length === 0 || liveTrades.length === 0) {
     return null;
   }
@@ -428,7 +433,14 @@ const computeEntryPriceGap = (engineTrades: Trade[], liveTrades: Trade[]): strin
   if (!Number.isFinite(gapPercent) || Math.abs(gapPercent) <= 0.1) {
     return null;
   }
-  return formatSignedPercentOneDecimal(gapPercent);
+  const label = formatSignedPercentOneDecimal(gapPercent);
+  if (!label) {
+    return null;
+  }
+  return {
+    label,
+    className: gapPercent < 0 ? 'text-success' : 'text-danger'
+  };
 };
 
 const formatQuantityDifferenceNote = (engineTrades: Trade[], liveTrades: Trade[]): string | null => {
