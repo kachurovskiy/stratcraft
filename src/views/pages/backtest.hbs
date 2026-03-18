@@ -230,6 +230,68 @@
             </div>
         </div>
 
+        <!-- Current Exposure -->
+        <div class="col-12">
+            <div class="card h-100">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
+                    <div>
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-layer-group me-2"></i>
+                            Current Exposure
+                        </h5>
+                        {{#if exposureSummary.asOfDate}}
+                        <p class="text-muted small mb-0">As of {{formatDate exposureSummary.asOfDate}}</p>
+                        {{/if}}
+                    </div>
+                    <span class="badge bg-light text-dark">{{exposureSummary.activeTradeCount}} active</span>
+                </div>
+                <div class="card-body p-0">
+                    {{#if exposureSummary.available}}
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col" class="ps-3">Category</th>
+                                        <th scope="col" class="text-end">Amount</th>
+                                        <th scope="col" class="text-end pe-3">% of Portfolio</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{#each exposureSummary.rows}}
+                                    <tr>
+                                        <td class="fw-semibold ps-3">{{label}}</td>
+                                        <td class="text-end">{{formatCurrency value}}</td>
+                                        <td class="text-end pe-3">
+                                            {{#if (defined percentOfPortfolio)}}
+                                                {{formatRateAsPercent percentOfPortfolio}}
+                                            {{else}}
+                                                <span class="text-muted">N/A</span>
+                                            {{/if}}
+                                        </td>
+                                    </tr>
+                                    {{/each}}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="border-top px-3 py-2 d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Largest position</span>
+                            <span class="fw-semibold">
+                                {{#if (defined exposureSummary.largestPositionPercent)}}
+                                    {{formatRateAsPercent exposureSummary.largestPositionPercent}}
+                                {{else}}
+                                    <span class="text-muted">N/A</span>
+                                {{/if}}
+                            </span>
+                        </div>
+                    {{else}}
+                        <div class="p-3">
+                            <p class="text-muted mb-0">Exposure data unavailable for this backtest.</p>
+                        </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
         <!-- Charts Row -->
         <div class="col-12">
             <div class="row g-3">

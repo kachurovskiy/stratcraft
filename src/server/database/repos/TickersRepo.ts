@@ -35,6 +35,7 @@ type TickerStatsRow = TickerBaseRow & {
 };
 
 type TickerRow = TickerBaseRow;
+type TickerAssetRow = TickerBaseRow;
 
 type TradeCountRow = QueryResultRow & {
   ticker: string;
@@ -170,6 +171,41 @@ export class TickersRepo {
     }
 
     return this.tickerCachePromise;
+  }
+
+  async getTickersBySymbols(symbols: string[]): Promise<TickerAssetRecord[]> {
+    if (!Array.isArray(symbols) || symbols.length === 0) {
+      return [];
+    }
+
+    const uniqueSymbols = Array.from(
+      new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter((symbol) => symbol.length > 0))
+    );
+
+    if (uniqueSymbols.length === 0) {
+      return [];
+    }
+
+    const placeholders = uniqueSymbols.map(() => '?').join(',');
+    const rows = await this.db.all<TickerAssetRow>(
+      `
+        SELECT symbol, name, tradable, shortable, easy_to_borrow, asset_type, expense_ratio, training
+        FROM tickers
+        WHERE symbol IN (${placeholders})
+      `,
+      uniqueSymbols
+    );
+
+    return rows.map((row) => ({
+      symbol: row.symbol,
+      name: row.name,
+      tradable: Boolean(row.tradable),
+      shortable: Boolean(row.shortable),
+      easyToBorrow: Boolean(row.easy_to_borrow),
+      assetType: typeof row.asset_type === 'string' ? (row.asset_type as TickerAssetType) : null,
+      expenseRatio: toNullableNumber(row.expense_ratio),
+      training: Boolean(row.training)
+    }));
   }
 
   async getTradeCountsByTicker(): Promise<Record<string, number>> {

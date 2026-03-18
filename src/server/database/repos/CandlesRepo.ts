@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg';
 import type { Candle } from '../../../shared/types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
-import { toInteger, toNullableInteger, toNumber } from '../core/valueParsers';
+import { toInteger, toNullableInteger, toNullableNumber, toNumber } from '../core/valueParsers';
 
 type CandleRow = QueryResultRow & {
   ticker: string;
@@ -59,6 +59,7 @@ type SymbolRow = QueryResultRow & {
 
 type CloseRow = QueryResultRow & { close: number | null };
 type MaxFluctuationRow = QueryResultRow & { max_fluctuation: number | null };
+type LastCloseRow = QueryResultRow & { ticker: string; close: number | null };
 
 export class CandlesRepo {
   constructor(private readonly db: DbClient) {}
@@ -133,6 +134,44 @@ export class CandlesRepo {
     for (const row of rows) {
       if (row.ticker && row.max_date) {
         result[row.ticker] = new Date(row.max_date);
+      }
+    }
+
+    return result;
+  }
+
+  async getLastCloseByTickerOnOrBeforeDate(
+    tickers: string[],
+    endDate: Date
+  ): Promise<Record<string, number | null>> {
+    if (!Array.isArray(tickers) || tickers.length === 0) {
+      return {};
+    }
+
+    const normalizedTickers = Array.from(
+      new Set(tickers.map((ticker) => ticker.trim().toUpperCase()).filter((ticker) => ticker.length > 0))
+    );
+
+    if (normalizedTickers.length === 0) {
+      return {};
+    }
+
+    const placeholders = normalizedTickers.map(() => '?').join(',');
+    const rows = await this.db.all<LastCloseRow>(
+      `
+        SELECT DISTINCT ON (ticker) ticker, close
+        FROM candles
+        WHERE ticker IN (${placeholders})
+          AND date <= ?
+        ORDER BY ticker, date DESC
+      `,
+      [...normalizedTickers, endDate.toISOString().split('T')[0]]
+    );
+
+    const result: Record<string, number | null> = {};
+    for (const row of rows) {
+      if (row.ticker) {
+        result[row.ticker] = toNullableNumber(row.close);
       }
     }
 
