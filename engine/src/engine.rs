@@ -1636,15 +1636,6 @@ impl Engine {
         fee
     }
 
-    fn apply_entry_slippage(&self, price: f64, is_short: bool) -> f64 {
-        let slippage_rate = self.runtime_settings.trade_slippage_rate;
-        if is_short {
-            price * (1.0 - slippage_rate)
-        } else {
-            price * (1.0 + slippage_rate)
-        }
-    }
-
     fn apply_exit_slippage(&self, price: f64, is_short: bool) -> f64 {
         let slippage_rate = self.runtime_settings.trade_slippage_rate;
         if is_short {
@@ -2300,12 +2291,6 @@ impl Engine {
                         record_skip(&ticker, SignalAction::Buy, "signal_not_tradable", None);
                         continue;
                     }
-                }
-
-                if account_state.open_buy_orders.contains(&ticker) {
-                    notes.push(format!("signal_{}_pending_buy_order", ticker));
-                    record_skip(&ticker, SignalAction::Buy, "signal_pending_buy_order", None);
-                    continue;
                 }
 
                 if let Some(last_trade_date) = latest_live_trade_dates.get(&ticker) {
