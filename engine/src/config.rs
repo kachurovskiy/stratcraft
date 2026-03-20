@@ -205,6 +205,7 @@ pub struct EngineConfig {
     pub trade_size_ratio: f64,
     pub sell_fraction: f64,
     pub minimum_trade_size: f64,
+    pub minimum_size_as_allocation: f64,
     pub max_leverage: f64,
     pub allow_short_selling: bool,
     // Buy parameters
@@ -228,6 +229,7 @@ impl Default for EngineConfig {
             trade_size_ratio: 0.02,
             sell_fraction: 1.0,
             minimum_trade_size: 50.0,
+            minimum_size_as_allocation: 0.0,
             max_leverage: 1.0,
             allow_short_selling: false,
             buy_discount_ratio: 0.0,
@@ -256,6 +258,12 @@ impl EngineConfig {
             trade_size_ratio: get_param(parameters, "tradeSizeRatio", 0.02),
             sell_fraction: coerce_binary_param(get_param(parameters, "sellFraction", 1.0), 1.0),
             minimum_trade_size: get_param(parameters, "minimumTradeSize", 50.0),
+            minimum_size_as_allocation: clamp_f64(
+                get_param(parameters, "minimumSizeAsAllocation", 0.0),
+                0.0,
+                0.0,
+                1.0,
+            ),
             max_leverage,
             allow_short_selling: get_param(parameters, "allowShortSelling", 0.0) >= 0.5,
             buy_discount_ratio: get_param(parameters, "buyDiscountRatio", 0.0),

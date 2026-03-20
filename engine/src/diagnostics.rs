@@ -83,6 +83,7 @@ pub(crate) fn format_sizing_details(
     available_cash: f64,
     trade_size_ratio: f64,
     minimum_trade_size: f64,
+    minimum_size_as_allocation: f64,
     position_sizing_mode: i32,
     confidence: f64,
     vol_target_annual: f64,
@@ -91,6 +92,12 @@ pub(crate) fn format_sizing_details(
 ) -> String {
     let trade_ratio = trade_size_ratio.max(0.0);
     let min_trade = minimum_trade_size.max(0.0);
+    let min_size_ratio = if minimum_size_as_allocation.is_finite() {
+        minimum_size_as_allocation.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let min_allocation = min_trade * min_size_ratio;
     let mut sizing_multiplier = 1.0;
     if position_sizing_mode == 1 || position_sizing_mode == 3 {
         let conf = confidence.clamp(0.0, 1.0);
@@ -113,6 +120,7 @@ pub(crate) fn format_sizing_details(
     }
 
     let trade_allocation = available_cash.max(0.0) * trade_ratio * sizing_multiplier;
+    let trade_allocation = trade_allocation.max(min_allocation);
     let desired_shares = if price > 0.0 && price.is_finite() {
         trade_allocation / price
     } else {
@@ -129,13 +137,15 @@ pub(crate) fn format_sizing_details(
     };
 
     let mut details = format!(
-        "price {:.4}, buying_power {:.2}, allocation {:.2}, desired_shares {:.4}, ratio {:.4}, min_trade {:.2}, mode {}, conf {:.2}, sizing_mult {:.4}, vol_target {}, realized_vol {}",
+        "price {:.4}, buying_power {:.2}, allocation {:.2}, desired_shares {:.4}, ratio {:.4}, min_trade {:.2}, min_alloc_ratio {:.2}, min_alloc {:.2}, mode {}, conf {:.2}, sizing_mult {:.4}, vol_target {}, realized_vol {}",
         price,
         available_cash,
         trade_allocation,
         desired_shares,
         trade_ratio,
         min_trade,
+        min_size_ratio,
+        min_allocation,
         position_sizing_mode,
         confidence,
         sizing_multiplier,

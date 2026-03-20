@@ -47,6 +47,7 @@ pub struct PositionSizingParams {
     pub available_cash: f64,
     pub trade_size_ratio: f64,
     pub minimum_trade_size: f64,
+    pub minimum_size_as_allocation: f64,
     pub position_sizing_mode: i32,
     pub confidence: f64,
     pub vol_target_annual: f64,
@@ -59,6 +60,7 @@ pub fn determine_position_size(params: PositionSizingParams) -> PositionSizingOu
         available_cash,
         trade_size_ratio,
         minimum_trade_size,
+        minimum_size_as_allocation,
         position_sizing_mode,
         confidence,
         vol_target_annual,
@@ -92,6 +94,13 @@ pub fn determine_position_size(params: PositionSizingParams) -> PositionSizingOu
     }
 
     let trade_allocation = available_cash.max(0.0) * trade_size_ratio.max(0.0) * sizing_multiplier;
+    let min_size_ratio = if minimum_size_as_allocation.is_finite() {
+        minimum_size_as_allocation.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let min_allocation = minimum_trade_size.max(0.0) * min_size_ratio;
+    let trade_allocation = trade_allocation.max(min_allocation);
     let desired_shares = if trade_allocation <= 0.0 {
         0.0
     } else {
@@ -318,6 +327,7 @@ mod tests {
             available_cash: 1000.0,
             trade_size_ratio: 0.5,
             minimum_trade_size: 100.0,
+            minimum_size_as_allocation: 0.0,
             position_sizing_mode: 0,
             confidence: 1.0,
             vol_target_annual: 0.0,
@@ -336,6 +346,7 @@ mod tests {
             available_cash: 50.0,
             trade_size_ratio: 0.1,
             minimum_trade_size: 100.0,
+            minimum_size_as_allocation: 0.0,
             position_sizing_mode: 0,
             confidence: 1.0,
             vol_target_annual: 0.0,
@@ -351,6 +362,7 @@ mod tests {
             available_cash: 100.0,
             trade_size_ratio: 1.0,
             minimum_trade_size: 1000.0,
+            minimum_size_as_allocation: 0.0,
             position_sizing_mode: 0,
             confidence: 1.0,
             vol_target_annual: 0.0,
@@ -369,6 +381,7 @@ mod tests {
             available_cash: 1000.0,
             trade_size_ratio: 0.001,
             minimum_trade_size: 10.0,
+            minimum_size_as_allocation: 0.0,
             position_sizing_mode: 0,
             confidence: 1.0,
             vol_target_annual: 0.0,
@@ -384,6 +397,7 @@ mod tests {
             available_cash: 1000.0,
             trade_size_ratio: 2.0,
             minimum_trade_size: 100.0,
+            minimum_size_as_allocation: 0.0,
             position_sizing_mode: 0,
             confidence: 1.0,
             vol_target_annual: 0.0,
@@ -405,6 +419,7 @@ mod tests {
             available_cash: 1000.0,
             trade_size_ratio: 0.05,
             minimum_trade_size: 100.0,
+            minimum_size_as_allocation: 0.0,
             position_sizing_mode: 0,
             confidence: 1.0,
             vol_target_annual: 0.0,
@@ -415,6 +430,42 @@ mod tests {
             PositionSizingOutcome::Sized(allocation) => {
                 assert_eq!(allocation.quantity, 5);
                 assert!((allocation.trade_value - 100.0).abs() < 1e-9);
+            }
+            _ => panic!("expected sized allocation"),
+        }
+    }
+
+    #[test]
+    fn test_position_size_applies_minimum_allocation_floor() {
+        let too_small = determine_position_size(PositionSizingParams {
+            price: 40.0,
+            available_cash: 1000.0,
+            trade_size_ratio: 0.01,
+            minimum_trade_size: 100.0,
+            minimum_size_as_allocation: 0.0,
+            position_sizing_mode: 0,
+            confidence: 1.0,
+            vol_target_annual: 0.0,
+            realized_vol: None,
+        });
+        assert_eq!(too_small, PositionSizingOutcome::TooSmall);
+
+        let sized = determine_position_size(PositionSizingParams {
+            price: 40.0,
+            available_cash: 1000.0,
+            trade_size_ratio: 0.01,
+            minimum_trade_size: 100.0,
+            minimum_size_as_allocation: 0.5,
+            position_sizing_mode: 0,
+            confidence: 1.0,
+            vol_target_annual: 0.0,
+            realized_vol: None,
+        });
+
+        match sized {
+            PositionSizingOutcome::Sized(allocation) => {
+                assert_eq!(allocation.quantity, 3);
+                assert!((allocation.trade_value - 120.0).abs() < 1e-9);
             }
             _ => panic!("expected sized allocation"),
         }
