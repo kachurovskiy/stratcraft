@@ -1,2 +1,2 @@
-default_buy_and_hold|2021-01-09|DDD|long|qty=46233|entry=2.15@2021-01-09|exit=2.15@-|pnl=98517.35|fee=0.0000|status=active
-default_buy_and_hold|2021-01-09|EEE|long|qty=306|entry=1.92@2021-01-09|exit=1.92@-|pnl=498.76|fee=0.0000|status=active
+default_buy_and_hold|2021-01-09|DDD|long|qty=46233|entry=2.15@2021-01-09|exit=2.15@-|pnl=98459.93|fee=0.0000|status=active
+default_buy_and_hold|2021-01-09|EEE|long|qty=276|entry=1.93@2021-01-09|exit=1.93@-|pnl=449.55|fee=0.0000|status=active
