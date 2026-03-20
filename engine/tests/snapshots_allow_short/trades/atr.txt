@@ -13,7 +13,6 @@ default_atr|2021-12-31|BBB|long|qty=119|entry=3.65@2021-12-31|exit=2.59@2022-04-
 default_atr|2021-12-31|CCC|long|qty=131|entry=3.36@2021-12-31|exit=2.34@2022-04-29|pnl=-133.01|fee=0.1533|status=closed
 default_atr|2021-12-31|DDD|long|qty=149|entry=3.12@2021-12-31|exit=2.22@2022-03-26|pnl=-135.15|fee=0.1652|status=closed
 default_atr|2021-12-31|EEE|long|qty=166|entry=2.52@2021-12-31|exit=1.79@2022-03-22|pnl=-121.60|fee=0.1486|status=closed
-default_atr|2021-12-31|SPY|long|qty=41|entry=11.04@2021-12-31|exit=11.04@-|pnl=24.76|fee=0.0000|status=active
 default_atr|2022-01-01|AAA|long|qty=108|entry=4.06@2022-01-01|exit=2.88@2022-04-29|pnl=-127.26|fee=0.1555|status=closed
 default_atr|2022-01-01|BBB|long|qty=117|entry=3.71@2022-01-01|exit=2.61@2022-04-29|pnl=-128.90|fee=0.1525|status=closed
 default_atr|2022-01-02|AAA|long|qty=106|entry=4.11@2022-01-02|exit=2.91@2022-04-29|pnl=-126.45|fee=0.1545|status=closed
@@ -43,9 +42,6 @@ default_atr|2022-12-01|DDD|long|qty=373|entry=1.16@2022-12-01|exit=1.16@-|pnl=11
 default_atr|2022-12-02|DDD|long|qty=367|entry=1.17@2022-12-02|exit=1.17@-|pnl=1143.34|fee=0.0000|status=active
 default_atr|2022-12-12|EEE|long|qty=374|entry=1.09@2022-12-12|exit=1.09@-|pnl=920.28|fee=0.0000|status=active
 default_atr|2022-12-13|EEE|long|qty=369|entry=1.10@2022-12-13|exit=1.10@-|pnl=905.03|fee=0.0000|status=active
-default_atr|2022-12-26|AAA|long|qty=78|entry=5.73@2022-12-26|exit=5.73@-|pnl=35.49|fee=0.0000|status=active
-default_atr|2022-12-26|BBB|long|qty=83|entry=5.28@2022-12-26|exit=5.28@-|pnl=33.46|fee=0.0000|status=active
 default_atr|2022-12-26|CCC|long|qty=94|entry=4.80@2022-12-26|exit=4.80@-|pnl=25.56|fee=0.0000|status=active
 default_atr|2022-12-26|DDD|long|qty=103|entry=4.32@2022-12-26|exit=4.32@-|pnl=-4.36|fee=0.0000|status=active
 default_atr|2022-12-26|EEE|long|qty=126|entry=3.46@2022-12-26|exit=3.46@-|pnl=11.54|fee=0.0000|status=active
-default_atr|2022-12-26|SPY|long|qty=38|entry=11.86@2022-12-26|exit=11.86@-|pnl=-8.01|fee=0.0000|status=active
