@@ -2844,6 +2844,7 @@ mod tests {
             local_optimization_step_multipliers: vec![
                 -5.0, -4.0, -3.0, -2.0, -1.0, 1.0, 2.0, 3.0, 4.0, 5.0,
             ],
+            local_optimization_max_unadjusted_price_values: vec![3.0, 5.0, 7.0, 10.0, 15.0, 20.0],
             local_optimization_objective: LocalOptimizationObjective::Cagr,
             max_allowed_drawdown_ratio: 0.40,
         }

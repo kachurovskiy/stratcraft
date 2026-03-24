@@ -12,8 +12,9 @@ use crate::models::{
     ParameterRange, StrategyTemplate, Trade,
 };
 use crate::param_utils::{
-    add_single_parameter_neighbor_variations, build_multi_start_seeds_with_limit, clamp_to_bounds,
-    collect_numeric_parameter_ranges, parameter_signature, target_multi_start_refinement_count,
+    add_fixed_parameter_value_variations, add_single_parameter_neighbor_variations,
+    build_multi_start_seeds_with_limit, clamp_to_bounds, collect_numeric_parameter_ranges,
+    parameter_signature, target_multi_start_refinement_count,
 };
 use crate::strategy::create_strategy;
 use anyhow::{anyhow, Result};
@@ -28,6 +29,7 @@ use std::time::Instant;
 
 const ALLOW_SHORT_SELLING_OPTIMIZATION_SETTING: &str = "ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED";
 const ALLOW_SHORT_SELLING_PARAMETER: &str = "allowShortSelling";
+const MAX_UNADJUSTED_PRICE_PARAMETER: &str = "maxUnadjustedPrice";
 
 enum VariationOutcome {
     NoChange,
@@ -161,6 +163,9 @@ impl<'a> OptimizationEngine<'a> {
         let step_multipliers = runtime_settings
             .local_optimization_step_multipliers
             .as_slice();
+        let max_unadjusted_price_values = runtime_settings
+            .local_optimization_max_unadjusted_price_values
+            .as_slice();
         let template = self.load_strategy_template(template_id).await?;
 
         info!(
@@ -249,6 +254,7 @@ impl<'a> OptimizationEngine<'a> {
                     parameters_to_optimize,
                     parameter_ranges,
                     step_multipliers,
+                    max_unadjusted_price_values,
                     max_drawdown_ratio,
                     objective,
                 )
@@ -481,12 +487,16 @@ impl<'a> OptimizationEngine<'a> {
         parameters_to_optimize: &[String],
         parameter_ranges: &HashMap<String, ParameterRange>,
         step_multipliers: &[f64],
+        max_unadjusted_price_values: &[f64],
         max_drawdown_ratio: f64,
         objective: LocalOptimizationObjective,
     ) -> Result<OptimizationResult> {
         let mut current_params = initial_result.parameters.clone();
         let mut best_result = initial_result;
         let mut best_score = Self::objective_score(&best_result, objective);
+        let optimize_max_unadjusted_price = parameters_to_optimize
+            .iter()
+            .any(|name| name == MAX_UNADJUSTED_PRICE_PARAMETER);
 
         loop {
             let mut seen_variations = HashSet::new();
@@ -506,6 +516,16 @@ impl<'a> OptimizationEngine<'a> {
                 &mut seen_variations,
                 &mut neighbor_variations,
             );
+            if optimize_max_unadjusted_price {
+                add_fixed_parameter_value_variations(
+                    MAX_UNADJUSTED_PRICE_PARAMETER,
+                    parameter_ranges,
+                    max_unadjusted_price_values,
+                    &current_params,
+                    &mut seen_variations,
+                    &mut neighbor_variations,
+                );
+            }
 
             if neighbor_variations.is_empty() {
                 break;

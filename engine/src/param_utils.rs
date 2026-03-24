@@ -464,6 +464,51 @@ pub fn add_single_parameter_neighbor_variations(
     }
 }
 
+pub fn add_fixed_parameter_value_variations(
+    param_name: &str,
+    parameter_ranges: &HashMap<String, ParameterRange>,
+    candidate_values: &[f64],
+    current_params: &HashMap<String, f64>,
+    seen_variations: &mut HashSet<String>,
+    neighbor_variations: &mut Vec<HashMap<String, f64>>,
+) {
+    if candidate_values.is_empty() {
+        return;
+    }
+    let range = match parameter_ranges.get(param_name) {
+        Some(range) => range,
+        None => return,
+    };
+    let current_value = match current_params.get(param_name) {
+        Some(value) => *value,
+        None => return,
+    };
+
+    for &candidate in candidate_values {
+        if !candidate.is_finite() {
+            continue;
+        }
+        if candidate < range.min - 1e-9 || candidate > range.max + 1e-9 {
+            continue;
+        }
+        let new_value = candidate.clamp(range.min, range.max);
+        if (new_value - current_value).abs() < 1e-9 {
+            continue;
+        }
+
+        let mut neighbor_params = current_params.clone();
+        neighbor_params.insert(param_name.to_string(), new_value);
+
+        push_neighbor_variation(
+            neighbor_params,
+            &[param_name],
+            current_params,
+            seen_variations,
+            neighbor_variations,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

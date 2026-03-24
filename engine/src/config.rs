@@ -6,6 +6,8 @@ const BACKTEST_INITIAL_CAPITAL_SETTING: &str = "BACKTEST_INITIAL_CAPITAL";
 const DEFAULT_BACKTEST_INITIAL_CAPITAL: f64 = 100000.0;
 const DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO: f64 = 0.08;
 const DEFAULT_LIMIT_BUY_PENETRATION_RATIO: f64 = 0.005;
+const DEFAULT_LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES: [f64; 6] =
+    [3.0, 5.0, 7.0, 10.0, 15.0, 20.0];
 
 pub fn resolve_backtest_initial_capital(settings: &HashMap<String, String>) -> f64 {
     let raw = settings
@@ -96,6 +98,7 @@ pub struct EngineRuntimeSettings {
     pub local_optimization_version: i32,
     pub local_optimization_multi_start_seeds: usize,
     pub local_optimization_step_multipliers: Vec<f64>,
+    pub local_optimization_max_unadjusted_price_values: Vec<f64>,
     pub local_optimization_objective: LocalOptimizationObjective,
     pub max_allowed_drawdown_ratio: f64,
 }
@@ -160,6 +163,16 @@ impl EngineRuntimeSettings {
         };
         let local_optimization_step_multipliers =
             require_setting_f64_list(settings, "LOCAL_OPTIMIZATION_STEP_MULTIPLIERS")?;
+        let local_optimization_max_unadjusted_price_values = match settings
+            .get("LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            Some(raw) => {
+                parse_f64_list(raw, "LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES", true)?
+            }
+            None => DEFAULT_LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES.to_vec(),
+        };
         let raw_local_optimization_objective = settings
             .get("OPTIMIZATION_OBJECTIVE")
             .map(|value| value.trim())
@@ -191,6 +204,7 @@ impl EngineRuntimeSettings {
             local_optimization_version,
             local_optimization_multi_start_seeds,
             local_optimization_step_multipliers,
+            local_optimization_max_unadjusted_price_values,
             local_optimization_objective,
             max_allowed_drawdown_ratio,
         })
@@ -397,6 +411,10 @@ fn require_setting_i32(settings: &HashMap<String, String>, key: &str, min: i32) 
 
 fn require_setting_f64_list(settings: &HashMap<String, String>, key: &str) -> Result<Vec<f64>> {
     let raw = require_setting(settings, key)?;
+    parse_f64_list(raw, key, false)
+}
+
+fn parse_f64_list(raw: &str, key: &str, allow_empty: bool) -> Result<Vec<f64>> {
     let trimmed = raw.trim().trim_matches(|c| c == '[' || c == ']');
     let mut values = Vec::new();
 
@@ -418,7 +436,7 @@ fn require_setting_f64_list(settings: &HashMap<String, String>, key: &str) -> Re
         values.push(value);
     }
 
-    if values.is_empty() {
+    if values.is_empty() && !allow_empty {
         return Err(anyhow!(
             "Setting {} must contain at least one number (value: {})",
             key,

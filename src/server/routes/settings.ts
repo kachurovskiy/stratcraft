@@ -671,6 +671,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'text'
   },
   {
+    key: SETTING_KEYS.LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES,
+    group: 'optimizer',
+    label: 'Max Unadjusted Price Candidates',
+    description: 'Comma-separated list of maxUnadjustedPrice values to try during local optimization.',
+    placeholder: '3,5,7,10,15,20',
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.MAX_ALLOWED_DRAWDOWN_RATIO,
     group: 'optimizer',
     label: 'Max Allowed Drawdown Ratio',
