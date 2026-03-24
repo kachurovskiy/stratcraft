@@ -1846,6 +1846,7 @@ impl Engine {
 
     fn entry_price_supported(&self, price: f64) -> bool {
         price.is_finite()
+            && price <= self.config.max_unadjusted_price
             && price >= self.runtime_settings.trade_entry_price_min
             && price <= self.runtime_settings.trade_entry_price_max
     }

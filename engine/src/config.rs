@@ -206,6 +206,7 @@ pub struct EngineConfig {
     pub sell_fraction: f64,
     pub minimum_trade_size: f64,
     pub minimum_size_as_allocation: f64,
+    pub max_unadjusted_price: f64,
     pub max_leverage: f64,
     pub allow_short_selling: bool,
     // Buy parameters
@@ -230,6 +231,7 @@ impl Default for EngineConfig {
             sell_fraction: 1.0,
             minimum_trade_size: 50.0,
             minimum_size_as_allocation: 0.0,
+            max_unadjusted_price: 1000.0,
             max_leverage: 1.0,
             allow_short_selling: false,
             buy_discount_ratio: 0.0,
@@ -252,6 +254,13 @@ impl EngineConfig {
         } else {
             1.0
         };
+        let max_unadjusted_price_raw = get_param(parameters, "maxUnadjustedPrice", 1000.0);
+        let max_unadjusted_price =
+            if max_unadjusted_price_raw.is_finite() && max_unadjusted_price_raw >= 1.0 {
+                max_unadjusted_price_raw
+            } else {
+                1000.0
+            };
 
         Self {
             initial_capital: get_param(parameters, "initialCapital", 100000.0),
@@ -264,6 +273,7 @@ impl EngineConfig {
                 0.0,
                 1.0,
             ),
+            max_unadjusted_price,
             max_leverage,
             allow_short_selling: get_param(parameters, "allowShortSelling", 0.0) >= 0.5,
             buy_discount_ratio: get_param(parameters, "buyDiscountRatio", 0.0),
