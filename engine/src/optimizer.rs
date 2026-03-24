@@ -197,7 +197,12 @@ impl<'a> OptimizationEngine<'a> {
             return Ok(());
         }
 
-        let refinement_starts = Self::select_refinement_starts(
+        let best_seed = seed_results.iter().cloned().max_by(|a, b| {
+            Self::objective_score(a, objective)
+                .partial_cmp(&Self::objective_score(b, objective))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mut refinement_starts = Self::select_refinement_starts(
             seed_results,
             max_drawdown_ratio,
             objective,
@@ -205,10 +210,14 @@ impl<'a> OptimizationEngine<'a> {
         );
         if refinement_starts.is_empty() {
             info!(
-                "No multi-start seeds satisfied the {:.0}% drawdown limit; stopping optimization early.",
+                "No multi-start seeds satisfied the {:.0}% drawdown limit; proceeding with best available seed.",
                 max_drawdown_ratio * 100.0
             );
-            return Ok(());
+            if let Some(best_seed) = best_seed {
+                refinement_starts.push(best_seed);
+            } else {
+                return Ok(());
+            }
         }
 
         info!(
