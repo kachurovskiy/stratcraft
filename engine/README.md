@@ -44,7 +44,7 @@ Generate missing signals for active strategies:
 
 Backtest active strategies for the given month windows (comma or space separated, scope: validation|training|all):
 ```bash
-./target/release/engine backtest-active 6,12
+./target/release/engine backtest-active --scope validation 6,12
 ./target/release/engine backtest-active --scope training 3 6 12
 ```
 

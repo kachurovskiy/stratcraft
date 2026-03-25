@@ -53,7 +53,7 @@ enum Commands {
     /// Backtest all active strategies and refresh stored results
     BacktestActive {
         /// Ticker scope to backtest (validation uses only validation tickers, training uses training tickers, all uses the full set)
-        #[arg(long, value_enum, default_value_t = backtest_active::BacktestScope::Validation)]
+        #[arg(long, value_enum)]
         scope: backtest_active::BacktestScope,
         /// Comma or space separated list of months of history to include (approx. 30.4 days per month)
         #[arg(value_delimiter = ',', num_args = 1..)]
