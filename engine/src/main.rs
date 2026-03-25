@@ -223,7 +223,6 @@ async fn load_lightgbm_model(app_context: &AppContext) -> Result<()> {
     let db = app_context.database().await?;
     let models = db.get_lightgbm_models().await?;
     if models.is_empty() {
-        warn!("No LightGBM models found in database.");
         return Ok(());
     }
 
