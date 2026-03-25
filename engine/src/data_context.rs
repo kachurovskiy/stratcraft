@@ -11,7 +11,7 @@ use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::Arc;
 
-const MARKET_DATA_SNAPSHOT_VERSION: u32 = 5;
+pub(crate) const MARKET_DATA_SNAPSHOT_VERSION: u32 = 5;
 const SNAPSHOT_ALLOWED_SETTINGS: [&str; 29] = [
     "BACKTEST_INITIAL_CAPITAL",
     "BACKTEST_API_SECRET",
