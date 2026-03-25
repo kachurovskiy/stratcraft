@@ -95,6 +95,7 @@ type SettingDefinition = {
   description?: string;
   placeholder?: string;
   inputType?: 'text' | 'password' | 'number';
+  isBoolean?: boolean;
   min?: string;
   isTextarea?: boolean;
   rows?: number;
@@ -132,7 +133,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: 'TradingView Charts Enabled',
     description: 'Set to false to hide TradingView embeds on trade and ticker pages (true/false).',
     placeholder: 'true',
-    inputType: 'text'
+    inputType: 'text',
+    isBoolean: true
   },
   {
     key: SETTING_KEYS.CANDLE_DATA_PROVIDER,
@@ -225,7 +227,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: 'Automatic Daily Candle Sync Enabled',
     description: 'Set to false to stop scheduling the daily 3am London candle sync job (true/false).',
     placeholder: 'true',
-    inputType: 'text'
+    inputType: 'text',
+    isBoolean: true
   },
   {
     key: SETTING_KEYS.AUTO_DAILY_SERVER_UPDATE_ENABLED,
@@ -233,7 +236,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: 'Automatic Daily Server Update Enabled',
     description: 'When true and upstream commits exist, candle sync triggers a server update instead (true/false).',
     placeholder: 'false',
-    inputType: 'text'
+    inputType: 'text',
+    isBoolean: true
   },
   {
     key: SETTING_KEYS.ETF_BASE_EXPENSE_RATIO,
@@ -523,7 +527,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: 'Automatic Optimization Enabled',
     description: 'Set to false to stop scheduling idle-time optimization jobs (true/false).',
     placeholder: 'true',
-    inputType: 'text'
+    inputType: 'text',
+    isBoolean: true
   },
   {
     key: SETTING_KEYS.AUTO_OPTIMIZATION_DELAY_SECONDS,
@@ -540,7 +545,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: 'Optimize allowShortSelling',
     description: 'Set to true to let the optimizer vary allowShortSelling (true/false).',
     placeholder: 'false',
-    inputType: 'text'
+    inputType: 'text',
+    isBoolean: true
   },
   {
     key: SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE,
@@ -937,17 +943,21 @@ router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) =
     const settings = SETTINGS_DEFINITIONS.map(definition => {
       const rawValue = settingsMap[definition.key];
       const value = typeof rawValue === 'string' ? rawValue : '';
+      const isChecked =
+        definition.isBoolean && value.trim().toLowerCase() === 'true';
 
       if (definition.inputType === 'password' && value.length > 0) {
         return {
           ...definition,
-          value: '*'.repeat(value.length)
+          value: '*'.repeat(value.length),
+          isChecked
         };
       }
 
       return {
         ...definition,
-        value
+        value,
+        isChecked
       };
     });
 
@@ -979,6 +989,16 @@ router.post('/', requireAuth, requireAdmin, async (req: Request, res: Response) 
     const updates: Record<string, string> = {};
     for (const definition of SETTINGS_DEFINITIONS) {
       const rawValue = req.body?.[definition.key];
+      if (definition.isBoolean) {
+        const normalized = Array.isArray(rawValue)
+          ? rawValue.map(value => String(value).trim().toLowerCase())
+          : typeof rawValue === 'string'
+            ? [rawValue.trim().toLowerCase()]
+            : [];
+        const isTrue = normalized.includes('true') || normalized.includes('on');
+        updates[definition.key] = isTrue ? 'true' : 'false';
+        continue;
+      }
       const inputValue = Array.isArray(rawValue)
         ? String(rawValue[0] ?? '')
         : typeof rawValue === 'string'

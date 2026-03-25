@@ -40,34 +40,50 @@
             <div class="card-body p-3">
               {{#each settings}}
                 <div class="mb-3">
-                  <label for="setting-{{key}}" class="form-label mb-1">{{label}}</label>
-                  {{#if isTextarea}}
-                    <textarea
-                      id="setting-{{key}}"
-                      class="form-control form-control-sm font-monospace {{#unless value}}border-warning{{/unless}}"
-                      name="{{key}}"
-                      rows="{{rows}}"
-                      placeholder="{{placeholder}}"
-                      autocomplete="off"
-                    >{{value}}</textarea>
+                  {{#if isBoolean}}
+                    <div class="form-check form-switch mb-1">
+                      <input
+                        id="setting-{{key}}"
+                        type="checkbox"
+                        class="form-check-input"
+                        name="{{key}}"
+                        value="true"
+                        {{#if isChecked}}checked{{/if}}
+                      />
+                      <label for="setting-{{key}}" class="form-check-label">{{label}}</label>
+                    </div>
                   {{else}}
-                    <input
-                      id="setting-{{key}}"
-                      type="{{inputType}}"
-                      class="form-control form-control-sm {{#unless value}}border-warning{{/unless}}"
-                      name="{{key}}"
-                      value="{{value}}"
-                      placeholder="{{placeholder}}"
-                      {{#if min}} min="{{min}}"{{/if}}
-                      {{#if (eq inputType 'number')}} step="any"{{/if}}
-                      autocomplete="off"
-                    />
+                    <label for="setting-{{key}}" class="form-label mb-1">{{label}}</label>
+                    {{#if isTextarea}}
+                      <textarea
+                        id="setting-{{key}}"
+                        class="form-control form-control-sm font-monospace {{#unless value}}border-warning{{/unless}}"
+                        name="{{key}}"
+                        rows="{{rows}}"
+                        placeholder="{{placeholder}}"
+                        autocomplete="off"
+                      >{{value}}</textarea>
+                    {{else}}
+                      <input
+                        id="setting-{{key}}"
+                        type="{{inputType}}"
+                        class="form-control form-control-sm {{#unless value}}border-warning{{/unless}}"
+                        name="{{key}}"
+                        value="{{value}}"
+                        placeholder="{{placeholder}}"
+                        {{#if min}} min="{{min}}"{{/if}}
+                        {{#if (eq inputType 'number')}} step="any"{{/if}}
+                        autocomplete="off"
+                      />
+                    {{/if}}
                   {{/if}}
                   {{#if description}}
                     <div class="form-text">{{description}}</div>
                   {{/if}}
                   {{#unless value}}
-                    <div class="form-text text-warning">Empty</div>
+                    {{#unless isBoolean}}
+                      <div class="form-text text-warning">Empty</div>
+                    {{/unless}}
                   {{/unless}}
                 </div>
               {{/each}}
