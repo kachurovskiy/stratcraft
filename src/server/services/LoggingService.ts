@@ -11,6 +11,7 @@ export type LogSource =
   | 'signal-job'
   | 'backtest-job'
   | 'reconcile-trades-job'
+  | 'liquidate-account-job'
   | 'plan-operations-job'
   | 'dispatch-operations-job'
   | 'optimize-job'
@@ -360,6 +361,7 @@ export class LoggingService {
       case 'signal-job': return '\x1b[32m'; // Green
       case 'backtest-job': return '\x1b[33m'; // Yellow
       case 'reconcile-trades-job': return '\x1b[96m'; // Bright cyan
+      case 'liquidate-account-job': return '\x1b[96m'; // Bright cyan
       case 'plan-operations-job': return '\x1b[95m'; // Bright magenta
       case 'dispatch-operations-job': return '\x1b[94m'; // Bright blue
       case 'optimize-job': return '\x1b[31m'; // Red

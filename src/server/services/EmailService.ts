@@ -10,6 +10,7 @@ import {
   type OrderSizeStats
 } from '../utils/dispatchSummaryCalculations';
 import { MtlsLockdownService } from './MtlsLockdownService';
+import type { LiquidationOrderPreview } from './AccountDataService';
 
 const escapeHtml = (value: string): string => (
   value
@@ -66,6 +67,19 @@ export interface OperationDispatchSummaryPayload {
     status: string;
     statusReason?: string;
   }>;
+}
+
+export interface LiquidationSummaryPayload {
+  accountId: string;
+  accountName: string;
+  accountProvider: string;
+  accountEnvironment: string;
+  dryRun: boolean;
+  discountPercent: number;
+  deviationBandPercent: number;
+  cancelledOrders: number | null;
+  expectedLiquidationValue: number;
+  orders: LiquidationOrderPreview[];
 }
 
 
@@ -325,6 +339,125 @@ export class EmailService {
         ${accountSections}
         <p style="color:#666;font-size:12px;margin-top:20px;">
           You can review additional details inside ${escapedSiteName} and take action directly in your broker account if something looks off.
+        </p>
+      </div>
+    `;
+
+    await this.sendEmailWithKey(context.fromEmail, context.apiKey, { to: email, subject, html });
+  }
+
+  async sendLiquidationSummary(email: string, payload: LiquidationSummaryPayload): Promise<void> {
+    const context = await this.resolveSendContext();
+    if (!context) {
+      return;
+    }
+
+    const escapedSiteName = escapeHtml(context.siteName);
+    const submittedCount = payload.orders.filter(order => order.status === 'submitted').length;
+    const plannedCount = payload.orders.filter(order => order.status === 'dry-run').length;
+    const failedCount = payload.orders.filter(order => order.status === 'failed').length;
+    const skippedCount = payload.orders.filter(order => order.status === 'skipped').length;
+    const actionLabel = payload.dryRun ? 'Liquidation dry run' : 'Liquidation';
+    const countLabel = payload.dryRun ? `${plannedCount} planned` : `${submittedCount} submitted`;
+    const subjectParts = [`${context.siteName} ${actionLabel} summary`, countLabel];
+    if (failedCount > 0) {
+      subjectParts.push(`${failedCount} failed`);
+    }
+    if (skippedCount > 0) {
+      subjectParts.push(`${skippedCount} skipped`);
+    }
+    const subject = subjectParts.join(' | ');
+
+    const expectedValueLabel = payload.dryRun
+      ? 'Expected liquidation value (net cash impact)'
+      : 'Estimated net cash impact from submitted orders';
+    const expectedValue = EmailService.USD_FORMATTER.format(payload.expectedLiquidationValue);
+    const discountLabel = payload.discountPercent > 0 ? `${payload.discountPercent}%` : '0%';
+    const deviationLabel = payload.deviationBandPercent > 0 ? `${payload.deviationBandPercent}%` : 'disabled';
+    const cancelledLabel = payload.cancelledOrders === null
+      ? payload.dryRun
+        ? 'Not cancelled (dry run)'
+        : 'Cancelled open orders'
+      : `Cancelled ${payload.cancelledOrders} open order${payload.cancelledOrders === 1 ? '' : 's'}`;
+
+    const rows = payload.orders
+      .map(order => {
+        const quantity = Number.isFinite(order.quantity) ? order.quantity : '--';
+        const latestPrice = typeof order.latestPrice === 'number'
+          ? `$${order.latestPrice.toFixed(2)}`
+          : '--';
+        const lastClose = typeof order.lastClose === 'number'
+          ? `$${order.lastClose.toFixed(2)}`
+          : '--';
+        const limitPrice = typeof order.limitPrice === 'number'
+          ? `$${order.limitPrice.toFixed(2)}`
+          : '--';
+        const statusLabel = order.status === 'submitted'
+          ? 'Submitted'
+          : order.status === 'failed'
+            ? 'Failed'
+            : order.status === 'skipped'
+              ? 'Skipped'
+              : 'Planned';
+        const note = order.statusReason ? escapeHtml(order.statusReason) : '';
+        return `
+          <tr style="white-space:nowrap;">
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;">${escapeHtml(order.ticker)}</td>
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;">${escapeHtml(order.side)}</td>
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:right;">${quantity}</td>
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:right;">${latestPrice}</td>
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:right;">${lastClose}</td>
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:right;">${limitPrice}</td>
+            <td style="padding:10px 8px;border-bottom:1px solid #eee;">
+              <span style="font-weight:600;">${statusLabel}</span>
+              ${note ? `<span style="color:#666;margin-left:8px;">${note}</span>` : ''}
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const manageAccountsUrl = `${context.baseUrl}/accounts/${encodeURIComponent(payload.accountId)}`;
+    const modeSnippet = payload.dryRun
+      ? '<p style="margin:0;color:#a06100;font-weight:600;">Dry run only. No broker orders were submitted.</p>'
+      : '';
+
+    const html = `
+      <div style="font-family: Arial, sans-serif;width:100%;max-width:100%;margin:0;">
+        <div style="background:#f0f4ff;border:1px solid #c9d8ff;border-radius:6px;padding:12px 16px;display:inline-flex;flex-wrap:wrap;gap:12px;align-items:center;max-width:100%;">
+          <a href="${manageAccountsUrl}" style="color:#0b63ce;font-weight:600;text-decoration:none;">Review account</a>
+          &nbsp;|&nbsp;
+          <a href="https://app.alpaca.markets/account/orders" style="color:#0b63ce;font-weight:600;text-decoration:none;">View broker orders</a>
+        </div>
+        <h2 style="margin:20px 0 4px 0;color:#333;">${escapeHtml(payload.accountName)}</h2>
+        <p style="margin:0 0 12px 0;color:#666;">${escapeHtml(payload.accountProvider)} &middot; ${escapeHtml(payload.accountEnvironment)}</p>
+        ${modeSnippet}
+        <ul style="padding-left: 18px; color: #555;">
+          <li>${cancelledLabel}</li>
+          <li>Discount applied: ${discountLabel}</li>
+          <li>Deviation band: ${deviationLabel}</li>
+          <li><strong>${expectedValue}</strong> — ${expectedValueLabel}</li>
+          <li>${payload.orders.length} total position${payload.orders.length === 1 ? '' : 's'} evaluated</li>
+          <li><strong>${payload.dryRun ? plannedCount : submittedCount}</strong> ${payload.dryRun ? 'planned' : 'submitted'} &middot; <strong>${failedCount}</strong> failed &middot; <strong>${skippedCount}</strong> skipped</li>
+        </ul>
+        <div style="overflow-x:auto;margin-top:16px;">
+          <table style="border-collapse:collapse;font-size:13px;min-width:0;width:auto;display:inline-table;">
+            <thead>
+              <tr style="background:#f5f5f5;">
+                <th style="text-align:left;padding:10px 8px;">Ticker</th>
+                <th style="text-align:left;padding:10px 8px;">Side</th>
+                <th style="text-align:right;padding:10px 8px;">Qty</th>
+                <th style="text-align:right;padding:10px 8px;">Latest</th>
+                <th style="text-align:right;padding:10px 8px;">Last Close</th>
+                <th style="text-align:right;padding:10px 8px;">Limit</th>
+                <th style="text-align:left;padding:10px 8px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows || '<tr><td colspan="7" style="padding:12px 8px;">No positions to display.</td></tr>'}</tbody>
+          </table>
+        </div>
+        <p style="color:#666;font-size:12px;margin-top:20px;">
+          Review details inside ${escapedSiteName} before taking any additional broker action.
         </p>
       </div>
     `;

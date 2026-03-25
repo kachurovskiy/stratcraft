@@ -10,6 +10,7 @@ export type JobType =
   | 'generate-signals'
   | 'backtest-active'
   | 'reconcile-trades'
+  | 'liquidate-account'
   | 'plan-operations'
   | 'dispatch-operations'
   | 'optimize'

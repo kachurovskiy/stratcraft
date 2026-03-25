@@ -9,7 +9,7 @@ import { AccountOperation } from '../../shared/types/StrategyTemplate';
 import { DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO, SETTING_KEYS } from '../constants';
 import { Database } from '../database/Database';
 import { LoggingService } from './LoggingService';
-import type { AccountConnector, DispatchResult } from './AccountDataService';
+import type { AccountConnector, DispatchResult, LiquidationRequest, LiquidationResult } from './AccountDataService';
 
 type AlpacaOrder = {
   id?: string;
@@ -265,6 +265,249 @@ export class AlpacaAccountConnector implements AccountConnector {
     };
   }
 
+  async liquidatePositions(
+    account: TradingAccount,
+    request: LiquidationRequest,
+    abortSignal?: AbortSignal
+  ): Promise<LiquidationResult> {
+    const baseUrl = await this.getBaseUrl(account.environment);
+    const headers = this.buildHeaders(account);
+    const dryRun = Boolean(request.dryRun);
+    const cancelledOrders = dryRun ? null : await this.cancelAllOpenOrders(baseUrl, headers, abortSignal);
+
+    const positions = await this.fetchPositions(account);
+    const totalPositions = positions.length;
+    let submittedOrders = 0;
+    let plannedOrders = 0;
+    let skippedDeviationPositions = 0;
+    let skippedMissingPricePositions = 0;
+    let skippedMissingReferencePositions = 0;
+    let failedOrders = 0;
+    let expectedLiquidationValue = 0;
+    const orders: LiquidationResult['orders'] = [];
+
+    const dataBaseUrl = await this.getMarketDataBaseUrl();
+    const dataHeaders = this.buildHeaders(account);
+    const discountPercent = Number.isFinite(request.discountPercent) ? request.discountPercent : 0;
+    const discountRatio = Math.max(0, discountPercent) / 100;
+    const deviationPercent = Number.isFinite(request.deviationBandPercent) ? request.deviationBandPercent! : 0;
+    const deviationRatio = Math.max(0, deviationPercent) / 100;
+    const lastCloseByTicker = await this.db.candles.getLastCloseByTickerOnOrBeforeDate(
+      positions.map(position => position.ticker),
+      new Date()
+    );
+
+    for (const position of positions) {
+      const side: 'buy' | 'sell' = position.side === 'short' ? 'buy' : 'sell';
+      const quantity = this.normalizeQuantity(position.quantity);
+      if (quantity === null) {
+        failedOrders += 1;
+        orders.push({
+          ticker: position.ticker,
+          side,
+          quantity: position.quantity ?? 0,
+          latestPrice: null,
+          lastClose: lastCloseByTicker[position.ticker] ?? null,
+          limitPrice: null,
+          status: 'failed',
+          statusReason: 'Invalid quantity'
+        });
+        continue;
+      }
+
+      let latestPrice: number | null = null;
+      try {
+        latestPrice = await this.fetchLatestTradePrice(dataBaseUrl, dataHeaders, position.ticker, abortSignal);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.loggingService.warn('system', 'Alpaca latest price fetch failed', {
+          provider: account.provider,
+          accountId: account.id,
+          ticker: position.ticker,
+          message
+        });
+      }
+
+      if (!latestPrice || !Number.isFinite(latestPrice)) {
+        skippedMissingPricePositions += 1;
+        orders.push({
+          ticker: position.ticker,
+          side,
+          quantity,
+          latestPrice: null,
+          lastClose: lastCloseByTicker[position.ticker] ?? null,
+          limitPrice: null,
+          status: 'skipped',
+          statusReason: 'Missing latest price'
+        });
+        continue;
+      }
+
+      const lastCloseRaw = lastCloseByTicker[position.ticker];
+      const lastCloseValue =
+        typeof lastCloseRaw === 'number' && Number.isFinite(lastCloseRaw) ? lastCloseRaw : null;
+      if (lastCloseValue === null || lastCloseValue <= 0) {
+        skippedMissingReferencePositions += 1;
+        orders.push({
+          ticker: position.ticker,
+          side,
+          quantity,
+          latestPrice,
+          lastClose: lastCloseValue,
+          limitPrice: null,
+          status: 'skipped',
+          statusReason: 'Missing last close reference'
+        });
+        continue;
+      }
+      const lastClose = lastCloseValue;
+
+      if (deviationRatio > 0) {
+        if (position.side === 'short') {
+          if (latestPrice > lastClose * (1 + deviationRatio)) {
+            skippedDeviationPositions += 1;
+            orders.push({
+              ticker: position.ticker,
+              side,
+              quantity,
+              latestPrice,
+              lastClose,
+              limitPrice: null,
+              status: 'skipped',
+              statusReason: 'Latest price above deviation band'
+            });
+            continue;
+          }
+        } else {
+          if (latestPrice < lastClose * (1 - deviationRatio)) {
+            skippedDeviationPositions += 1;
+            orders.push({
+              ticker: position.ticker,
+              side,
+              quantity,
+              latestPrice,
+              lastClose,
+              limitPrice: null,
+              status: 'skipped',
+              statusReason: 'Latest price below deviation band'
+            });
+            continue;
+          }
+        }
+      }
+
+      const limitPriceTarget =
+        position.side === 'short'
+          ? latestPrice * (1 + discountRatio)
+          : latestPrice * (1 - discountRatio);
+      if (!Number.isFinite(limitPriceTarget) || limitPriceTarget <= 0) {
+        failedOrders += 1;
+        orders.push({
+          ticker: position.ticker,
+          side,
+          quantity,
+          latestPrice,
+          lastClose,
+          limitPrice: null,
+          status: 'failed',
+          statusReason: 'Invalid limit price'
+        });
+        continue;
+      }
+
+      let payload: Record<string, any>;
+      let limitPrice: number | null = null;
+      try {
+        payload = this.buildLimitOrderPayload(position.ticker, quantity, limitPriceTarget, side);
+        limitPrice = payload.limit_price ?? limitPriceTarget;
+      } catch (error) {
+        failedOrders += 1;
+        orders.push({
+          ticker: position.ticker,
+          side,
+          quantity,
+          latestPrice,
+          lastClose,
+          limitPrice: null,
+          status: 'failed',
+          statusReason: 'Failed to build order'
+        });
+        continue;
+      }
+      if (dryRun) {
+        plannedOrders += 1;
+        orders.push({
+          ticker: position.ticker,
+          side,
+          quantity,
+          latestPrice,
+          lastClose,
+          limitPrice,
+          status: 'dry-run',
+          statusReason: 'Dry run'
+        });
+      } else {
+        try {
+          await axios.post(
+            `${baseUrl}/orders`,
+            payload,
+            {
+              headers,
+              timeout: this.orderRequestTimeout,
+              signal: abortSignal
+            }
+          );
+          submittedOrders += 1;
+          orders.push({
+            ticker: position.ticker,
+            side,
+            quantity,
+            latestPrice,
+            lastClose,
+            limitPrice,
+            status: 'submitted',
+            statusReason: 'Submitted'
+          });
+        } catch (error) {
+          this.attachDispatchPayload(error, payload);
+          failedOrders += 1;
+          orders.push({
+            ticker: position.ticker,
+            side,
+            quantity,
+            latestPrice,
+            lastClose,
+            limitPrice,
+            status: 'failed',
+            statusReason: 'Submit failed'
+          });
+          continue;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      if (limitPrice !== null) {
+        const signedValue = (position.side === 'short' ? -1 : 1) * limitPrice * quantity;
+        expectedLiquidationValue += signedValue;
+      }
+    }
+
+    return {
+      cancelledOrders,
+      totalPositions,
+      submittedOrders,
+      plannedOrders,
+      skippedDeviationPositions,
+      skippedMissingPricePositions,
+      skippedMissingReferencePositions,
+      failedOrders,
+      expectedLiquidationValue,
+      dryRun,
+      orders
+    };
+  }
+
   private async getBaseUrl(environment: AccountEnvironment): Promise<string> {
     const normalized = typeof environment === 'string' ? environment.trim().toLowerCase() : '';
     const isLive = normalized === 'live';
@@ -290,6 +533,64 @@ export class AlpacaAccountConnector implements AccountConnector {
     return {
       'APCA-API-KEY-ID': account.apiKey,
       'APCA-API-SECRET-KEY': account.apiSecret
+    };
+  }
+
+  private async getMarketDataBaseUrl(): Promise<string> {
+    const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_DATA_BASE_URL);
+    const trimmedBase = baseUrl.replace(/\/+$/, '');
+    if (trimmedBase.endsWith('/v2/stocks')) {
+      return trimmedBase;
+    }
+    if (trimmedBase.endsWith('/v2')) {
+      return `${trimmedBase}/stocks`;
+    }
+    return `${trimmedBase}/v2/stocks`;
+  }
+
+  private async fetchLatestTradePrice(
+    baseUrl: string,
+    headers: Record<string, string>,
+    ticker: string,
+    abortSignal?: AbortSignal
+  ): Promise<number | null> {
+    const response = await axios.get(
+      `${baseUrl}/trades/latest`,
+      {
+        headers,
+        params: { symbols: ticker },
+        timeout: this.requestTimeout,
+        signal: abortSignal
+      }
+    );
+    const data = response.data ?? {};
+    const trade = data.trades?.[ticker];
+    const price = this.toNumber(trade?.p);
+    return price !== null && price > 0 ? price : null;
+  }
+
+  private buildLimitOrderPayload(
+    ticker: string,
+    quantity: number,
+    limitPrice: number,
+    side: 'buy' | 'sell'
+  ): Record<string, any> {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('invalid_quantity');
+    }
+    if (!Number.isFinite(limitPrice) || limitPrice <= 0) {
+      throw new Error('invalid_price');
+    }
+
+    return {
+      symbol: ticker,
+      qty: Math.abs(quantity).toString(),
+      side,
+      type: 'limit',
+      limit_price: this.normalizeOrderPrice(limitPrice),
+      time_in_force: 'day',
+      // Alpaca: extended_hours only valid for limit + day orders.
+      extended_hours: true
     };
   }
 
@@ -833,6 +1134,26 @@ export class AlpacaAccountConnector implements AccountConnector {
       return null;
     }
     return this.normalizeOrderPrice(value);
+  }
+
+  private async cancelAllOpenOrders(
+    baseUrl: string,
+    headers: Record<string, string>,
+    abortSignal?: AbortSignal
+  ): Promise<number | null> {
+    const response = await axios.delete(`${baseUrl}/orders`, {
+      headers,
+      timeout: this.orderRequestTimeout,
+      signal: abortSignal
+    });
+    const data = response.data;
+    if (Array.isArray(data)) {
+      return data.length;
+    }
+    if (Array.isArray(data?.orders)) {
+      return data.orders.length;
+    }
+    return null;
   }
 
   private async fetchPositionCounts(

@@ -7,6 +7,7 @@ import {
 } from '../../shared/types/Account';
 import { AccountParams } from '../../shared/types/Express';
 import { AccountOperation, Strategy, Trade } from '../../shared/types/StrategyTemplate';
+import { DEFAULT_LIQUIDATION_DISCOUNT_PERCENT, SETTING_KEYS } from '../constants';
 import { getReqUserId } from './utils';
 
 const router = express.Router();
@@ -57,6 +58,14 @@ const parseExcludedKeywordsInput = (rawValue: unknown) => {
     text,
     keywords: text.length === 0 ? [] : normalizeKeywordList(text)
   };
+};
+
+const normalizeLiquidationDiscountPercent = (rawValue: unknown): number => {
+  const parsed = typeof rawValue === 'string' ? Number(rawValue.trim()) : Number(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_LIQUIDATION_DISCOUNT_PERCENT;
+  }
+  return Math.max(0, parsed);
 };
 
 const extractQueryMessage = (param: unknown): string | undefined => {
@@ -270,6 +279,9 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
         const valueB = Math.abs(b?.marketValue ?? 0);
         return valueB - valueA;
       });
+    const liquidationDiscountPercent = normalizeLiquidationDiscountPercent(
+      await req.db.settings.getSettingValue(SETTING_KEYS.ACCOUNT_LIQUIDATION_DISCOUNT_PERCENT)
+    );
     const strategiesForAccount = (strategiesByAccount[tradingAccount.id] ? [...strategiesByAccount[tradingAccount.id]] : []).map(
       (strategySummary) => {
         const operationsStats = strategyOperationsLookup.get(strategySummary.id);
@@ -302,7 +314,8 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
       snapshotMessage: snapshot?.message ?? null,
       strategyPrefillParams,
       strategies: strategiesForAccount,
-      uncoveredPositions
+      uncoveredPositions,
+      liquidationDiscountPercent
     };
     res.render('pages/account', {
       title: 'Account',
@@ -472,6 +485,46 @@ router.post<AccountParams>('/:id/reconcile-trades', requireAuth, async (req, res
   } catch (error) {
     console.error('Failed to queue reconcile trades job:', error);
     return res.redirect(`/accounts/${id}?error=${encodeURIComponent('Unable to reconcile trades right now.')}`);
+  }
+});
+
+router.post<AccountParams>('/:id/liquidate', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const userId = getReqUserId(req);
+    const account = await req.db.accounts.getAccountById(id, userId);
+    if (!account) {
+      return res.redirect('/?error=' + encodeURIComponent('Account not found or inaccessible.'));
+    }
+    const provider = typeof account.provider === 'string' ? account.provider.trim().toLowerCase() : '';
+    if (provider !== 'alpaca') {
+      return res.redirect(`/accounts/${id}?error=${encodeURIComponent('Liquidation is only supported for Alpaca accounts.')}`);
+    }
+    const dryRun = Boolean(req.body?.dryRun);
+
+    const liquidationPending = req.jobScheduler.hasPendingJob(
+      job => job.type === 'liquidate-account' && job.metadata?.accountId === id
+    );
+    if (liquidationPending) {
+      return res.redirect(`/accounts/${id}?error=${encodeURIComponent('Liquidation is already queued or running.')}`);
+    }
+
+    req.jobScheduler.scheduleJob('liquidate-account', {
+      description: `Liquidate ${account.name}`,
+      metadata: {
+        accountId: id,
+        userId,
+        dryRun
+      }
+    });
+
+    const successMessage = dryRun
+      ? 'Liquidation dry run queued. You will receive an email summary.'
+      : 'Liquidation job queued. You will receive an email summary.';
+    return res.redirect(`/accounts/${id}?success=${encodeURIComponent(successMessage)}`);
+  } catch (error) {
+    console.error('Failed to liquidate account positions:', error);
+    return res.redirect(`/accounts/${id}?error=${encodeURIComponent('Unable to liquidate positions right now.')}`);
   }
 });
 

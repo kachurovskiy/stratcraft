@@ -2,6 +2,8 @@ import express, { NextFunction, Request, Response } from 'express';
 import {
   DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS,
   DEFAULT_BACKTEST_INITIAL_CAPITAL,
+  DEFAULT_LIQUIDATION_DISCOUNT_PERCENT,
+  DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT,
   DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO,
   DEFAULT_MTLS_ACCESS_CERT_PASSWORD,
   SETTING_KEYS,
@@ -467,6 +469,24 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     label: 'Market Order Price Cap Ratio',
     description: 'Cap market order fills by converting to a limit order (e.g. 0.08 = 8%). Set to 0 to disable.',
     placeholder: String(DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO),
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.ACCOUNT_LIQUIDATION_DISCOUNT_PERCENT,
+    group: 'alpaca',
+    label: 'Account Liquidation Discount (%)',
+    description: 'Discount applied to Alpaca latest prices when placing liquidation limit sells. Suggested defaults: 0, 1, 2, or 3.',
+    placeholder: String(DEFAULT_LIQUIDATION_DISCOUNT_PERCENT),
+    inputType: 'number',
+    min: '0'
+  },
+  {
+    key: SETTING_KEYS.ACCOUNT_LIQUIDATION_DEVIATION_BAND_PERCENT,
+    group: 'alpaca',
+    label: 'Account Liquidation Deviation Band (%)',
+    description: 'Skip liquidation orders if latest price deviates from last close by more than this percent (0 disables).',
+    placeholder: String(DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT),
     inputType: 'number',
     min: '0'
   },

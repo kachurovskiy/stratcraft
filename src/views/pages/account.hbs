@@ -242,6 +242,41 @@
     </div>
 </section>
 
+<section class="mb-4">
+    <div class="card h-100 border-warning">
+        <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div>
+                <h2 class="h6 text-uppercase mb-1">Liquidate Positions</h2>
+                <p class="text-muted small mb-0">
+                    Cancels all open orders, then submits 24-hour limit orders to close all positions using the latest Alpaca price
+                    {{#if (gt liquidationDiscountPercent 0)}}
+                    with a {{liquidationDiscountPercent}}% discount.
+                    {{else}}
+                    with no discount.
+                    {{/if}}
+                </p>
+            </div>
+            <form method="POST" action="/accounts/{{id}}/liquidate" class="m-0 d-flex flex-column flex-sm-row align-items-sm-center gap-2"
+                onsubmit="return confirm('Queue liquidation job to close all positions? Dry run will not cancel orders or place trades.');">
+                {{> csrf-field}}
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="liquidationDryRun" name="dryRun">
+                    <label class="form-check-label small" for="liquidationDryRun">Dry run (email only)</label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-warning">
+                    <i class="fas fa-bolt me-1"></i>
+                    Liquidate Positions
+                </button>
+            </form>
+        </div>
+        <div class="card-body">
+            <div class="text-muted small">
+                Long sells use a discount; short covers use the same percent premium. Update the discount in Admin Settings.
+            </div>
+        </div>
+    </div>
+</section>
+
 {{#if uncoveredPositions.length}}
 <section class="mb-4">
     <div class="card h-100">

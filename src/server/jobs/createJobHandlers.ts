@@ -8,6 +8,7 @@ import { createBacktestHandler } from './handlers/backtestHandler';
 import { createPlanOperationsHandler } from './handlers/planOperationsHandler';
 import { createDispatchOperationsHandler } from './handlers/dispatchOperationsHandler';
 import { createReconcileTradesHandler } from './handlers/reconcileTradesHandler';
+import { createLiquidateAccountHandler } from './handlers/liquidateAccountHandler';
 import { createOptimizeHandler } from './handlers/optimizeHandler';
 import { createTrainLightgbmHandler } from './handlers/trainLightgbmHandler';
 
@@ -21,6 +22,7 @@ export function createJobHandlers(deps: JobHandlerDependencies): HandlerMap {
     'generate-signals': createSignalHandler(deps),
     'backtest-active': createBacktestHandler(deps),
     'reconcile-trades': createReconcileTradesHandler(deps),
+    'liquidate-account': createLiquidateAccountHandler(deps),
     'plan-operations': createPlanOperationsHandler(deps),
     'dispatch-operations': createDispatchOperationsHandler(deps),
     'optimize': createOptimizeHandler(deps),

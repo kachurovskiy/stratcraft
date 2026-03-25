@@ -19,6 +19,39 @@ export type DispatchResult = {
   cancelAfter?: Date | string | null;
 };
 
+export type LiquidationRequest = {
+  discountPercent: number;
+  deviationBandPercent?: number;
+  dryRun?: boolean;
+};
+
+export type LiquidationOrderStatus = 'submitted' | 'failed' | 'skipped' | 'dry-run';
+
+export type LiquidationOrderPreview = {
+  ticker: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  latestPrice: number | null;
+  lastClose: number | null;
+  limitPrice: number | null;
+  status: LiquidationOrderStatus;
+  statusReason?: string;
+};
+
+export type LiquidationResult = {
+  cancelledOrders: number | null;
+  totalPositions: number;
+  submittedOrders: number;
+  plannedOrders: number;
+  skippedDeviationPositions: number;
+  skippedMissingPricePositions: number;
+  skippedMissingReferencePositions: number;
+  failedOrders: number;
+  expectedLiquidationValue: number;
+  dryRun: boolean;
+  orders: LiquidationOrderPreview[];
+};
+
 export interface AccountConnector {
   supports(provider: string): boolean;
   fetchSnapshot(account: TradingAccount): Promise<AccountSnapshot>;
@@ -28,6 +61,11 @@ export interface AccountConnector {
     operation: AccountOperation,
     abortSignal: AbortSignal
   ): Promise<DispatchResult>;
+  liquidatePositions?(
+    account: TradingAccount,
+    request: LiquidationRequest,
+    abortSignal?: AbortSignal
+  ): Promise<LiquidationResult>;
 }
 
 const INTERNAL_SNAPSHOT_SOURCE = 'accounts-service';
@@ -99,6 +137,18 @@ export class AccountDataService {
       };
       return this.normalizeDispatchResult(account, failedResult);
     }
+  }
+
+  async liquidatePositions(
+    account: TradingAccount,
+    request: LiquidationRequest,
+    abortSignal?: AbortSignal
+  ): Promise<LiquidationResult> {
+    const connector = this.connectors.find((c) => c.supports(account.provider));
+    if (!connector || !connector.liquidatePositions) {
+      throw new Error(`provider_${(account.provider || 'unknown').toLowerCase()}_unsupported`);
+    }
+    return connector.liquidatePositions(account, request, abortSignal);
   }
 
   private async fetchSnapshot(account: TradingAccount): Promise<AccountSnapshot> {
