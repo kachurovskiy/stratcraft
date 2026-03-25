@@ -12,7 +12,6 @@ use log::{info, warn};
 use std::env;
 use std::path::PathBuf;
 
-const DEFAULT_LGBM_MODEL_REL_PATH: &str = "src/models/lightgbm_model.txt";
 const DEFAULT_MARKET_DATA_FILE: &str = "../data/market-data.bin";
 
 #[derive(Parser)]
@@ -74,7 +73,7 @@ enum Commands {
     },
     /// Train the LightGBM model using in-database market data
     TrainLightgbm {
-        /// Destination for the trained model (defaults to engine/src/models/lightgbm_model.txt)
+        /// Destination for the trained model
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Number of boosting iterations
@@ -197,10 +196,9 @@ async fn main() -> anyhow::Result<()> {
             bagging_freq,
             early_stopping_round,
         } => {
-            let fallback_path = PathBuf::from(DEFAULT_LGBM_MODEL_REL_PATH);
             train_lightgbm::run(
                 &app_context,
-                output.or_else(|| Some(fallback_path)),
+                output,
                 num_iterations,
                 learning_rate,
                 num_leaves,
