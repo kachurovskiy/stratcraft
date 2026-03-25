@@ -14,8 +14,6 @@ use crate::retry::retry_db_operation;
 use crate::strategy::{create_strategy, Strategy};
 use chrono::{DateTime, Utc};
 
-use crate::optimizer_status::OptimizerStatus;
-
 /// Builds a `GeneratedSignal` when the action is tradable and confidence is usable.
 /// Returns `None` for non-trading actions or invalid confidence values.
 pub fn maybe_create_generated_signal(
@@ -84,13 +82,12 @@ pub fn generate_signal_with_filters(params: SignalGenerationParams) -> Option<Ge
 
 pub struct SignalManager<'a> {
     db: &'a mut Database,
-    status: &'a OptimizerStatus,
     data: &'a MarketData,
 }
 
 impl<'a> SignalManager<'a> {
-    pub fn new(db: &'a mut Database, status: &'a OptimizerStatus, data: &'a MarketData) -> Self {
-        Self { db, status, data }
+    pub fn new(db: &'a mut Database, data: &'a MarketData) -> Self {
+        Self { db, data }
     }
 
     pub async fn generate_missing_signals(&mut self) -> Result<()> {
@@ -116,15 +113,6 @@ impl<'a> SignalManager<'a> {
         let shared_candles = Arc::new(candles_by_ticker);
         let shared_tickers = Arc::new(tickers.to_vec());
 
-        let total = strategies.len();
-        self.status.set_phase(format!(
-            "Generating signals for {} active strategies",
-            total
-        ));
-        self.status.set_progress(total, 0, 0, None);
-
-        let mut processed = 0usize;
-        let mut failed_jobs = 0usize;
         let mut total_inserted = 0usize;
         let mut signal_jobs = Vec::new();
         let mut cached_lightgbm_refs: Option<HashMap<String, Vec<&Candle>>> = None;
@@ -147,9 +135,6 @@ impl<'a> SignalManager<'a> {
                         "Skipping signal generation for strategy {} ({}): {}",
                         id, template_id, err
                     );
-                    processed += 1;
-                    self.status
-                        .set_progress(total, processed, failed_jobs, None);
                     continue;
                 }
             };
@@ -183,9 +168,6 @@ impl<'a> SignalManager<'a> {
                 .collect();
 
             if target_dates.is_empty() {
-                processed += 1;
-                self.status
-                    .set_progress(total, processed, failed_jobs, None);
                 info!(
                     "No new dates to generate signals for strategy {} (effective start date: {})",
                     id, start_date
@@ -225,9 +207,6 @@ impl<'a> SignalManager<'a> {
                 .collect();
 
             if dates_to_generate.is_empty() {
-                processed += 1;
-                self.status
-                    .set_progress(total, processed, failed_jobs, None);
                 info!(
                     "All signals already exist for strategy {} in the target date range ({} to {})",
                     id, range_start, range_end
@@ -258,9 +237,6 @@ impl<'a> SignalManager<'a> {
         }
 
         if signal_jobs.is_empty() {
-            self.status
-                .set_progress(total, processed, failed_jobs, None);
-            self.status.set_phase("Idle");
             info!("No new signals required for any active strategy.");
             return Ok(());
         }
@@ -311,9 +287,6 @@ impl<'a> SignalManager<'a> {
                                 }),
                             )
                             .await;
-                        processed += 1;
-                        self.status
-                            .set_progress(total, processed, failed_jobs, None);
                         continue;
                     }
 
@@ -355,14 +328,9 @@ impl<'a> SignalManager<'a> {
                         .await;
                 }
                 Err(join_err) => {
-                    failed_jobs += 1;
                     warn!("Signal generation worker failed: {}", join_err);
                 }
             }
-
-            processed += 1;
-            self.status
-                .set_progress(total, processed, failed_jobs, None);
 
             if let Some(job) = pending_jobs.next() {
                 let tickers = Arc::clone(&shared_tickers);
@@ -373,8 +341,6 @@ impl<'a> SignalManager<'a> {
             }
         }
 
-        self.status.set_progress(total, total, failed_jobs, None);
-        self.status.set_phase("Idle");
         info!(
             "Signal generation completed; inserted {} new signals",
             total_inserted

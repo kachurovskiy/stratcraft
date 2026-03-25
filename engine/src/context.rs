@@ -4,7 +4,6 @@ use crate::cache::CacheManager;
 use crate::data_context::{MarketData, TickerScope};
 use crate::database::Database;
 use crate::optimizer::OptimizationEngine;
-use crate::optimizer_status::OptimizerStatus;
 use crate::signals::SignalManager;
 use anyhow::{anyhow, Result};
 use chrono::NaiveDate;
@@ -84,7 +83,6 @@ pub struct EngineContext {
     db: Option<Database>,
     cache_manager: CacheManager,
     market_data: MarketData,
-    status: OptimizerStatus,
     backtested_strategy_ids: HashSet<String>,
     ticker_scope: TickerScope,
 }
@@ -94,17 +92,9 @@ impl EngineContext {
         database_url: S,
         ticker_scope: TickerScope,
     ) -> Result<Self> {
-        let status = OptimizerStatus::new();
-        status.set_phase("Connecting to database");
         let db = Database::new(database_url).await?;
-        status.set_phase("Loading market data");
         let market_data = MarketData::load(&db, ticker_scope).await?;
-        Ok(Self::from_components(
-            Some(db),
-            market_data,
-            status,
-            ticker_scope,
-        ))
+        Ok(Self::from_components(Some(db), market_data, ticker_scope))
     }
 
     pub async fn initialize_with_market_data_file<P: AsRef<Path>>(
@@ -113,8 +103,6 @@ impl EngineContext {
         ticker_scope: TickerScope,
         filters: Option<MarketDataFilters>,
     ) -> Result<Self> {
-        let status = OptimizerStatus::new();
-        status.set_phase("Connecting to database");
         let db = match database_url {
             Some(url) if !url.trim().is_empty() => match Database::new(url).await {
                 Ok(db) => Some(db),
@@ -132,29 +120,26 @@ impl EngineContext {
             }
         };
         let filters = filters.unwrap_or_default();
-        let mut market_data = MarketData::load_from_file(data_file, &status)?;
+        let mut market_data = MarketData::load_from_file(data_file)?;
         market_data = Self::restrict_snapshot_scope(market_data, ticker_scope, db.as_ref()).await?;
         market_data = Self::apply_market_data_filters(market_data, &filters)?;
-        Ok(Self::from_components(db, market_data, status, ticker_scope))
+        Ok(Self::from_components(db, market_data, ticker_scope))
     }
 
     fn from_components(
         db: Option<Database>,
         market_data: MarketData,
-        status: OptimizerStatus,
         ticker_scope: TickerScope,
     ) -> Self {
         let has_db = db.is_some();
         let backtest_secret = market_data.settings().get("BACKTEST_API_SECRET").cloned();
         let api_base_url = resolve_api_base_url(market_data.settings());
         let cache_manager = CacheManager::new(backtest_secret, api_base_url, has_db);
-        status.set_phase("Idle");
 
         Self {
             db,
             cache_manager,
             market_data,
-            status,
             backtested_strategy_ids: HashSet::new(),
             ticker_scope,
         }
@@ -171,7 +156,6 @@ impl EngineContext {
             .expect("ActiveStrategyBacktester requires a database connection");
         ActiveStrategyBacktester::new(
             db,
-            &self.status,
             &self.market_data,
             &mut self.backtested_strategy_ids,
             self.ticker_scope,
@@ -183,11 +167,7 @@ impl EngineContext {
             .db
             .as_mut()
             .expect("SignalManager requires a database connection");
-        SignalManager::new(db, &self.status, &self.market_data)
-    }
-
-    pub fn status_handle(&self) -> OptimizerStatus {
-        self.status.clone()
+        SignalManager::new(db, &self.market_data)
     }
 
     async fn restrict_snapshot_scope(

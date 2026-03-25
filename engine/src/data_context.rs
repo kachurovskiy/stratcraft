@@ -1,6 +1,5 @@
 use crate::database::Database;
 use crate::models::{Candle, StrategyParameter, StrategyTemplate, TickerInfo};
-use crate::optimizer_status::OptimizerStatus;
 use anyhow::{anyhow, Context, Result};
 use chrono::prelude::*;
 use log::info;
@@ -296,12 +295,8 @@ impl MarketData {
         )
     }
 
-    pub fn load_from_file<P: AsRef<Path>>(path: P, status: &OptimizerStatus) -> Result<Self> {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        status.set_phase(format!(
-            "Loading market data snapshot from {}",
-            path.display()
-        ));
         let file = File::open(path).with_context(|| {
             format!("Failed to open market data snapshot at {}", path.display())
         })?;
@@ -317,7 +312,6 @@ impl MarketData {
             ));
         }
 
-        status.set_phase("Reconstructing market data snapshot");
         let candles_by_ticker_indices = Self::build_candle_index(&snapshot.candles);
 
         let templates = snapshot

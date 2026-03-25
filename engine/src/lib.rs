@@ -14,7 +14,6 @@ pub mod engine;
 pub mod indicators;
 pub mod models;
 pub mod optimizer;
-pub mod optimizer_status;
 pub mod param_utils;
 pub mod performance;
 pub mod retry;

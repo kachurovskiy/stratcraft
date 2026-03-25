@@ -2,7 +2,6 @@ use crate::commands::market_data_snapshot::ensure_market_data_file;
 use crate::config::{require_setting_date, EngineRuntimeSettings};
 use crate::context::{AppContext, MarketDataFilters};
 use crate::data_context::{MarketData, TickerScope};
-use crate::optimizer_status::OptimizerStatus;
 use anyhow::Result;
 use log::{info, warn};
 use std::path::Path;
@@ -25,8 +24,7 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
                 "Database unavailable ({}). Using settings from market data snapshot.",
                 error
             );
-            let status = OptimizerStatus::new();
-            let snapshot = MarketData::load_from_file(market_data_file, &status)?;
+            let snapshot = MarketData::load_from_file(market_data_file)?;
             snapshot.settings().clone()
         }
     };

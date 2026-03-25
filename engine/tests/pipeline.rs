@@ -8,7 +8,6 @@ use engine::context::AppContext;
 use engine::data_context::MarketData;
 use engine::database::Database;
 use engine::models::{GeneratedSignal, SignalAction, TradeStatus};
-use engine::optimizer_status::OptimizerStatus;
 use reqwest::Client as HttpClient;
 use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value};
@@ -248,8 +247,7 @@ async fn export_market_data_smoke() -> Result<()> {
         output_path.display()
     );
 
-    let status = OptimizerStatus::new();
-    let market_data = MarketData::load_from_file(&output_path, &status)?;
+    let market_data = MarketData::load_from_file(&output_path)?;
     assert!(
         !market_data.tickers().is_empty(),
         "expected tickers in snapshot"

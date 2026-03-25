@@ -3,7 +3,6 @@ use crate::data_context::{MarketData, TickerScope};
 use crate::database::Database;
 use crate::engine::Engine;
 use crate::models::{AccountSignalSkip, BacktestResult, GeneratedSignal, StrategyConfig};
-use crate::optimizer_status::OptimizerStatus;
 use crate::retry::retry_db_operation;
 use crate::strategy_utils::calculate_period_days_local;
 use anyhow::{anyhow, Result};
@@ -89,7 +88,6 @@ fn strategy_has_linked_account(strategy: &StrategyConfig) -> bool {
 
 pub struct ActiveStrategyBacktester<'a> {
     db: &'a mut Database,
-    status: &'a OptimizerStatus,
     data: &'a MarketData,
     backtested_strategy_ids: &'a mut HashSet<String>,
     ticker_scope: TickerScope,
@@ -98,14 +96,12 @@ pub struct ActiveStrategyBacktester<'a> {
 impl<'a> ActiveStrategyBacktester<'a> {
     pub fn new(
         db: &'a mut Database,
-        status: &'a OptimizerStatus,
         data: &'a MarketData,
         backtested_strategy_ids: &'a mut HashSet<String>,
         ticker_scope: TickerScope,
     ) -> Self {
         Self {
             db,
-            status,
             data,
             backtested_strategy_ids,
             ticker_scope,
@@ -420,9 +416,6 @@ impl<'a> ActiveStrategyBacktester<'a> {
 
         if runnable_strategies.is_empty() {
             info!("All active strategies already have up-to-date backtests; skipping run");
-            self.status
-                .set_phase("Active strategies already up-to-date");
-            self.status.set_progress(0, 0, 0, None);
             return Ok(());
         }
 
@@ -435,11 +428,6 @@ impl<'a> ActiveStrategyBacktester<'a> {
         }
 
         let total = runnable_strategies.len();
-        self.status.set_phase(format!(
-            "Backtesting {} active strategies in parallel",
-            total
-        ));
-        self.status.set_progress(total, 0, 0, None);
 
         let num_workers = std::cmp::min(total, std::cmp::max(1, num_cpus::get()));
         info!(
@@ -584,10 +572,6 @@ impl<'a> ActiveStrategyBacktester<'a> {
                                 "Completed backtest for {} (Calmar {:.4}, Sharpe {:.4}, {:.1}m)",
                                 message.name, calmar_ratio, sharpe, message.duration_minutes
                             );
-                            self.status.set_phase(format!(
-                                "Completed {}/{} strategies (awaiting persistence; last: {})",
-                                completed_runs, total, message.name
-                            ));
                             let success = StrategyBacktestSuccess {
                                 id: message.id,
                                 name: message.name,
@@ -598,12 +582,6 @@ impl<'a> ActiveStrategyBacktester<'a> {
                                 signal_skips: payload.signal_skips,
                             };
                             pending_persistence.push(success);
-                            self.status.set_progress(
-                                total,
-                                completed_runs,
-                                failures.len(),
-                                Some(calmar_ratio),
-                            );
                         }
                         Err(error) => {
                             warn!(
@@ -617,20 +595,14 @@ impl<'a> ActiveStrategyBacktester<'a> {
                                     "error",
                                     "Backtest failed",
                                     json!({
-                                        "operation": "backtest",
-                                        "reason": "engine_error",
-                                        "templateId": message.template_id,
-                                        "error": error_for_log,
+                                            "operation": "backtest",
+                                            "reason": "engine_error",
+                                            "templateId": message.template_id,
+                                            "error": error_for_log,
                                     }),
                                 )
                                 .await;
                             failures.push(format!("{} ({})", message.id, error));
-                            self.status.set_phase(format!(
-                                "Completed {}/{} strategies (last failure: {})",
-                                completed_runs, total, message.name
-                            ));
-                            self.status
-                                .set_progress(total, completed_runs, failures.len(), None);
                         }
                     }
                 }
@@ -651,58 +623,23 @@ impl<'a> ActiveStrategyBacktester<'a> {
                 total_successes,
                 if total_successes == 1 { "" } else { "s" }
             );
-            self.status.set_phase(format!(
-                "Persisting {} backtest result{} sequentially",
-                total_successes,
-                if total_successes == 1 { "" } else { "s" }
-            ));
         }
-        let mut persisted_successes = 0usize;
         for success in pending_persistence {
-            let strategy_name = success.name.clone();
-            let calmar_ratio = success.run.performance.calmar_ratio;
             match self.persist_backtest_success(success).await {
                 Some(error) => {
                     failures.push(error);
-                    self.status.set_phase(format!(
-                        "Persisted {}/{} results (last failure: {})",
-                        persisted_successes, total_successes, strategy_name
-                    ));
-                    self.status
-                        .set_progress(total, completed_runs, failures.len(), None);
                 }
-                None => {
-                    persisted_successes += 1;
-                    self.status.set_phase(format!(
-                        "Persisted {}/{} results (last success: {})",
-                        persisted_successes, total_successes, strategy_name
-                    ));
-                    self.status.set_progress(
-                        total,
-                        completed_runs,
-                        failures.len(),
-                        Some(calmar_ratio),
-                    );
-                }
+                None => {}
             }
         }
 
-        if failures.is_empty() {
-            self.status.set_phase("Backtesting completed successfully");
-        } else {
+        if !failures.is_empty() {
             warn!(
                 "Backtesting completed with {} failure{}",
                 failures.len(),
                 if failures.len() == 1 { "" } else { "s" }
             );
-            self.status.set_phase(format!(
-                "Completed with {} failure{}",
-                failures.len(),
-                if failures.len() == 1 { "" } else { "s" }
-            ));
         }
-        self.status
-            .set_progress(total, completed_runs, failures.len(), None);
 
         Ok(())
     }
