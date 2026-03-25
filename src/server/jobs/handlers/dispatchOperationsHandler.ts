@@ -3,7 +3,7 @@ import { JobHandler } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
 import { OperationDispatchSummaryPayload } from '../../services/EmailService';
 import { DispatchResult } from '../../services/AccountDataService';
-import { AccountOperationType } from '../../../shared/types/StrategyTemplate';
+import { AccountOperationType } from '../../types/StrategyTemplate';
 
 const DISPATCH_SOURCE = 'dispatch-operations-job';
 const OPERATION_DISPATCH_PRIORITY: Record<AccountOperationType, number> = {

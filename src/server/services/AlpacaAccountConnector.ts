@@ -4,8 +4,8 @@ import {
   AccountPosition,
   AccountSnapshot,
   TradingAccount
-} from '../../shared/types/Account';
-import { AccountOperation } from '../../shared/types/StrategyTemplate';
+} from '../types/Account';
+import { AccountOperation } from '../types/StrategyTemplate';
 import { DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO, SETTING_KEYS } from '../constants';
 import { Database } from '../database/Database';
 import { LoggingService } from './LoggingService';

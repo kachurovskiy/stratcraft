@@ -1,5 +1,5 @@
 import type { CandlesRepo } from '../database/repos/CandlesRepo';
-import type { Candle } from '../../shared/types/StrategyTemplate';
+import type { Candle } from '../types/StrategyTemplate';
 
 export type DispatchSummaryOperation = {
   ticker: string;

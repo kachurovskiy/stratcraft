@@ -4,9 +4,9 @@ import {
   AccountEnvironment,
   AccountPosition,
   AccountSnapshot
-} from '../../shared/types/Account';
-import { AccountParams } from '../../shared/types/Express';
-import { AccountOperation, Strategy, Trade } from '../../shared/types/StrategyTemplate';
+} from '../types/Account';
+import { AccountParams } from '../types/Express';
+import { AccountOperation, Strategy, Trade } from '../types/StrategyTemplate';
 import { DEFAULT_LIQUIDATION_DISCOUNT_PERCENT, SETTING_KEYS } from '../constants';
 import { getReqUserId } from './utils';
 

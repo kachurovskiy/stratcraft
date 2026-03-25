@@ -5,7 +5,7 @@ import type {
   Trade,
   TradeCancellationSource,
   TradeChange
-} from '../../../shared/types/StrategyTemplate';
+} from '../../types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
 import type { EntryFillGapHistogram, TradeTickerStats, TradeVolumeSegmentStats } from '../types';
@@ -1087,4 +1087,3 @@ export class TradesRepo {
     };
   }
 }
-

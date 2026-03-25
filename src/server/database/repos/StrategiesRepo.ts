@@ -1,5 +1,5 @@
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { Strategy } from '../../../shared/types/StrategyTemplate';
+import type { Strategy } from '../../types/StrategyTemplate';
 import { DbClient } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber } from '../core/valueParsers';
 import type { InsertStrategyInput } from '../types';

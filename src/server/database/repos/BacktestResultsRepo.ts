@@ -1,5 +1,5 @@
 import type { QueryResultRow } from 'pg';
-import type { BacktestScope, StrategyPerformance } from '../../../shared/types/StrategyTemplate';
+import type { BacktestScope, StrategyPerformance } from '../../types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber } from '../core/valueParsers';
 import type { BacktestResultRecord, TickerBacktestPerformanceRow } from '../types';

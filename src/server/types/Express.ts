@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { Database } from '../../server/database/Database';
-import { StrategyRegistry } from '../../server/strategies/registry';
-import { AccountDataService } from '../../server/services/AccountDataService';
+import { Database } from '../database/Database';
+import { StrategyRegistry } from '../strategies/registry';
+import { AccountDataService } from '../services/AccountDataService';
 
 // Extended Express Request interface with custom properties
 export interface StratCraftRequest extends Request {

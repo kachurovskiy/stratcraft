@@ -1,4 +1,4 @@
-import type { StrategyPerformance } from '../../shared/types/StrategyTemplate';
+import type { StrategyPerformance } from '../types/StrategyTemplate';
 import {
   computeTemplateScoreResults,
   type TemplateScoreSnapshot

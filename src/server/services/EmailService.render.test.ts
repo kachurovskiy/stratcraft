@@ -4,7 +4,7 @@ import puppeteer, { Browser } from 'puppeteer';
 import { EmailService, OperationDispatchSummaryPayload } from './EmailService';
 import { LoggingService } from './LoggingService';
 import type { Database } from '../database/Database';
-import type { Candle } from '../../shared/types/StrategyTemplate';
+import type { Candle } from '../types/StrategyTemplate';
 
 const mockSend = jest.fn();
 

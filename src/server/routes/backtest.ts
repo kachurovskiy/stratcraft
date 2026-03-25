@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { BacktestParams } from '../../shared/types/Express';
-import { Trade } from '../../shared/types/StrategyTemplate';
+import { BacktestParams } from '../types/Express';
+import { Trade } from '../types/StrategyTemplate';
 import type {
   BacktestDailySnapshot,
   EntryFillGapHistogram,

@@ -1,3 +1,4 @@
+/// <reference path="./types/express.d.ts" />
 import express from 'express';
 import { Server as HttpServer } from 'http';
 import { create } from 'express-handlebars';

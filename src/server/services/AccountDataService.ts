@@ -4,8 +4,8 @@ import {
   AccountSnapshot,
   AccountSnapshotStatus,
   TradingAccount
-} from '../../shared/types/Account';
-import { AccountOperation, AccountOperationStatus } from '../../shared/types/StrategyTemplate';
+} from '../types/Account';
+import { AccountOperation, AccountOperationStatus } from '../types/StrategyTemplate';
 import { LoggingService, LogSource } from './LoggingService';
 import { AlpacaAccountConnector } from './AlpacaAccountConnector';
 import { Database } from '../database/Database';

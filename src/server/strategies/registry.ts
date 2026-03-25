@@ -1,5 +1,5 @@
-﻿import { Database } from '../database/Database';
-import { StrategyTemplate } from '../../shared/types/StrategyTemplate';
+import { Database } from '../database/Database';
+import { StrategyTemplate } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { JobScheduler } from '../jobs/JobScheduler';
 import fs from 'fs';

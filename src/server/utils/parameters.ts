@@ -1,4 +1,4 @@
-import { StrategyParameter, StrategyTemplate } from '../../shared/types/StrategyTemplate';
+import { StrategyParameter, StrategyTemplate } from '../types/StrategyTemplate';
 
 interface ParameterSummaryView {
   name: string;

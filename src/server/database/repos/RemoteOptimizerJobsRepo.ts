@@ -1,5 +1,5 @@
 import type { QueryResultRow } from 'pg';
-import type { RemoteOptimizationStatus } from '../../../shared/types/RemoteOptimization';
+import type { RemoteOptimizationStatus } from '../../types/RemoteOptimization';
 import type { RemoteOptimizerJobEntity } from '../types';
 import { DbClient } from '../core/DbClient';
 

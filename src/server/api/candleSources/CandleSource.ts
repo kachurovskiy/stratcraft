@@ -1,4 +1,4 @@
-import { Candle } from '../../../shared/types/StrategyTemplate';
+import { Candle } from '../../types/StrategyTemplate';
 
 export type CandleSourceResult = {
   candles: Candle[];

@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { timingSafeEqual } from 'crypto';
-import { TemplateParams } from '../../shared/types/Express';
+import { TemplateParams } from '../types/Express';
 import { SETTING_KEYS } from '../constants';
 const router = express.Router();
 

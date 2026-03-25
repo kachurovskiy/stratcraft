@@ -1,13 +1,13 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { StrategyIdParams, StrategyParams, StrategyTickerParams } from '../../shared/types/Express';
+import { StrategyIdParams, StrategyParams, StrategyTickerParams } from '../types/Express';
 import {
   StrategyTemplate,
   StrategyParameter,
   Candle,
   AccountOperationStatus,
   AccountOperationType
-} from '../../shared/types/StrategyTemplate';
-import { AccountSnapshot } from '../../shared/types/Account';
+} from '../types/StrategyTemplate';
+import { AccountSnapshot } from '../types/Account';
 import { LogEntry, LogLevel } from '../services/LoggingService';
 import type { AccountSignalSkipRow } from '../database/types';
 import { SETTING_KEYS } from '../constants';

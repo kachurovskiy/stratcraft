@@ -1,5 +1,5 @@
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { CreateTradingAccountInput, TradingAccount } from '../../../shared/types/Account';
+import type { CreateTradingAccountInput, TradingAccount } from '../../types/Account';
 import { decryptValue, encryptValue } from '../../utils/encryption';
 import { DbClient } from '../core/DbClient';
 import { toInteger } from '../core/valueParsers';

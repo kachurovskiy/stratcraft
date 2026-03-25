@@ -1,6 +1,6 @@
 import type { Database } from '../database/Database';
 import type { AccountSignalSkipRow, BacktestResultRecord } from '../database/types';
-import type { BacktestScope, Candle, Trade } from '../../shared/types/StrategyTemplate';
+import type { BacktestScope, Candle, Trade } from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
 import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';

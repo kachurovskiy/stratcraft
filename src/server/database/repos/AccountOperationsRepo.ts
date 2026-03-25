@@ -3,8 +3,8 @@ import type {
   AccountOperation,
   AccountOperationStatus,
   AccountOperationType
-} from '../../../shared/types/StrategyTemplate';
-import type { TradingAccount } from '../../../shared/types/Account';
+} from '../../types/StrategyTemplate';
+import type { TradingAccount } from '../../types/Account';
 import type { AccountOperationDispatchCandidate } from '../types';
 import { decryptValue } from '../../utils/encryption';
 import { DbClient, type QueryValue } from '../core/DbClient';

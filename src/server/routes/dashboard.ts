@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { AccountSnapshot } from '../../shared/types/Account';
-import { BacktestScope, Strategy, TickerInfo } from '../../shared/types/StrategyTemplate';
+import { AccountSnapshot } from '../types/Account';
+import { BacktestScope, Strategy, TickerInfo } from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel } from './utils';

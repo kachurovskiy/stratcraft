@@ -1,4 +1,4 @@
-import type { TradeCancellationSource } from '../../shared/types/StrategyTemplate';
+import type { TradeCancellationSource } from '../types/StrategyTemplate';
 
 export type EntryOrderCancellationInfo = {
   cancellationSource?: TradeCancellationSource | null;

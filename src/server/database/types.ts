@@ -1,5 +1,5 @@
 import type { BacktestCacheRow } from '../scoring/paramScore';
-import type { RemoteOptimizationStatus } from '../../shared/types/RemoteOptimization';
+import type { RemoteOptimizationStatus } from '../types/RemoteOptimization';
 import type {
   AccountOperation,
   BacktestScope,
@@ -7,8 +7,8 @@ import type {
   StrategyPerformance,
   TickerInfo,
   Trade
-} from '../../shared/types/StrategyTemplate';
-import type { TradingAccount } from '../../shared/types/Account';
+} from '../types/StrategyTemplate';
+import type { TradingAccount } from '../types/Account';
 
 export type RawUserRow = {
   id: number;

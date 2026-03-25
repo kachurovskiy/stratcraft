@@ -1,5 +1,5 @@
 import { Database } from '../database/Database';
-import { Candle, TickerInfo } from '../../shared/types/StrategyTemplate';
+import { Candle, TickerInfo } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { SETTING_KEYS } from '../constants';
 import { parseOptionalNumberSetting } from '../utils/settings';

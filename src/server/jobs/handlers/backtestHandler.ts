@@ -1,4 +1,4 @@
-import { BacktestScope } from '../../../shared/types/StrategyTemplate';
+import { BacktestScope } from '../../types/StrategyTemplate';
 import { SETTING_KEYS } from '../../constants';
 import { JobHandler } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';

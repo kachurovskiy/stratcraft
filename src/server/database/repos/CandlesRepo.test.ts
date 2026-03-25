@@ -1,6 +1,6 @@
 import type { QueryValue } from '../core/DbClient';
 import { DbClient } from '../core/DbClient';
-import type { Candle } from '../../../shared/types/StrategyTemplate';
+import type { Candle } from '../../types/StrategyTemplate';
 import { CandlesRepo } from './CandlesRepo';
 
 describe('CandlesRepo', () => {

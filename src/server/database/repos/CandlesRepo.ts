@@ -1,5 +1,5 @@
 import type { QueryResultRow } from 'pg';
-import type { Candle } from '../../../shared/types/StrategyTemplate';
+import type { Candle } from '../../types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toInteger, toNullableInteger, toNullableNumber, toNumber } from '../core/valueParsers';
 

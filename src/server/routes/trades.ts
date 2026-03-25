@@ -1,12 +1,12 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { BacktestParams, StrategyIdParams, TradeParams } from '../../shared/types/Express';
+import { BacktestParams, StrategyIdParams, TradeParams } from '../types/Express';
 import {
   TradeChange,
   Trade,
   Candle,
   AccountOperation,
   AccountOperationStatus
-} from '../../shared/types/StrategyTemplate';
+} from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';

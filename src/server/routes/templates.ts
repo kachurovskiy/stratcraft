@@ -1,15 +1,15 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { TemplateParams } from '../../shared/types/Express';
+import { TemplateParams } from '../types/Express';
 import {
   Strategy,
   StrategyParameter,
   StrategyTemplate
-} from '../../shared/types/StrategyTemplate';
+} from '../types/StrategyTemplate';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel } from './utils';
 import type {
   RemoteOptimizationJobSnapshot,
   RemoteOptimizationStatus
-} from '../../shared/types/RemoteOptimization';
+} from '../types/RemoteOptimization';
 import {
   scoreBacktestParameters,
   type BacktestCacheRow,

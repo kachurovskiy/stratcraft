@@ -1,4 +1,4 @@
-import type { BacktestScope, StrategyPerformance } from '../../shared/types/StrategyTemplate';
+import type { BacktestScope, StrategyPerformance } from '../types/StrategyTemplate';
 import { SETTING_KEYS, type SettingKey } from '../constants';
 import { loadNumberSettingOverrides, normalizeNumber, type SettingsRepo } from '../utils/settings';
 

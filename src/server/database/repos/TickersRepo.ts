@@ -1,5 +1,5 @@
 import type { PoolClient, QueryResultRow } from 'pg';
-import type { TickerInfo } from '../../../shared/types/StrategyTemplate';
+import type { TickerInfo } from '../../types/StrategyTemplate';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toInteger, toNullableNumber } from '../core/valueParsers';
 import type { TickerAssetRecord, TickerAssetType, TickerWithCandleStats } from '../types';

@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { TickerQueryParams, TickerParams } from '../../shared/types/Express';
-import { BacktestScope, Candle, Strategy, TickerInfo } from '../../shared/types/StrategyTemplate';
+import { TickerQueryParams, TickerParams } from '../types/Express';
+import { BacktestScope, Candle, Strategy, TickerInfo } from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { parseOptionalNumberSetting } from '../utils/settings';
 import { formatBacktestPeriodLabel, getReqUserId, parsePageParam } from './utils';

@@ -1,6 +1,6 @@
 import type { PoolClient, QueryResultRow } from 'pg';
 import { SETTING_KEYS } from '../../constants';
-import type { StrategyTemplate } from '../../../shared/types/StrategyTemplate';
+import type { StrategyTemplate } from '../../types/StrategyTemplate';
 import { DbClient } from '../core/DbClient';
 import { SettingsRepo } from './SettingsRepo';
 

@@ -24,7 +24,7 @@ import type { RemoteOptimizerJobEntity } from '../database/types';
 import type {
   RemoteOptimizationJobSnapshot,
   RemoteOptimizationRequest
-} from '../../shared/types/RemoteOptimization';
+} from '../types/RemoteOptimization';
 
 const REMOTE_OPTIMIZER_SOURCE: LogSource = 'remote-optimize';
 const RESEND_EMAIL_ENDPOINT = 'https://api.resend.com/emails';

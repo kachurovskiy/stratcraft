@@ -1,4 +1,4 @@
-import type { Candle } from '../../shared/types/StrategyTemplate';
+import type { Candle } from '../types/StrategyTemplate';
 
 export type DailySnapshotLike = {
   date: Date | string;
