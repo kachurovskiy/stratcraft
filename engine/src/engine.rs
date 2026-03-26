@@ -437,7 +437,7 @@ impl Engine {
                     confidence,
                 );
                 if let EntrySignalOutcome::Skipped { reason, details } = outcome {
-                    if reason == "insufficient_cash" {
+                    if reason == "insufficient_cash" || reason == "insufficient_size" {
                         *missed_trades_due_to_cash_today += 1;
                     }
                     if track_signal_skips {
@@ -479,7 +479,7 @@ impl Engine {
                         confidence,
                     );
                     if let EntrySignalOutcome::Skipped { reason, .. } = &outcome {
-                        if *reason == "insufficient_cash" {
+                        if *reason == "insufficient_cash" || *reason == "insufficient_size" {
                             *missed_trades_due_to_cash_today += 1;
                         }
                     }
