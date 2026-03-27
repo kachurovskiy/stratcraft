@@ -339,7 +339,7 @@ function normalizeRate(value) {
   if (!Number.isFinite(value)) {
     return null;
   }
-  return value > 1 ? value / 100 : value;
+  return value;
 }
 
 function formatPercent(value) {
