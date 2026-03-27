@@ -1,4 +1,3 @@
-use crate::backtester::StrategySelection;
 use crate::candle_utils::{group_candles_for_tickers, normalize_ticker_symbol};
 use crate::config::EngineConfig;
 use crate::context::{AppContext, EngineContext};
@@ -59,7 +58,7 @@ pub async fn run(app: &AppContext, scope: BacktestScope, months: &[u32]) -> Resu
         );
         context
             .backtester()
-            .run_with_selection(Some(*month), StrategySelection::WithoutAccounts)
+            .run_with_selection(Some(*month), false)
             .await?;
     }
     info!(

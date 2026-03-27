@@ -53,31 +53,6 @@ struct StrategyBacktestSuccess {
     signal_skips: Vec<AccountSignalSkip>,
 }
 
-#[derive(Clone, Copy)]
-pub enum StrategySelection {
-    All,
-    AccountLinkedOnly,
-    WithoutAccounts,
-}
-
-impl StrategySelection {
-    fn description(self) -> &'static str {
-        match self {
-            StrategySelection::All => "active",
-            StrategySelection::AccountLinkedOnly => "account-linked",
-            StrategySelection::WithoutAccounts => "unlinked active",
-        }
-    }
-
-    fn matches(self, strategy: &StrategyConfig) -> bool {
-        match self {
-            StrategySelection::All => true,
-            StrategySelection::AccountLinkedOnly => strategy_has_linked_account(strategy),
-            StrategySelection::WithoutAccounts => !strategy_has_linked_account(strategy),
-        }
-    }
-}
-
 fn strategy_has_linked_account(strategy: &StrategyConfig) -> bool {
     strategy
         .account_id
@@ -111,7 +86,7 @@ impl<'a> ActiveStrategyBacktester<'a> {
     pub async fn run_with_selection(
         &mut self,
         months: Option<u32>,
-        selection: StrategySelection,
+        has_account: bool,
     ) -> Result<()> {
         if !self.data.has_data() {
             warn!("No market data available to run backtests.");
@@ -127,13 +102,15 @@ impl<'a> ActiveStrategyBacktester<'a> {
         let strategies = self.db.get_active_strategies().await?;
         let strategies: Vec<_> = strategies
             .into_iter()
-            .filter(|strategy| selection.matches(strategy))
+            .filter(|strategy| strategy_has_linked_account(strategy) == has_account)
             .collect();
         if strategies.is_empty() {
-            info!(
-                "No {} strategies found in the database.",
-                selection.description()
-            );
+            let selection_label = if has_account {
+                "account-linked"
+            } else {
+                "unlinked active"
+            };
+            info!("No {} strategies found in the database.", selection_label);
             return Ok(());
         }
 

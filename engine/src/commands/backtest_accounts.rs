@@ -1,4 +1,3 @@
-use crate::backtester::StrategySelection;
 use crate::context::AppContext;
 use anyhow::Result;
 use log::{info, warn};
@@ -13,10 +12,7 @@ pub async fn run(app: &AppContext) -> Result<()> {
     })?;
 
     info!("Running backtests for account-linked strategies using all tickers");
-    context
-        .backtester()
-        .run_with_selection(None, StrategySelection::AccountLinkedOnly)
-        .await?;
+    context.backtester().run_with_selection(None, true).await?;
     info!("Completed backtests for account-linked strategies");
 
     Ok(())
