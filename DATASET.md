@@ -9,7 +9,7 @@ Defaults shown here come from `src/server/database/pg.sql` and can be changed in
 - StratCraft splits the problem in two directions: by ticker and by time.
 - Optimization only sees the training ticker bucket inside the optimizer training window.
 - Validation checks whether the same idea still works on a different ticker bucket.
-- Verification checks whether top parameter sets still work in a later, unseen date window.
+- Verification checks whether cached parameter sets still work in a later, unseen date window (skipping ones already verified).
 - Parameter scoring rewards quality, low drawdown, local stability, and low training-to-validation degradation.
 
 ```mermaid
@@ -105,7 +105,7 @@ flowchart LR
 
 ## 3. Optimization: How Parameter Search Works
 
-Optimization is now coarse-to-fine search: deterministic multi-start exploration first, then local search refinement.
+Optimization is coarse-to-fine search: deterministic multi-start exploration (when enabled), then local search refinement. By default `LOCAL_OPTIMIZATION_MULTI_START_SEEDS = 0`, which yields a single baseline seed.
 
 ### 3.1 What gets optimized
 
@@ -113,7 +113,7 @@ Optimization is now coarse-to-fine search: deterministic multi-start exploration
 - Non-numeric parameters are ignored by the optimizer.
 - `allowShortSelling` can be removed from the search if short-selling optimization is disabled.
 - The optimizer keeps the best known parameter set if the API can provide one; otherwise it uses template defaults as the baseline seed.
-- Around that baseline, it generates a deterministic batch of exploratory seeds across the allowed parameter grid before local refinement begins.
+- If multi-start seeds are enabled, it generates a deterministic batch of exploratory seeds across the allowed parameter grid before local refinement begins. With `LOCAL_OPTIMIZATION_MULTI_START_SEEDS = 0`, it evaluates only the baseline seed.
 
 ### 3.2 Search loop
 
@@ -146,11 +146,11 @@ Default step multipliers:
 
 If a parameter has `step = 0.5`, the neighbor proposals are current value plus or minus `0.5`, `1.0`, `1.5`, and `2.0`, while still respecting min and max bounds.
 
-The important difference now is that StratCraft does not rely on one starting point anymore. It first probes multiple seed locations, then applies the one-hop neighbor logic only to the strongest seed regions.
+When multi-start is enabled, StratCraft first probes multiple seed locations, then applies the one-hop neighbor logic only to the strongest seed regions. With the default single-seed setting, refinement starts from the baseline only.
 
 ### 3.4 What objective wins
 
-The optimizer keeps only candidates whose max drawdown stays under the configured ceiling.
+The optimizer uses the drawdown ceiling as a feasibility gate when selecting refinement starts and neighbors; if no candidates pass, it still refines from the best available seed. All evaluated runs can still be cached.
 
 Default hard risk gate:
 
@@ -202,7 +202,7 @@ flowchart LR
 
 ### 4.1 Verification
 
-Verification reruns each unique cached parameter signature:
+Verification reruns each unique cached parameter signature that is missing verification metrics:
 
 - on `VERIFY_WINDOW_START_DATE` to `VERIFY_WINDOW_END_DATE`
 - across all tickers
@@ -217,7 +217,7 @@ This produces extra metrics such as:
 
 ### 4.2 Balance runs
 
-Balance runs rerun each unique cached parameter signature twice:
+Balance runs rerun each unique cached parameter signature twice (only for rows missing balance metrics):
 
 - once on training tickers inside the balance window
 - once on validation tickers inside the balance window
@@ -320,7 +320,7 @@ StratCraft does not only want a sharp spike in parameter space. It prefers plate
 
 The idea:
 
-- normalize parameter distances using each parameter's observed spread
+- normalize parameter distances using each parameter's observed spread (p10-p90 range)
 - find nearby neighbors
 - measure the average quality of those neighbors
 - normalize that neighborhood quality to `0..1`
@@ -466,18 +466,7 @@ StratCraft is trying to favor parameter regions that are:
 - still acceptable on a later unseen window
 - not dependent on a fragile one-point spike in parameter space
 
-## 8. Presenter Notes
-
-If this is turned into video content, the clean chapter order is:
-
-1. Explain the two-axis split: ticker split plus time split.
-2. Show why validation and verification are not the same thing.
-3. Walk through the local search optimizer.
-4. Show the post-search verify and balance passes.
-5. Explain parameter scoring as "quality times robustness".
-6. End with template scoring as the portfolio-level ranking layer.
-
-## 9. Implementation Anchors
+## 8. Implementation Anchors
 
 These are the main files behind the behavior described above:
 
@@ -490,6 +479,6 @@ These are the main files behind the behavior described above:
 - Parameter scoring: `src/server/scoring/paramScore.ts`
 - Template scoring: `src/server/scoring/templateScore.ts`
 
-## 10. Current Implementation Note
+## 9. Current Implementation Note
 
 The repository currently exposes a `PARAM_SCORE_CORE_SCORE_QUANTILE` setting in Settings, but the active scorer in `src/server/scoring/paramScore.ts` does not consume that value yet. The effective parameter-score controls today are the minimum-trade gate, drawdown penalty, neighborhood threshold, pairwise-neighbor limit, and the fixed stability exponent in code.
