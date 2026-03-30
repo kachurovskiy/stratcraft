@@ -1,3 +1,5 @@
+⚠️ **Warning: we're currently in a bear market, all default strategies here are long biased and are likely to lose money in the coming months.**
+
 # StratCraft
 
 StratCraft is a trading strategy backtesting, optimization and paper/live execution app. It is designed to trade the entire market of more than 10,000 instruments on [Alpaca](https://alpaca.markets/). The TypeScript/Node app provides the API, web UI and schedules jobs. The Rust engine runs the heavy optimization and backtesting workloads. Strategy optimization can run in parallel on multiple ad-hoc headless Hetzner machines.
