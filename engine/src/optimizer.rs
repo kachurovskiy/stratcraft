@@ -148,6 +148,14 @@ impl<'a> OptimizationEngine<'a> {
         Ok((parameters_to_optimize, parameter_ranges))
     }
 
+    pub async fn build_baseline_parameters(
+        &mut self,
+        template_id: &str,
+    ) -> Result<HashMap<String, f64>> {
+        let template = self.load_strategy_template(template_id).await?;
+        Ok(self.load_baseline_parameters(template_id, &template).await)
+    }
+
     pub async fn optimize_local_search(
         &mut self,
         template_id: &str,

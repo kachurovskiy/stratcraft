@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use engine::{
     commands::{
-        backtest_accounts, backtest_active, balance, export_market_data, generate_signals,
+        backtest_accounts, backtest_active, balance, explore, export_market_data, generate_signals,
         optimize, plan_operations, reconcile_trades, train_lightgbm, verify,
     },
     context::AppContext,
@@ -43,6 +43,14 @@ enum Commands {
     /// Compute training/validation balance metrics for cached parameter sets
     Balance {
         /// Template ID to balance
+        template_id: String,
+        /// Path to the market data snapshot file
+        #[arg(long = "data-file", value_name = "PATH")]
+        data_file: Option<PathBuf>,
+    },
+    /// Explore single-step parameter variations for cached backtests
+    Explore {
+        /// Template ID to explore
         template_id: String,
         /// Path to the market data snapshot file
         #[arg(long = "data-file", value_name = "PATH")]
@@ -162,6 +170,13 @@ async fn main() -> anyhow::Result<()> {
             let market_data_path = resolve_market_data_path(data_file);
             balance::run(&app_context, &template_id, &market_data_path).await?;
         }
+        Commands::Explore {
+            template_id,
+            data_file,
+        } => {
+            let market_data_path = resolve_market_data_path(data_file);
+            explore::run(&app_context, &template_id, &market_data_path).await?;
+        }
         Commands::GenerateSignals => {
             generate_signals::run(&app_context).await?;
         }
@@ -244,6 +259,7 @@ fn resolve_market_data_path(cli_value: Option<PathBuf>) -> PathBuf {
 fn command_requires_database(command: &Commands) -> bool {
     match command {
         Commands::Optimize { data_file, .. } => data_file.is_none(),
+        Commands::Explore { data_file, .. } => data_file.is_none(),
         Commands::Verify { .. }
         | Commands::Balance { .. }
         | Commands::GenerateSignals

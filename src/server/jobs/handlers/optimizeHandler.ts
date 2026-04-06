@@ -13,6 +13,9 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
     let balanceAttempted = 0;
     let balancedCount = 0;
     const balanceFailures: string[] = [];
+    let exploreAttempted = 0;
+    let exploredCount = 0;
+    const exploreFailures: string[] = [];
     const terminateOnAbort = () => {
       ctx.loggingService.warn(OPTIMIZE_SOURCE, 'Terminate request received, stopping optimize run', logMetadata);
       deps.engineCli.forceTerminateActiveProcess('optimize-preempted', logMetadata);
@@ -127,6 +130,47 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
         }
       }
 
+      const cacheCounts = await deps.db.backtestCache.getBacktestCacheTemplateCounts();
+      const cacheCountsByTemplate = new Map(cacheCounts.map((entry) => [entry.templateId, entry.count]));
+      const exploreTemplateIds = [...templateIds].sort((left, right) => {
+        const leftCount = cacheCountsByTemplate.get(left) ?? 0;
+        const rightCount = cacheCountsByTemplate.get(right) ?? 0;
+        if (leftCount !== rightCount) {
+          return leftCount - rightCount;
+        }
+        return left.localeCompare(right);
+      });
+
+      exploreAttempted = exploreTemplateIds.length;
+      if (exploreAttempted > 0) {
+        ctx.loggingService.info(
+          OPTIMIZE_SOURCE,
+          `Starting explore runs for ${exploreAttempted} template(s) ordered by fewest cached backtests`,
+          logMetadata
+        );
+      }
+
+      for (const templateId of exploreTemplateIds) {
+        if (ctx.abortSignal.aborted) {
+          throw new Error('Explore cancelled');
+        }
+        ctx.loggingService.info(OPTIMIZE_SOURCE, `Exploring template ${templateId}`, logMetadata);
+        try {
+          await deps.engineCli.run('explore', [templateId], ctx.abortSignal, logMetadata);
+          exploredCount += 1;
+        } catch (error) {
+          if (ctx.abortSignal.aborted) {
+            throw new Error('Explore cancelled');
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          exploreFailures.push(templateId);
+          ctx.loggingService.error(OPTIMIZE_SOURCE, `Explore run failed for ${templateId}`, {
+            ...logMetadata,
+            error: message
+          });
+        }
+      }
+
       const optimizeMessage = optimizedCount > 0 ? `Optimized ${optimizedCount} templates` : 'No optimization required';
       const verifyMessage = verifyAttempted > 0
         ? `Verified ${verifiedCount}/${verifyAttempted} templates${verifyFailures.length ? ` (${verifyFailures.length} failed)` : ''}`
@@ -134,9 +178,12 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
       const balanceMessage = balanceAttempted > 0
         ? `Balanced ${balancedCount}/${balanceAttempted} templates${balanceFailures.length ? ` (${balanceFailures.length} failed)` : ''}`
         : 'No templates balanced';
+      const exploreMessage = exploreAttempted > 0
+        ? `Explored ${exploredCount}/${exploreAttempted} templates${exploreFailures.length ? ` (${exploreFailures.length} failed)` : ''}`
+        : 'No templates explored';
 
       return {
-        message: `${optimizeMessage}; ${verifyMessage}; ${balanceMessage}`,
+        message: `${optimizeMessage}; ${verifyMessage}; ${balanceMessage}; ${exploreMessage}`,
         meta: {
           optimized: optimizedCount,
           verifyAttempted,
@@ -144,7 +191,10 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
           verifyFailures,
           balanceAttempted,
           balanced: balancedCount,
-          balanceFailures
+          balanceFailures,
+          exploreAttempted,
+          explored: exploredCount,
+          exploreFailures
         }
       };
     } finally {
