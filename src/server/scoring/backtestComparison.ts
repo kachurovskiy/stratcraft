@@ -2,6 +2,7 @@ import type { Database } from '../database/Database';
 import type { AccountSignalSkipRow, BacktestResultRecord } from '../database/types';
 import type { BacktestScope, Candle, Trade } from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
+import { toDateKey } from '../utils/date';
 import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
 import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
 
@@ -120,8 +121,6 @@ type EntryAggregate = {
 type EntryAggregation = {
   entriesByKey: Map<string, EntryAggregate>;
 };
-
-const toDateKey = (value: Date): string => value.toISOString().slice(0, 10);
 
 const isEntryTrade = (trade: Trade): boolean => ENTRY_STATUS.has(trade.status);
 const isCancelledTrade = (trade: Trade): boolean => trade.status === 'cancelled';

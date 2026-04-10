@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import type { TickerAssetType } from '../database/types';
 import { normalizeUppercaseString as normalizeAssetName } from './stringNormalization';
 
@@ -215,4 +216,18 @@ export function classifyAssetFromName(
     assetType: 'equity',
     expenseRatio: null
   };
+}
+
+export function isTrainingTicker(
+  symbol: string,
+  alwaysValidationTickers: Set<string>,
+  trainingAllocationRatio: number
+): boolean {
+  const normalized = normalizeAssetName(symbol);
+  if (alwaysValidationTickers.has(normalized)) {
+    return false;
+  }
+  const hash = createHash('sha256').update(normalized).digest();
+  const value = hash.readUInt32BE(0) / 0xffffffff;
+  return value < trainingAllocationRatio;
 }

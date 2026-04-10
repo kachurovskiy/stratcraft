@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { JobHandler, JobHandlerContext } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
 import type { TickerAssetRecord } from '../../database/types';
@@ -6,9 +5,11 @@ import { SETTING_KEYS } from '../../constants';
 import { deploymentService } from '../../services/DeploymentService';
 import {
   type AssetClassificationSettings,
-  classifyAssetFromName
+  classifyAssetFromName,
+  isTrainingTicker
 } from '../../utils/assetClassification';
-import { normalizeUppercaseString as normalizeAssetName } from '../../utils/stringNormalization';
+import { toDateKey } from '../../utils/date';
+import { parseRequiredNumberSetting } from '../../utils/settings';
 
 const CANDLE_SOURCE = 'candle-job';
 const SERVER_UPDATE_SOURCE = 'system';
@@ -18,27 +19,6 @@ type CandleSyncSettings = AssetClassificationSettings & {
   trainingAllocationRatio: number;
   matchingRatioThreshold: number;
 };
-
-function parseRequiredNumberSetting(
-  settingKey: string,
-  rawValue: string,
-  options: { min?: number; max?: number; integer?: boolean } = {}
-): number {
-  const value = Number(rawValue);
-  if (!Number.isFinite(value)) {
-    throw new Error(`Setting "${settingKey}" must be a valid number.`);
-  }
-  if (options.integer && !Number.isInteger(value)) {
-    throw new Error(`Setting "${settingKey}" must be an integer.`);
-  }
-  if (options.min !== undefined && value < options.min) {
-    throw new Error(`Setting "${settingKey}" must be at least ${options.min}.`);
-  }
-  if (options.max !== undefined && value > options.max) {
-    throw new Error(`Setting "${settingKey}" must be at most ${options.max}.`);
-  }
-  return value;
-}
 
 async function loadCandleSyncSettings(db: JobHandlerDependencies['db']): Promise<CandleSyncSettings> {
   const [
@@ -495,20 +475,4 @@ async function resolveMarketClock(
       source: 'alpaca-unavailable'
     };
   }
-}
-
-function toDateKey(date: Date): string {
-  return date.toISOString().split('T')[0];
-}
-
-function isTrainingTicker(
-  symbol: string,
-  alwaysValidationTickers: Set<string>,
-  trainingAllocationRatio: number
-): boolean {
-  const normalized = normalizeAssetName(symbol);
-  if (alwaysValidationTickers.has(normalized)) return false;
-  const hash = createHash('sha256').update(normalized).digest();
-  const value = hash.readUInt32BE(0) / 0xffffffff;
-  return value < trainingAllocationRatio;
 }
