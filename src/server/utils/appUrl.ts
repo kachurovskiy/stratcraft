@@ -27,7 +27,7 @@ export const normalizeDomain = (value?: string | null): string | null => {
 };
 
 export const resolveSiteName = async (db: Database): Promise<string> => {
-  return String(await db.settings.getSettingValue(SETTING_KEYS.SITE_NAME));
+  return db.settings.value.app.siteName;
 };
 
 export const resolveAppDomain = async (db?: Database): Promise<string | null> => {
@@ -38,8 +38,7 @@ export const resolveAppDomain = async (db?: Database): Promise<string | null> =>
   if (!db) {
     return null;
   }
-  const settingValue = await db.settings.getSettingValue(SETTING_KEYS.DOMAIN);
-  return normalizeDomain(settingValue);
+  return normalizeDomain(db.settings.value.app.domain);
 };
 
 export const resolveAppBaseUrl = async (db?: Database): Promise<string | null> => {

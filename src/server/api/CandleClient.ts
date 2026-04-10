@@ -2,7 +2,6 @@ import { Database } from '../database/Database';
 import { Candle, TickerInfo } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { SETTING_KEYS } from '../constants';
-import { parseOptionalNumberSetting } from '../utils/settings';
 import { normalizeUppercaseString } from '../utils/stringNormalization';
 import { CandleSource } from './candleSources/CandleSource';
 import { AlpacaCandleSource } from './candleSources/AlpacaCandleSource';
@@ -83,7 +82,7 @@ export class CandleClient {
 
     const existingLastCandle = await this.db.candles.getLastCandle(symbol);
     const fetchedLastCandle = this.findCandleByDate(candles, normalizedLatest);
-    this.candleMismatchThreshold = Number(await this.db.settings.getSettingValue(SETTING_KEYS.CANDLE_MISMATCH_THRESHOLD));
+    this.candleMismatchThreshold = this.db.settings.value.candleSync.candleMismatchThreshold;
     if (
       existingLastCandle &&
       fetchedLastCandle &&
@@ -207,7 +206,7 @@ export class CandleClient {
     }
 
     const sorted = [...candles].sort((a, b) => a.date.getTime() - b.date.getTime());
-    const settings = await this.loadCandleDisableSettings();
+    const settings = this.loadCandleDisableSettings();
     const maxWindow = Math.max(0, settings.minimumDollarVolumeLookback - 1);
     const historyLimit = useExistingHistory ? Math.max(1, maxWindow + 1) : 0;
     const firstCandleDate = sorted[0].date;
@@ -268,21 +267,11 @@ export class CandleClient {
     return results;
   }
 
-  private async loadCandleDisableSettings(): Promise<CandleDisableSettings> {
-    const settings = await this.db.settings.getSettingsByKeys([
-      SETTING_KEYS.TRADE_ENTRY_PRICE_MIN,
-      SETTING_KEYS.TRADE_ENTRY_PRICE_MAX,
-      SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY,
-      SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK,
-      SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO,
-      SETTING_KEYS.MAX_TICKER_FLUCTUATION_RATIO
-    ]);
+  private loadCandleDisableSettings(): CandleDisableSettings {
+    const engineSettings = this.db.settings.value.engine;
 
-    const parseSetting = (settingKey: string, fallback: number) =>
-      parseOptionalNumberSetting(settings[settingKey]) ?? fallback;
-
-    const tradeEntryPriceMin = Math.max(0, parseSetting(SETTING_KEYS.TRADE_ENTRY_PRICE_MIN, 0));
-    let tradeEntryPriceMax = parseSetting(SETTING_KEYS.TRADE_ENTRY_PRICE_MAX, Number.POSITIVE_INFINITY);
+    const tradeEntryPriceMin = Math.max(0, engineSettings.tradeEntryPriceMin);
+    let tradeEntryPriceMax = engineSettings.tradeEntryPriceMax;
     if (!Number.isFinite(tradeEntryPriceMax) || tradeEntryPriceMax <= 0) {
       tradeEntryPriceMax = Number.POSITIVE_INFINITY;
     }
@@ -290,14 +279,11 @@ export class CandleClient {
       tradeEntryPriceMax = tradeEntryPriceMin;
     }
 
-    const minimumDollarVolumeForEntry = Math.max(0, parseSetting(SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY, 0));
-    const minimumDollarVolumeLookback = Math.max(
-      0,
-      Math.floor(parseSetting(SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK, 0))
-    );
+    const minimumDollarVolumeForEntry = Math.max(0, engineSettings.minimumDollarVolumeForEntry);
+    const minimumDollarVolumeLookback = Math.max(0, Math.floor(engineSettings.minimumDollarVolumeLookback));
 
-    const minFluctuationRatio = Math.max(0, parseSetting(SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO, 0));
-    let maxFluctuationRatio = parseSetting(SETTING_KEYS.MAX_TICKER_FLUCTUATION_RATIO, Number.POSITIVE_INFINITY);
+    const minFluctuationRatio = Math.max(0, engineSettings.minTickerFluctuationRatio);
+    let maxFluctuationRatio = engineSettings.maxTickerFluctuationRatio;
     if (!Number.isFinite(maxFluctuationRatio) || maxFluctuationRatio <= 0) {
       maxFluctuationRatio = Number.POSITIVE_INFINITY;
     }

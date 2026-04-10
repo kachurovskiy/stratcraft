@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS, SETTING_KEYS } from '../constants';
+import { DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS } from '../constants';
 import type { Database } from '../database/Database';
 import { LoggingService, LogSource } from '../services/LoggingService';
 
@@ -117,12 +117,9 @@ export class JobScheduler {
   }
 
   async refreshAutoOptimizationSettings(): Promise<void> {
-    const [enabledRaw, delayRaw] = await Promise.all([
-      this.db.settings.getSettingValue(SETTING_KEYS.AUTO_OPTIMIZATION_ENABLED),
-      this.db.settings.getSettingValue(SETTING_KEYS.AUTO_OPTIMIZATION_DELAY_SECONDS)
-    ]);
-    const enabled = enabledRaw === 'true';
-    const delaySeconds = Number(delayRaw) || DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS;
+    const enabled = this.db.settings.value.optimizer.autoOptimizationEnabled;
+    const delaySeconds =
+      this.db.settings.value.optimizer.autoOptimizationDelaySeconds || DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS;
 
     let shouldReschedule = false;
 

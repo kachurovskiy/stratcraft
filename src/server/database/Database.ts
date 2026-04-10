@@ -24,27 +24,43 @@ import { UsersRepo } from './repos/UsersRepo';
 
 export type {
   AccountOperationDispatchCandidate,
+  AppSettingsValue,
+  AlpacaSettingsValue,
   BacktestCacheHistoryRow,
   BacktestCacheLookupResult,
   BacktestCachePerformancePoint,
   BacktestCacheResultRow,
   BacktestDailySnapshot,
   BacktestResultRecord,
+  CandleSyncSettingsValue,
+  DataProviderSettingsValue,
+  EmailSettingsValue,
+  EngineSettingsValue,
+  EodhdSettingsValue,
   LightgbmDatasetStatsSummary,
   LightgbmModelCreateInput,
   LightgbmModelRecord,
   LightgbmModelSource,
   LightgbmValidationMetricsSummary,
+  OptimizerSettingsValue,
+  ParamScoringSettingsValue,
   RawUserRow,
   RemoteOptimizerJobEntity,
   RequestQuotaAction,
   RequestQuotaCheckResult,
   RequestQuotaIdentifierType,
+  SettingsCandleDataProvider,
+  SettingsOptimizationObjective,
+  SettingsValue,
+  TemplateScoringSettingsValue,
   TickerAssetRecord,
   TickerAssetType,
   TickerBacktestPerformanceRow,
+  TickerRulesSettingsValue,
+  TiingoSettingsValue,
   TradeTickerStats,
   TickerWithCandleStats,
+  UserAccessSettingsValue,
   UserSessionRecord
 } from './types';
 
@@ -122,6 +138,7 @@ export class Database {
 
       // Use exec for multiple SQL statements
       await this.core.exec(schema);
+      await this.settings.initialize();
 
       this.initialized = true;
       // Database initialized successfully

@@ -20,56 +20,65 @@ type CandleSyncSettings = AssetClassificationSettings & {
   matchingRatioThreshold: number;
 };
 
-async function loadCandleSyncSettings(db: JobHandlerDependencies['db']): Promise<CandleSyncSettings> {
-  const [
-    maxConcurrentRaw,
-    etfBaseRaw,
-    inverseEtfRaw,
-    commodityTrustRaw,
-    bondEtfRaw,
-    incomeEtfRaw,
-    leveraged2xRaw,
-    leveraged3xRaw,
-    leveraged5xRaw,
-    trainingAllocationRaw,
-    matchingRatioRaw
-  ] = await Promise.all([
-    db.settings.getRequiredSettingValue(SETTING_KEYS.CANDLE_SYNC_MAX_CONCURRENT_UPDATES),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.ETF_BASE_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.INVERSE_ETF_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.COMMODITY_TRUST_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.BOND_ETF_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.INCOME_ETF_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.LEVERAGED_2X_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.LEVERAGED_3X_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.LEVERAGED_5X_EXPENSE_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.TRAINING_ALLOCATION_RATIO),
-    db.settings.getRequiredSettingValue(SETTING_KEYS.CANDLE_SYNC_MATCHING_RATIO_THRESHOLD)
-  ]);
+function loadCandleSyncSettings(db: JobHandlerDependencies['db']): CandleSyncSettings {
+  const { candleSync, expenseRatios, tickerRules } = db.settings.value;
 
   return {
     maxConcurrentUpdates: parseRequiredNumberSetting(
       SETTING_KEYS.CANDLE_SYNC_MAX_CONCURRENT_UPDATES,
-      maxConcurrentRaw,
+      String(candleSync.maxConcurrentUpdates),
       { min: 1, integer: true }
     ),
-    etfBaseExpenseRatio: parseRequiredNumberSetting(SETTING_KEYS.ETF_BASE_EXPENSE_RATIO, etfBaseRaw, { min: 0 }),
-    inverseEtfExpenseRatio: parseRequiredNumberSetting(SETTING_KEYS.INVERSE_ETF_EXPENSE_RATIO, inverseEtfRaw, { min: 0 }),
-    commodityTrustExpenseRatio: parseRequiredNumberSetting(SETTING_KEYS.COMMODITY_TRUST_EXPENSE_RATIO, commodityTrustRaw, { min: 0 }),
-    bondEtfExpenseRatio: parseRequiredNumberSetting(SETTING_KEYS.BOND_ETF_EXPENSE_RATIO, bondEtfRaw, { min: 0 }),
-    incomeEtfExpenseRatio: parseRequiredNumberSetting(SETTING_KEYS.INCOME_ETF_EXPENSE_RATIO, incomeEtfRaw, { min: 0 }),
+    etfBaseExpenseRatio: parseRequiredNumberSetting(
+      SETTING_KEYS.ETF_BASE_EXPENSE_RATIO,
+      String(expenseRatios.etfBaseExpenseRatio),
+      { min: 0 }
+    ),
+    inverseEtfExpenseRatio: parseRequiredNumberSetting(
+      SETTING_KEYS.INVERSE_ETF_EXPENSE_RATIO,
+      String(expenseRatios.inverseEtfExpenseRatio),
+      { min: 0 }
+    ),
+    commodityTrustExpenseRatio: parseRequiredNumberSetting(
+      SETTING_KEYS.COMMODITY_TRUST_EXPENSE_RATIO,
+      String(expenseRatios.commodityTrustExpenseRatio),
+      { min: 0 }
+    ),
+    bondEtfExpenseRatio: parseRequiredNumberSetting(
+      SETTING_KEYS.BOND_ETF_EXPENSE_RATIO,
+      String(expenseRatios.bondEtfExpenseRatio),
+      { min: 0 }
+    ),
+    incomeEtfExpenseRatio: parseRequiredNumberSetting(
+      SETTING_KEYS.INCOME_ETF_EXPENSE_RATIO,
+      String(expenseRatios.incomeEtfExpenseRatio),
+      { min: 0 }
+    ),
     leveragedExpenseRatios: {
-      2: parseRequiredNumberSetting(SETTING_KEYS.LEVERAGED_2X_EXPENSE_RATIO, leveraged2xRaw, { min: 0 }),
-      3: parseRequiredNumberSetting(SETTING_KEYS.LEVERAGED_3X_EXPENSE_RATIO, leveraged3xRaw, { min: 0 }),
-      5: parseRequiredNumberSetting(SETTING_KEYS.LEVERAGED_5X_EXPENSE_RATIO, leveraged5xRaw, { min: 0 })
+      2: parseRequiredNumberSetting(
+        SETTING_KEYS.LEVERAGED_2X_EXPENSE_RATIO,
+        String(expenseRatios.leveraged2xExpenseRatio),
+        { min: 0 }
+      ),
+      3: parseRequiredNumberSetting(
+        SETTING_KEYS.LEVERAGED_3X_EXPENSE_RATIO,
+        String(expenseRatios.leveraged3xExpenseRatio),
+        { min: 0 }
+      ),
+      5: parseRequiredNumberSetting(
+        SETTING_KEYS.LEVERAGED_5X_EXPENSE_RATIO,
+        String(expenseRatios.leveraged5xExpenseRatio),
+        { min: 0 }
+      )
     },
-    trainingAllocationRatio: parseRequiredNumberSetting(SETTING_KEYS.TRAINING_ALLOCATION_RATIO, trainingAllocationRaw, {
-      min: 0,
-      max: 1
-    }),
+    trainingAllocationRatio: parseRequiredNumberSetting(
+      SETTING_KEYS.TRAINING_ALLOCATION_RATIO,
+      String(tickerRules.trainingAllocationRatio),
+      { min: 0, max: 1 }
+    ),
     matchingRatioThreshold: parseRequiredNumberSetting(
       SETTING_KEYS.CANDLE_SYNC_MATCHING_RATIO_THRESHOLD,
-      matchingRatioRaw,
+      String(candleSync.matchingRatioThreshold),
       { min: 0, max: 1 }
     )
   };
@@ -78,23 +87,12 @@ async function loadCandleSyncSettings(db: JobHandlerDependencies['db']): Promise
 export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandler {
   return async (ctx) => {
     const logMetadata = { jobId: ctx.job.id };
-    const [
-      alwaysValidationTickersRaw,
-      candleSyncSettings,
-      autoDailyCandleSyncRaw,
-      autoDailyServerUpdateRaw,
-      ignoredTickersRaw
-    ] = await Promise.all([
-      deps.db.settings.getSettingArray(SETTING_KEYS.ALWAYS_VALIDATION_TICKERS),
-      loadCandleSyncSettings(deps.db),
-      deps.db.settings.getSettingValue(SETTING_KEYS.AUTO_DAILY_CANDLE_SYNC_ENABLED),
-      deps.db.settings.getSettingValue(SETTING_KEYS.AUTO_DAILY_SERVER_UPDATE_ENABLED),
-      deps.db.settings.getSettingArray(SETTING_KEYS.IGNORED_TICKERS)
-    ]);
-    const alwaysValidationTickers = new Set(alwaysValidationTickersRaw);
-    const autoDailyCandleSyncEnabled = autoDailyCandleSyncRaw === 'true';
-    const autoDailyServerUpdateEnabled = autoDailyServerUpdateRaw === 'true';
-    const ignoredTickers = new Set(ignoredTickersRaw);
+    const settingsValue = deps.db.settings.value;
+    const candleSyncSettings = loadCandleSyncSettings(deps.db);
+    const alwaysValidationTickers = new Set(settingsValue.tickerRules.alwaysValidationTickers);
+    const autoDailyCandleSyncEnabled = settingsValue.candleSync.autoDailyCandleSyncEnabled;
+    const autoDailyServerUpdateEnabled = settingsValue.candleSync.autoDailyServerUpdateEnabled;
+    const ignoredTickers = new Set(settingsValue.tickerRules.ignoredTickers);
     if (autoDailyServerUpdateEnabled) {
       const updateTriggered = await triggerServerUpdateIfBehind(ctx, logMetadata);
       if (updateTriggered) {

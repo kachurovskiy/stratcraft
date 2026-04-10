@@ -44,6 +44,163 @@ export type RequestQuotaCheckResult = {
   windowMs: number;
 };
 
+export type SettingsCandleDataProvider = 'ALPACA' | 'EODHD' | 'TIINGO';
+export type SettingsOptimizationObjective = 'CAGR' | 'SHARPE';
+
+export interface AppSettingsValue {
+  siteName: string;
+  domain: string;
+  footerDisclaimerHtml: string;
+  tradingViewChartsEnabled: boolean;
+}
+
+export interface DataProviderSettingsValue {
+  candleDataProvider: SettingsCandleDataProvider;
+}
+
+export interface AlpacaSettingsValue {
+  paperUrl: string;
+  liveUrl: string;
+  dataBaseUrl: string;
+  apiKey: string;
+  apiSecret: string;
+  dataRateLimitWaitSeconds: number;
+  marketOrderPriceCapRatio: number;
+  accountLiquidationDiscountPercent: number;
+  accountLiquidationDeviationBandPercent: number;
+}
+
+export interface EodhdSettingsValue {
+  baseUrl: string;
+  apiToken: string;
+  rateLimitWaitSeconds: number;
+}
+
+export interface TiingoSettingsValue {
+  baseUrl: string;
+  apiToken: string;
+  rateLimitWaitSeconds: number;
+}
+
+export interface CandleSyncSettingsValue {
+  candleMismatchThreshold: number;
+  maxConcurrentUpdates: number;
+  matchingRatioThreshold: number;
+  autoDailyCandleSyncEnabled: boolean;
+  autoDailyServerUpdateEnabled: boolean;
+}
+
+export interface ExpenseRatioSettingsValue {
+  etfBaseExpenseRatio: number;
+  inverseEtfExpenseRatio: number;
+  commodityTrustExpenseRatio: number;
+  bondEtfExpenseRatio: number;
+  incomeEtfExpenseRatio: number;
+  leveraged2xExpenseRatio: number;
+  leveraged3xExpenseRatio: number;
+  leveraged5xExpenseRatio: number;
+}
+
+export interface EngineSettingsValue {
+  tradeCloseFeeRate: number;
+  tradeSlippageRate: number;
+  limitBuyPenetrationRatio: number;
+  shortBorrowFeeAnnualRate: number;
+  tradeEntryPriceMin: number;
+  tradeEntryPriceMax: number;
+  minimumDollarVolumeForEntry: number;
+  minimumDollarVolumeLookback: number;
+  minTickerFluctuationRatio: number;
+  maxTickerFluctuationRatio: number;
+  backtestActiveMonths: number[];
+  backtestInitialCapital: number;
+}
+
+export interface TickerRulesSettingsValue {
+  ignoredTickers: string[];
+  alwaysValidationTickers: string[];
+  trainingAllocationRatio: number;
+}
+
+export interface OptimizerSettingsValue {
+  autoOptimizationEnabled: boolean;
+  autoOptimizationDelaySeconds: number;
+  allowShortSellingOptimizationEnabled: boolean;
+  lightgbmTrainingStartDate: string;
+  lightgbmTrainingEndDate: string;
+  optimizerTrainingStartDate: string;
+  optimizerTrainingEndDate: string;
+  verifyWindowStartDate: string;
+  verifyWindowEndDate: string;
+  balanceWindowStartDate: string;
+  balanceWindowEndDate: string;
+  localOptimizationVersion: number;
+  localOptimizationMultiStartSeeds: number;
+  optimizationObjective: SettingsOptimizationObjective;
+  hetznerApiToken: string;
+  hetznerServerType: string;
+  hetznerServerLocation: string;
+  hetznerSshKeyName: string;
+  hetznerPublicKey: string;
+  hetznerPrivateKey: string;
+  localOptimizationStepMultipliers: number[];
+  localOptimizationMaxUnadjustedPriceValues: number[];
+  maxAllowedDrawdownRatio: number;
+  backtestApiSecret: string;
+}
+
+export interface ParamScoringSettingsValue {
+  minTrades: number;
+  drawdownLambda: number;
+  neighborThreshold: number;
+  coreScoreQuantile: number;
+  pairwiseNeighborLimit: number;
+}
+
+export interface TemplateScoringSettingsValue {
+  returnScale: number;
+  validationNegativePenaltyStrength: number;
+  drawdownLambda: number;
+  tradeTarget: number;
+  tradeWeight: number;
+  recencyHalfLifeDays: number;
+  verifySharpeScale: number;
+  verifyCalmarScale: number;
+  verifyCagrScale: number;
+  verifyCagrNegativeScale: number;
+  verifyDrawdownLambda: number;
+  verifyMinMultiplier: number;
+  verifyMaxMultiplier: number;
+}
+
+export interface UserAccessSettingsValue {
+  inviteLinkValidDays: number;
+  sessionCookieValidDays: number;
+  mtlsAccessCertPassword: string;
+}
+
+export interface EmailSettingsValue {
+  emailSecurityEmoji: string;
+  resendApiKey: string;
+}
+
+export interface SettingsValue {
+  app: AppSettingsValue;
+  dataProvider: DataProviderSettingsValue;
+  alpaca: AlpacaSettingsValue;
+  eodhd: EodhdSettingsValue;
+  tiingo: TiingoSettingsValue;
+  candleSync: CandleSyncSettingsValue;
+  expenseRatios: ExpenseRatioSettingsValue;
+  engine: EngineSettingsValue;
+  tickerRules: TickerRulesSettingsValue;
+  optimizer: OptimizerSettingsValue;
+  paramScoring: ParamScoringSettingsValue;
+  templateScoring: TemplateScoringSettingsValue;
+  userAccess: UserAccessSettingsValue;
+  email: EmailSettingsValue;
+}
+
 export type SystemLogInsertInput = {
   source: string;
   level: string;

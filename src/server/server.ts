@@ -109,8 +109,7 @@ export class Server {
   }
 
   private async ensureBacktestApiSecret(): Promise<void> {
-    const rawValue = await this.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_API_SECRET);
-    const existing = typeof rawValue === 'string' ? rawValue.trim() : '';
+    const existing = this.db.settings.value.optimizer.backtestApiSecret.trim();
     if (existing.length > 0) {
       return;
     }
@@ -123,7 +122,7 @@ export class Server {
   }
 
   private async ensureEmailSecurityEmoji(): Promise<void> {
-    if (await this.db.settings.getSettingValue(SETTING_KEYS.EMAIL_SECURITY_EMOJI)) return;
+    if (this.db.settings.value.email.emailSecurityEmoji) return;
 
     const generated = randomEmoji();
     await this.db.settings.upsertSettings({
@@ -138,8 +137,7 @@ export class Server {
       return;
     }
 
-    const existingValue = await this.db.settings.getSettingValue(SETTING_KEYS.DOMAIN);
-    const existingDomain = normalizeDomain(existingValue);
+    const existingDomain = normalizeDomain(this.db.settings.value.app.domain);
     if (existingDomain) {
       return;
     }

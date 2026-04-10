@@ -126,6 +126,5 @@ export const sanitizeFooterDisclaimerHtml = (rawValue: string | null | undefined
 };
 
 export const resolveFooterDisclaimerHtml = async (db: Database): Promise<string> => {
-  const rawValue = await db.settings.getSettingValue(SETTING_KEYS.FOOTER_DISCLAIMER_HTML);
-  return sanitizeFooterDisclaimerHtml(rawValue);
+  return sanitizeFooterDisclaimerHtml(db.settings.value.app.footerDisclaimerHtml);
 };
