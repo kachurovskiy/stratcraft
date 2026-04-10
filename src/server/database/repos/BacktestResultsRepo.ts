@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg';
 import type { BacktestScope, StrategyPerformance } from '../../types/StrategyTemplate';
+import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber } from '../core/valueParsers';
 import type { BacktestResultRecord, TickerBacktestPerformanceRow } from '../types';
@@ -515,7 +516,7 @@ export class BacktestResultsRepo {
     userId: number,
     options: { tickerScope?: BacktestScope } = {}
   ): Promise<TickerBacktestPerformanceRow[]> {
-    const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
+    const normalizedTicker = normalizeUppercaseString(ticker);
     if (!normalizedTicker) {
       return [];
     }

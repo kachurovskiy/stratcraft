@@ -8,6 +8,7 @@ import {
 import { AccountParams } from '../types/Express';
 import { AccountOperation, Strategy, Trade } from '../types/StrategyTemplate';
 import { DEFAULT_LIQUIDATION_DISCOUNT_PERCENT, SETTING_KEYS } from '../constants';
+import { normalizeUppercaseStrings } from '../utils/stringNormalization';
 import { getReqUserId } from './utils';
 
 const router = express.Router();
@@ -23,14 +24,7 @@ const normalizeEnvironment = (value: string): AccountEnvironment => {
 };
 
 const normalizeTickerList = (value: string): string[] => {
-  return Array.from(
-    new Set(
-      value
-        .split(/[\s,]+/)
-        .map((ticker) => ticker.trim().toUpperCase())
-        .filter((ticker) => ticker.length > 0)
-    )
-  );
+  return Array.from(new Set(normalizeUppercaseStrings(value.split(/[\s,]+/))));
 };
 
 const normalizeKeywordList = (value: string): string[] => {

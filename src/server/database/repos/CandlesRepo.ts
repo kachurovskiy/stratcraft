@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg';
 import type { Candle } from '../../types/StrategyTemplate';
+import { normalizeUppercaseString, normalizeUppercaseStrings } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toInteger, toNullableInteger, toNullableNumber, toNumber } from '../core/valueParsers';
 
@@ -148,9 +149,7 @@ export class CandlesRepo {
       return {};
     }
 
-    const normalizedTickers = Array.from(
-      new Set(tickers.map((ticker) => ticker.trim().toUpperCase()).filter((ticker) => ticker.length > 0))
-    );
+    const normalizedTickers = Array.from(new Set(normalizeUppercaseStrings(tickers)));
 
     if (normalizedTickers.length === 0) {
       return {};
@@ -414,7 +413,7 @@ export class CandlesRepo {
       return;
     }
 
-    const normalizedSymbol = symbol.trim().toUpperCase();
+    const normalizedSymbol = normalizeUppercaseString(symbol);
 
     await this.db.withTransaction(async (client) => {
       for (const candle of candles) {
@@ -457,7 +456,7 @@ export class CandlesRepo {
       return;
     }
 
-    const normalizedSymbol = symbol.trim().toUpperCase();
+    const normalizedSymbol = normalizeUppercaseString(symbol);
 
     await this.db.withTransaction(async (client) => {
       await this.db.run('DELETE FROM candles WHERE ticker = ?', [normalizedSymbol], client);
@@ -567,7 +566,7 @@ export class CandlesRepo {
 
   async clearCandlesForTicker(symbol: string): Promise<number> {
     try {
-      const normalizedSymbol = symbol.trim().toUpperCase();
+      const normalizedSymbol = normalizeUppercaseString(symbol);
       const result = await this.db.run('DELETE FROM candles WHERE ticker = ?', [normalizedSymbol]);
       const deleted = result.changes || 0;
 

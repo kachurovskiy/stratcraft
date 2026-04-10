@@ -9,6 +9,7 @@ import {
 } from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
+import { normalizeOptionalUppercaseString as normalizeTickerFilter } from '../utils/stringNormalization';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -84,14 +85,6 @@ function normalizeTradesPageSize(raw: unknown): number {
     return parsed;
   }
   return DEFAULT_TRADES_PAGE_SIZE;
-}
-
-function normalizeTickerFilter(raw: unknown): string | undefined {
-  if (typeof raw !== 'string') {
-    return undefined;
-  }
-  const value = raw.trim().toUpperCase();
-  return value.length > 0 ? value : undefined;
 }
 
 function buildTradesPageUrl(

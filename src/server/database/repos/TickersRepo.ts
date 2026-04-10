@@ -1,5 +1,9 @@
 import type { PoolClient, QueryResultRow } from 'pg';
 import type { TickerInfo } from '../../types/StrategyTemplate';
+import {
+  normalizeUppercaseString,
+  normalizeUppercaseStrings
+} from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toInteger, toNullableNumber } from '../core/valueParsers';
 import type { TickerAssetRecord, TickerAssetType, TickerWithCandleStats } from '../types';
@@ -178,9 +182,7 @@ export class TickersRepo {
       return [];
     }
 
-    const uniqueSymbols = Array.from(
-      new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter((symbol) => symbol.length > 0))
-    );
+    const uniqueSymbols = Array.from(new Set(normalizeUppercaseStrings(symbols)));
 
     if (uniqueSymbols.length === 0) {
       return [];
@@ -364,9 +366,7 @@ export class TickersRepo {
   }
 
   async bulkInsertTickers(tickers: string[], options?: { training?: boolean }): Promise<void> {
-    const normalized = tickers
-      .map((symbol) => symbol.trim().toUpperCase())
-      .filter((symbol) => symbol.length > 0);
+    const normalized = normalizeUppercaseStrings(tickers);
 
     if (normalized.length === 0) {
       return;
@@ -398,7 +398,7 @@ export class TickersRepo {
     }
 
     for (const symbol of tickers) {
-      await this.deleteTicker(symbol.trim().toUpperCase());
+      await this.deleteTicker(normalizeUppercaseString(symbol));
     }
   }
 
@@ -423,7 +423,7 @@ export class TickersRepo {
         for (const asset of chunk) {
           placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?)');
           params.push(
-            asset.symbol.trim().toUpperCase(),
+            normalizeUppercaseString(asset.symbol),
             asset.name,
             asset.tradable,
             asset.shortable,
@@ -454,7 +454,7 @@ export class TickersRepo {
         upserted += result.rowCount;
       }
 
-      const symbols = assets.map((asset) => asset.symbol.trim().toUpperCase());
+      const symbols = assets.map((asset) => normalizeUppercaseString(asset.symbol));
       let disabled = 0;
       if (symbols.length > 0) {
         const disableResult = await this.db.run(

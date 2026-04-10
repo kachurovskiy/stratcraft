@@ -1,6 +1,7 @@
 import type { PoolClient, QueryResultRow } from 'pg';
 import type { CreateTradingAccountInput, TradingAccount } from '../../types/Account';
 import { decryptValue, encryptValue } from '../../utils/encryption';
+import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient } from '../core/DbClient';
 import { toInteger } from '../core/valueParsers';
 import { StrategiesRepo } from './StrategiesRepo';
@@ -44,7 +45,7 @@ export class AccountsRepo {
           new Set(
             parsed
               .filter((entry) => typeof entry === 'string')
-              .map((entry) => entry.toUpperCase().trim())
+              .map((entry) => normalizeUppercaseString(entry))
               .filter((entry) => entry.length > 0)
           )
         );

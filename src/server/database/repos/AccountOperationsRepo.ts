@@ -7,6 +7,7 @@ import type {
 import type { TradingAccount } from '../../types/Account';
 import type { AccountOperationDispatchCandidate } from '../types';
 import { decryptValue } from '../../utils/encryption';
+import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toInteger, toNullableBoolean, toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
 import { TradesRepo } from './TradesRepo';
@@ -269,7 +270,7 @@ export class AccountOperationsRepo {
       params.push(until.toISOString());
     }
 
-    const ticker = typeof options?.ticker === 'string' ? options.ticker.trim().toUpperCase() : '';
+    const ticker = normalizeUppercaseString(options?.ticker);
     if (ticker.length > 0) {
       whereParts.push('UPPER(ticker) = ?');
       params.push(ticker);

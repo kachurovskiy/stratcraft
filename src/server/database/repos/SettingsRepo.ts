@@ -1,6 +1,7 @@
 import type { PoolClient, QueryResultRow } from 'pg';
 import { isSensitiveSettingKey, type SettingKey } from '../../constants';
 import { decryptValue, encryptValue } from '../../utils/encryption';
+import { normalizeUppercaseStrings } from '../../utils/stringNormalization';
 import { DbClient } from '../core/DbClient';
 
 const SETTINGS_CACHE_TTL_MS = 1_000;
@@ -137,10 +138,9 @@ export class SettingsRepo {
     try {
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
-        const normalized = parsed
-          .filter((entry) => typeof entry === 'string')
-          .map((entry) => entry.trim().toUpperCase())
-          .filter((entry) => entry.length > 0);
+        const normalized = normalizeUppercaseStrings(
+          parsed.filter((entry): entry is string => typeof entry === 'string')
+        );
         return Array.from(new Set(normalized));
       }
     } catch {
@@ -148,10 +148,7 @@ export class SettingsRepo {
     }
 
     const split = trimmed.split(/[,\s]+/g);
-    const normalized = split
-      .map((entry) => entry.trim().toUpperCase())
-      .filter((entry) => entry.length > 0);
+    const normalized = normalizeUppercaseStrings(split);
     return Array.from(new Set(normalized));
   }
 }
-

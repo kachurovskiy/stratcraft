@@ -17,6 +17,7 @@ import {
 } from '../utils/backtestCharts';
 import { BACKTEST_SCOPE_META, normalizeBacktestScope } from '../scoring/backtestComparison';
 import { buildParameterContexts } from '../utils/parameters';
+import { normalizeUppercaseString } from '../utils/stringNormalization';
 import { getReqUserId } from './utils';
 
 const router = express.Router();
@@ -323,8 +324,8 @@ const buildExposureSummary = async ({
     ? Array.from(
         new Set(
           activeTrades
-            .map((trade) => trade.ticker?.trim().toUpperCase())
-            .filter((ticker): ticker is string => Boolean(ticker))
+            .map((trade) => normalizeUppercaseString(trade.ticker))
+            .filter((ticker) => ticker.length > 0)
         )
       )
     : [];
@@ -339,14 +340,12 @@ const buildExposureSummary = async ({
     }
   }
 
-  const tickerLookup = new Map(
-    tickerAssets.map((asset) => [asset.symbol.trim().toUpperCase(), asset])
-  );
+  const tickerLookup = new Map(tickerAssets.map((asset) => [normalizeUppercaseString(asset.symbol), asset]));
 
   let largestPositionValue = 0;
 
   for (const trade of activeTrades) {
-    const ticker = trade.ticker?.trim().toUpperCase();
+    const ticker = normalizeUppercaseString(trade.ticker);
     if (!ticker) {
       continue;
     }

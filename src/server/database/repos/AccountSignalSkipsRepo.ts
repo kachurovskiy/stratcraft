@@ -1,5 +1,6 @@
 import { DbClient } from '../core/DbClient';
 import type { AccountSignalSkipRow } from '../types';
+import { normalizeUppercaseString } from '../../utils/stringNormalization';
 
 export class AccountSignalSkipsRepo {
   constructor(private readonly db: DbClient) {}
@@ -65,7 +66,7 @@ export class AccountSignalSkipsRepo {
     ticker: string,
     sources?: string[]
   ): Promise<AccountSignalSkipRow[]> {
-    const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
+    const normalizedTicker = normalizeUppercaseString(ticker);
     if (!normalizedTicker) {
       return [];
     }

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { Database } from '../database/Database';
 import { LoggingService, LogSource } from './LoggingService';
 import { SETTING_KEYS } from '../constants';
+import { normalizeUppercaseString } from '../utils/stringNormalization';
 
 const ASSET_SOURCE: LogSource = 'candle-job';
 
@@ -122,7 +123,7 @@ export class AlpacaAssetService {
       const deduped = new Map<string, AlpacaAssetSummary>();
       const symbolPattern = /^[A-Z]+$/;
       for (const asset of response.data) {
-        const symbol = asset.symbol?.trim().toUpperCase();
+        const symbol = normalizeUppercaseString(asset.symbol);
         if (!symbol || !symbolPattern.test(symbol)) continue;
         if (ignoredSet.has(symbol)) continue;
         if (asset.class && asset.class.toLowerCase() !== 'us_equity') continue;

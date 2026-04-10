@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg';
+import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNumber } from '../core/valueParsers';
 
@@ -92,7 +93,7 @@ export class SignalsRepo {
     ticker: string,
     userId: number
   ): Promise<Array<{ date: Date; ticker: string; strategyId: string; action: 'buy' | 'sell'; confidence: number | null }>> {
-    const normalizedTicker = typeof ticker === 'string' ? ticker.trim().toUpperCase() : '';
+    const normalizedTicker = normalizeUppercaseString(ticker);
     if (!normalizedTicker) {
       return [];
     }

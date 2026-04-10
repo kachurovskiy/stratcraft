@@ -3,6 +3,7 @@ import { Candle, TickerInfo } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { SETTING_KEYS } from '../constants';
 import { parseOptionalNumberSetting } from '../utils/settings';
+import { normalizeUppercaseString } from '../utils/stringNormalization';
 import { CandleSource } from './candleSources/CandleSource';
 import { AlpacaCandleSource } from './candleSources/AlpacaCandleSource';
 import { EodhdCandleSource } from './candleSources/EodhdCandleSource';
@@ -399,7 +400,7 @@ export class CandleClient {
 
   private async getCandleSource(): Promise<CandleSource> {
     const providerRaw = await this.db.settings.getSettingValue(SETTING_KEYS.CANDLE_DATA_PROVIDER);
-    const normalizedProvider = typeof providerRaw === 'string' ? providerRaw.trim().toUpperCase() : '';
+    const normalizedProvider = normalizeUppercaseString(providerRaw);
     const provider =
       normalizedProvider === 'TIINGO'
         ? 'TIINGO'

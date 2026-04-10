@@ -4,6 +4,7 @@ import { JobHandlerDependencies } from '../types';
 import type { TickerAssetRecord, TickerAssetType } from '../../database/types';
 import { SETTING_KEYS } from '../../constants';
 import { deploymentService } from '../../services/DeploymentService';
+import { normalizeUppercaseString as normalizeAssetName } from '../../utils/stringNormalization';
 
 const CANDLE_SOURCE = 'candle-job';
 const SERVER_UPDATE_SOURCE = 'system';
@@ -96,13 +97,6 @@ async function loadCandleSyncSettings(db: JobHandlerDependencies['db']): Promise
       { min: 0, max: 1 }
     )
   };
-}
-
-function normalizeAssetName(name?: string | null): string {
-  if (typeof name !== 'string') {
-    return '';
-  }
-  return name.trim().toUpperCase();
 }
 
 type NumericLeverageDetection = { multiplier: 2 | 3 | 5; isInverse: boolean };
@@ -716,7 +710,7 @@ function isTrainingTicker(
   alwaysValidationTickers: Set<string>,
   trainingAllocationRatio: number
 ): boolean {
-  const normalized = symbol.trim().toUpperCase();
+  const normalized = normalizeAssetName(symbol);
   if (alwaysValidationTickers.has(normalized)) return false;
   const hash = createHash('sha256').update(normalized).digest();
   const value = hash.readUInt32BE(0) / 0xffffffff;

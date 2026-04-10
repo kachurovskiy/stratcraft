@@ -19,6 +19,10 @@ import {
 import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
 import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { buildParameterContexts, formatParameterValue } from '../utils/parameters';
+import {
+  normalizeNullableUppercaseString as normalizeTickerParam,
+  normalizeOptionalUppercaseString as normalizeOperationTickerFilter
+} from '../utils/stringNormalization';
 import backtestRoutes from './backtest';
 import { getReqUserId, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
@@ -278,22 +282,6 @@ function normalizeOperationSortDirection(raw: unknown): 'asc' | 'desc' {
     return 'asc';
   }
   return 'desc';
-}
-
-function normalizeOperationTickerFilter(raw: unknown): string | undefined {
-  if (typeof raw !== 'string') {
-    return undefined;
-  }
-  const value = raw.trim().toUpperCase();
-  return value.length > 0 ? value : undefined;
-}
-
-function normalizeTickerParam(raw: unknown): string | null {
-  if (typeof raw !== 'string') {
-    return null;
-  }
-  const value = raw.trim().toUpperCase();
-  return value.length > 0 ? value : null;
 }
 
 function normalizeOperationPageSize(raw: unknown): number {

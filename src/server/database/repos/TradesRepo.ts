@@ -6,6 +6,7 @@ import type {
   TradeCancellationSource,
   TradeChange
 } from '../../types/StrategyTemplate';
+import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
 import type { EntryFillGapHistogram, TradeTickerStats, TradeVolumeSegmentStats } from '../types';
@@ -261,7 +262,7 @@ export class TradesRepo {
     if (!tradeId) {
       return;
     }
-    const ticker = typeof operation.ticker === 'string' ? operation.ticker.trim().toUpperCase() : '';
+    const ticker = normalizeUppercaseString(operation.ticker);
     if (!ticker) {
       return;
     }
@@ -450,7 +451,7 @@ export class TradesRepo {
       params.push(options.status);
     }
     if (options.ticker) {
-      const normalizedTicker = options.ticker.trim().toUpperCase();
+      const normalizedTicker = normalizeUppercaseString(options.ticker);
       if (normalizedTicker.length > 0) {
         conditions.push('UPPER(t.ticker) LIKE ?');
         params.push(`%${normalizedTicker}%`);

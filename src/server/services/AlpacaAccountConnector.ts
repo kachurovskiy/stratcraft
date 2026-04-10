@@ -10,6 +10,10 @@ import { DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO, SETTING_KEYS } from '../constants
 import { Database } from '../database/Database';
 import { LoggingService } from './LoggingService';
 import type { AccountConnector, DispatchResult, LiquidationRequest, LiquidationResult } from './AccountDataService';
+import {
+  normalizeNullableUppercaseString,
+  normalizeUppercaseString
+} from '../utils/stringNormalization';
 
 type AlpacaOrder = {
   id?: string;
@@ -144,7 +148,7 @@ export class AlpacaAccountConnector implements AccountConnector {
             if (!item || typeof item !== 'object') {
               continue;
             }
-            const ticker = typeof item.symbol === 'string' ? item.symbol.trim().toUpperCase() : null;
+            const ticker = normalizeNullableUppercaseString(item.symbol);
             if (!ticker) {
               continue;
             }
@@ -181,7 +185,7 @@ export class AlpacaAccountConnector implements AccountConnector {
   ): Promise<DispatchResult> {
     const baseUrl = await this.getBaseUrl(account.environment);
     const headers = this.buildHeaders(account);
-    const ticker = this.normalizeTicker(operation.ticker);
+    const ticker = normalizeNullableUppercaseString(operation.ticker);
     if (!ticker) {
       throw new Error('missing_ticker');
     }
@@ -594,14 +598,6 @@ export class AlpacaAccountConnector implements AccountConnector {
     };
   }
 
-  private normalizeTicker(value?: string | null): string | null {
-    if (typeof value !== 'string') {
-      return null;
-    }
-    const normalized = value.trim().toUpperCase();
-    return normalized.length > 0 ? normalized : null;
-  }
-
   private parseIsoTimestamp(value: unknown): Date | null {
     if (typeof value !== 'string') {
       return null;
@@ -953,7 +949,7 @@ export class AlpacaAccountConnector implements AccountConnector {
     previousStopPrice: number | null,
     abortSignal: AbortSignal
   ): Promise<AlpacaOrder | null> {
-    const normalizedTicker = ticker.toUpperCase();
+    const normalizedTicker = normalizeUppercaseString(ticker);
     const desiredSide = typeof side === 'string' && side.trim().toLowerCase() === 'buy' ? 'buy' : 'sell';
 
     const params: Record<string, string | number | boolean> = {
@@ -982,7 +978,7 @@ export class AlpacaAccountConnector implements AccountConnector {
         continue;
       }
 
-      const symbol = typeof rawOrder.symbol === 'string' ? rawOrder.symbol.trim().toUpperCase() : null;
+      const symbol = normalizeNullableUppercaseString(rawOrder.symbol);
       if (symbol !== normalizedTicker) {
         continue;
       }

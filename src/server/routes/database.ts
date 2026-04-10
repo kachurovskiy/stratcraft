@@ -6,6 +6,7 @@ import os from 'os';
 import path from 'path';
 import { JobScheduler, JobType } from '../jobs/JobScheduler';
 import { handleCsrfFailure, isCsrfRequestValid } from '../middleware/csrf';
+import { normalizeUppercaseStrings } from '../utils/stringNormalization';
 
 const router = express.Router();
 
@@ -533,10 +534,7 @@ router.post('/bulk-add-tickers', requireAuth, requireAdmin, async (req: Request,
     }
 
     // Parse tickers from whitespace-separated string
-    const rawTickerList = tickers
-      .split(/\s+/)
-      .map(ticker => ticker.trim().toUpperCase())
-      .filter(ticker => ticker.length > 0);
+    const rawTickerList = normalizeUppercaseStrings(tickers.split(/\s+/));
 
     if (rawTickerList.length === 0) {
       return res.redirect('/admin/database?error=No valid tickers provided');
@@ -612,10 +610,7 @@ router.post('/bulk-delete-tickers', requireAuth, requireAdmin, async (req: Reque
     }
 
     // Parse tickers from whitespace-separated string
-    const rawTickerList = tickers
-      .split(/\s+/)
-      .map(ticker => ticker.trim().toUpperCase())
-      .filter(ticker => ticker.length > 0);
+    const rawTickerList = normalizeUppercaseStrings(tickers.split(/\s+/));
 
     if (rawTickerList.length === 0) {
       return res.redirect('/admin/database?error=No valid tickers provided');
