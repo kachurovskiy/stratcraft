@@ -56,6 +56,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
     const filterIgnoredTickers = <T extends { symbol: string }>(items: T[]) =>
       ignoredTickers.size === 0 ? items : items.filter(item => !ignoredTickers.has(item.symbol));
     const loadFilteredTickers = async () => filterIgnoredTickers(await deps.db.tickers.getTickers());
+    await refreshTickersFromAlpaca(ctx, deps, alwaysValidationTickers, candleSyncSettings);
     const marketClock = await resolveMarketClock(ctx, deps);
     if (marketClock.isOpen) {
       const hasExistingCandles = !!(await deps.db.candles.getLatestGlobalCandleDate());
@@ -81,18 +82,6 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
     }
 
     let tickers = await loadFilteredTickers();
-    if (!tickers.length) {
-      const seeded = await refreshTickersFromAlpaca(
-        ctx,
-        deps,
-        'database-empty',
-        alwaysValidationTickers,
-        candleSyncSettings
-      );
-      if (seeded) {
-        tickers = await loadFilteredTickers();
-      }
-    }
 
     if (!tickers.length) {
       ctx.loggingService.warn(CANDLE_SOURCE, 'No tickers available for candle sync after Alpaca refresh', logMetadata);
@@ -124,21 +113,6 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
         throw new Error('Unable to determine reference SPY candle date');
       }
       latestSpyDate = lastSpyCandle.date;
-    }
-
-    if (spyCandles.length > 0) {
-      const refreshed = await refreshTickersFromAlpaca(
-        ctx,
-        deps,
-        'full-sync',
-        alwaysValidationTickers,
-        candleSyncSettings
-      );
-      if (refreshed) {
-        tickers = await loadFilteredTickers();
-        symbols = buildSymbolList(tickers);
-        totalTickers = symbols.length;
-      }
     }
 
     const tickersToRefresh = await determineTickersToRefresh(
@@ -219,19 +193,17 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
 async function refreshTickersFromAlpaca(
   ctx: JobHandlerContext,
   deps: JobHandlerDependencies,
-  reason: 'database-empty' | 'full-sync',
   alwaysValidationTickers: Set<string>,
   candleSyncSettings: CandleSyncSettings
-): Promise<boolean> {
+): Promise<void> {
   try {
-    ctx.loggingService.info(CANDLE_SOURCE, `Refreshing tickers from Alpaca (${reason})`, {
-      jobId: ctx.job.id,
-      reason
+    ctx.loggingService.info(CANDLE_SOURCE, 'Refreshing tickers from Alpaca', {
+      jobId: ctx.job.id
     });
     const assets = await deps.alpacaAssetService.fetchActiveEquityAssets();
     if (!assets.length) {
-      ctx.loggingService.warn(CANDLE_SOURCE, 'Alpaca asset list was empty', { jobId: ctx.job.id, reason });
-      return false;
+      ctx.loggingService.warn(CANDLE_SOURCE, 'Alpaca asset list was empty', { jobId: ctx.job.id });
+      return;
     }
 
     const payload: TickerAssetRecord[] = assets.map(asset => ({
@@ -247,20 +219,16 @@ async function refreshTickersFromAlpaca(
     const result = await deps.db.tickers.syncTickersFromAssets(payload);
     ctx.loggingService.info(CANDLE_SOURCE, 'Synced Alpaca tickers', {
       jobId: ctx.job.id,
-      reason,
       assets: assets.length,
       upserted: result.upserted,
       disabled: result.disabled
     });
-    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     ctx.loggingService.error(CANDLE_SOURCE, 'Failed to refresh tickers from Alpaca', {
       jobId: ctx.job.id,
-      reason,
       error: message
     });
-    return false;
   }
 }
 
