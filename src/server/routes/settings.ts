@@ -10,7 +10,10 @@ import {
   SETTING_KEY_LIST,
   type SettingKey
 } from '../constants';
+import { createDefaultSettingsValue } from '../settings/defaults';
 import { DEFAULT_FOOTER_DISCLAIMER_HTML } from '../utils/footerDisclaimer';
+
+const DEFAULT_SETTINGS = createDefaultSettingsValue();
 
 const SETTING_GROUPS = [
   {
@@ -107,7 +110,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'app',
     label: 'Site Name',
     description: 'Displayed throughout the UI and outbound emails.',
-    placeholder: 'StratCraft',
+    placeholder: DEFAULT_SETTINGS.app.siteName,
     inputType: 'text'
   },
   {
@@ -141,7 +144,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'data-provider',
     label: 'Candle Data Provider',
     description: 'Provider to use for candle data (EODHD, TIINGO, or ALPACA).',
-    placeholder: 'TIINGO',
+    placeholder: DEFAULT_SETTINGS.dataProvider.candleDataProvider,
     inputType: 'text'
   },
   {
@@ -324,8 +327,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.TRADE_SLIPPAGE_RATE,
     group: 'engine',
     label: 'Trade Slippage Rate',
-    description: 'Fractional slippage applied on entry/exit (e.g. 0.003 = 0.3%).',
-    placeholder: '0.003',
+    description: 'Fractional slippage applied on entry/exit (e.g. 0.02 = 2%).',
+    placeholder: String(DEFAULT_SETTINGS.engine.tradeSlippageRate),
     inputType: 'number',
     min: '0'
   },
@@ -333,8 +336,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.LIMIT_BUY_PENETRATION_RATIO,
     group: 'engine',
     label: 'Limit Buy Penetration Ratio',
-    description: 'Penetration ratio needed to fully score limit-buy fills (e.g. 0.005 = 0.5%).',
-    placeholder: '0.005',
+    description: 'Penetration ratio needed to fully score limit-buy fills (e.g. 0.05 = 5%).',
+    placeholder: String(DEFAULT_SETTINGS.engine.limitBuyPenetrationRatio),
     inputType: 'number',
     min: '0'
   },
@@ -423,7 +426,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'alpaca',
     label: 'Alpaca Paper URL',
     description: 'Base endpoint for Alpaca paper account data.',
-    placeholder: 'Enter Alpaca paper base URL',
+    placeholder: DEFAULT_SETTINGS.alpaca.paperUrl,
     inputType: 'text'
   },
   {
@@ -431,7 +434,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'alpaca',
     label: 'Alpaca Live URL',
     description: 'Base endpoint for Alpaca live account data.',
-    placeholder: 'Enter Alpaca live base URL',
+    placeholder: DEFAULT_SETTINGS.alpaca.liveUrl,
     inputType: 'text'
   },
   {
@@ -634,7 +637,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'optimizer',
     label: 'Optimization Objective',
     description: 'Objective metric for local search (CAGR or SHARPE).',
-    placeholder: 'CAGR',
+    placeholder: DEFAULT_SETTINGS.optimizer.optimizationObjective,
     inputType: 'text'
   },
   {
@@ -693,7 +696,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'optimizer',
     label: 'Local Optimization Step Multipliers',
     description: 'Comma-separated list of step multipliers for optimizer neighbor search.',
-    placeholder: '-5,-4,-3,-2,-1,1,2,3,4,5',
+    placeholder: DEFAULT_SETTINGS.optimizer.localOptimizationStepMultipliers.join(','),
     inputType: 'text'
   },
   {

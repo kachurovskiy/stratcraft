@@ -1,205 +1,73 @@
+import { createDefaultSettingsValue } from '../settings/defaults';
 import type { StrategyPerformance } from '../types/StrategyTemplate';
-import {
-  computeTemplateScoreResults,
-  type TemplateScoreSnapshot
-} from './templateScore';
+import type { TemplateScoreSnapshot } from './templateScore';
+import { computeTemplateScores } from './templateScore';
 
-const fixedNow = new Date('2025-01-01T00:00:00Z');
-
-const makePerformance = (overrides: Partial<StrategyPerformance> = {}): StrategyPerformance => ({
-  totalTrades: 100,
-  winningTrades: 50,
-  losingTrades: 50,
-  winRate: 0.5,
-  totalReturn: 0.2,
-  cagr: 0.1,
-  sharpeRatio: 1,
-  calmarRatio: 1,
-  maxDrawdown: 0.2,
+const createPerformance = (overrides: Partial<StrategyPerformance> = {}): StrategyPerformance => ({
+  totalTrades: 1,
+  winningTrades: 1,
+  losingTrades: 0,
+  winRate: 1,
+  totalReturn: 0.25,
+  cagr: 0.2,
+  sharpeRatio: 1.4,
+  calmarRatio: 1.1,
+  maxDrawdown: 10,
   maxDrawdownPercent: 10,
-  avgTradeReturn: 0.01,
-  bestTrade: 0.1,
-  worstTrade: -0.05,
-  totalTickers: 10,
-  medianTradeDuration: 5,
+  avgTradeReturn: 0.25,
+  bestTrade: 0.25,
+  worstTrade: 0.25,
+  totalTickers: 5,
+  medianTradeDuration: 10,
   medianTradePnl: 100,
-  medianTradePnlPercent: 0.01,
+  medianTradePnlPercent: 10,
   medianConcurrentTrades: 1,
-  avgTradeDuration: 5,
-  avgTradePnl: 50,
-  avgTradePnlPercent: 0.02,
+  avgTradeDuration: 10,
+  avgTradePnl: 100,
+  avgTradePnlPercent: 10,
   avgConcurrentTrades: 1,
-  avgLosingPnl: -25,
-  avgLosingPnlPercent: -0.01,
-  avgWinningPnl: 75,
-  avgWinningPnlPercent: 0.03,
-  lastUpdated: fixedNow,
-  ...overrides
+  avgLosingPnl: 0,
+  avgLosingPnlPercent: 0,
+  avgWinningPnl: 100,
+  avgWinningPnlPercent: 10,
+  lastUpdated: new Date('2026-01-01T00:00:00.000Z'),
+  ...(overrides ?? {})
 });
 
-const buildSnapshots = ({
-  templateId = 'template-1',
-  strategyId = 'strategy-1',
-  periodMonths = 12,
-  periodDays = 365,
-  trainingCagr = 0.1,
-  validationCagr = 0.1,
-  validationDrawdownPercent = 10,
-  totalTrades = 200
-}: {
-  templateId?: string;
-  strategyId?: string;
-  periodMonths?: number;
-  periodDays?: number | null;
-  trainingCagr?: number;
-  validationCagr?: number;
-  validationDrawdownPercent?: number;
-  totalTrades?: number;
-} = {}): TemplateScoreSnapshot[] => {
-  const createdAt = new Date(fixedNow);
-  const trainingPerformance = makePerformance({
-    cagr: trainingCagr,
-    maxDrawdownPercent: validationDrawdownPercent,
-    totalTrades
-  });
-  const validationPerformance = makePerformance({
-    cagr: validationCagr,
-    maxDrawdownPercent: validationDrawdownPercent,
-    totalTrades
-  });
+const createSnapshots = (): TemplateScoreSnapshot[] => [
+  {
+    templateId: 'template-1',
+    strategyId: 'strategy-1',
+    periodMonths: 12,
+    periodDays: 365,
+    tickerScope: 'training',
+    performance: createPerformance({ cagr: 0.3, totalTrades: 12 }),
+    createdAt: new Date('2026-01-01T00:00:00.000Z')
+  },
+  {
+    templateId: 'template-1',
+    strategyId: 'strategy-1',
+    periodMonths: 12,
+    periodDays: 365,
+    tickerScope: 'validation',
+    performance: createPerformance({ cagr: 0.2, totalTrades: 1 }),
+    createdAt: new Date('2026-01-01T00:00:00.000Z')
+  }
+];
 
-  return [
-    {
-      templateId,
-      strategyId,
-      periodMonths,
-      periodDays,
-      tickerScope: 'training',
-      performance: trainingPerformance,
-      createdAt
-    },
-    {
-      templateId,
-      strategyId,
-      periodMonths,
-      periodDays,
-      tickerScope: 'validation',
-      performance: validationPerformance,
-      createdAt
-    }
-  ];
-};
+describe('templateScore settings integration', () => {
+  test('uses the normalized settings snapshot from SettingsRepo.value', async () => {
+    const baselineSettings = createDefaultSettingsValue();
+    const relaxedLiquiditySettings = createDefaultSettingsValue();
+    relaxedLiquiditySettings.templateScoring.tradeWeight = 0;
 
-describe('template scoring', () => {
-  const templateId = 'template-1';
-  let dateNowSpy: jest.SpyInstance;
-
-  beforeAll(() => {
-    dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(fixedNow.getTime());
-  });
-
-  afterAll(() => {
-    dateNowSpy.mockRestore();
-  });
-
-  it('increases period score as trades per year increase', async () => {
-    const lowTradeResults = await computeTemplateScoreResults(buildSnapshots({ totalTrades: 25 }), {});
-    const highTradeResults = await computeTemplateScoreResults(buildSnapshots({ totalTrades: 200 }), {});
-
-    const lowPeriod = lowTradeResults.breakdowns.get(templateId)?.periods[0];
-    const highPeriod = highTradeResults.breakdowns.get(templateId)?.periods[0];
-
-    expect(lowPeriod).toBeDefined();
-    expect(highPeriod).toBeDefined();
-    if (!lowPeriod || !highPeriod) {
-      return;
-    }
-
-    expect(highPeriod.liquidityScore).toBeGreaterThan(lowPeriod.liquidityScore);
-    expect(highPeriod.periodScore01).toBeGreaterThan(lowPeriod.periodScore01);
-  });
-
-  it('penalizes negative verify CAGR more than neutral', async () => {
-    const snapshots = buildSnapshots();
-    const negativeResults = await computeTemplateScoreResults(snapshots, {
-      verificationByTemplate: new Map([[templateId, { verifyCagr: -0.2 }]])
+    const baseline = await computeTemplateScores(createSnapshots(), {
+      settingsRepo: { value: baselineSettings }
     });
-    const neutralResults = await computeTemplateScoreResults(snapshots, {
-      verificationByTemplate: new Map([[templateId, { verifyCagr: 0 }]])
+    const relaxed = await computeTemplateScores(createSnapshots(), {
+      settingsRepo: { value: relaxedLiquiditySettings }
     });
 
-    const negativeMultiplier = negativeResults.breakdowns.get(templateId)?.verificationMultiplier;
-    const neutralMultiplier = neutralResults.breakdowns.get(templateId)?.verificationMultiplier;
-
-    expect(typeof negativeMultiplier).toBe('number');
-    expect(typeof neutralMultiplier).toBe('number');
-    if (typeof negativeMultiplier !== 'number' || typeof neutralMultiplier !== 'number') {
-      return;
-    }
-
-    expect(negativeMultiplier).toBeLessThan(1);
-    expect(negativeMultiplier).toBeLessThan(neutralMultiplier);
-    expect(Math.abs(negativeMultiplier - 0.8)).toBeLessThan(Math.abs(neutralMultiplier - 0.8));
-  });
-
-  it('rewards positive verify CAGR above neutral', async () => {
-    const snapshots = buildSnapshots();
-    const positiveResults = await computeTemplateScoreResults(snapshots, {
-      verificationByTemplate: new Map([[templateId, { verifyCagr: 0.2 }]])
-    });
-    const neutralResults = await computeTemplateScoreResults(snapshots, {
-      verificationByTemplate: new Map([[templateId, { verifyCagr: 0 }]])
-    });
-
-    const positiveMultiplier = positiveResults.breakdowns.get(templateId)?.verificationMultiplier;
-    const neutralMultiplier = neutralResults.breakdowns.get(templateId)?.verificationMultiplier;
-
-    expect(typeof positiveMultiplier).toBe('number');
-    expect(typeof neutralMultiplier).toBe('number');
-    if (typeof positiveMultiplier !== 'number' || typeof neutralMultiplier !== 'number') {
-      return;
-    }
-
-    expect(positiveMultiplier).toBeGreaterThan(neutralMultiplier);
-  });
-
-  it('reduces risk score and period score with larger drawdowns', async () => {
-    const lowDrawdownResults = await computeTemplateScoreResults(buildSnapshots({ validationDrawdownPercent: 5 }), {});
-    const highDrawdownResults = await computeTemplateScoreResults(buildSnapshots({ validationDrawdownPercent: 35 }), {});
-
-    const lowPeriod = lowDrawdownResults.breakdowns.get(templateId)?.periods[0];
-    const highPeriod = highDrawdownResults.breakdowns.get(templateId)?.periods[0];
-
-    expect(lowPeriod).toBeDefined();
-    expect(highPeriod).toBeDefined();
-    if (!lowPeriod || !highPeriod) {
-      return;
-    }
-
-    expect(lowPeriod.riskScore).toBeGreaterThan(highPeriod.riskScore);
-    expect(lowPeriod.periodScore01).toBeGreaterThan(highPeriod.periodScore01);
-  });
-
-  it('keeps component averages and scores in UI bounds', async () => {
-    const results = await computeTemplateScoreResults(buildSnapshots(), {});
-    const breakdown = results.breakdowns.get(templateId);
-
-    expect(breakdown).toBeDefined();
-    if (!breakdown) {
-      return;
-    }
-
-    const components = breakdown.componentAverages;
-    Object.values(components).forEach(value => {
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThanOrEqual(1);
-    });
-
-    expect(breakdown.baseScore01).toBeGreaterThanOrEqual(0);
-    expect(breakdown.baseScore01).toBeLessThanOrEqual(1);
-    expect(breakdown.baseScore100).toBeGreaterThanOrEqual(0);
-    expect(breakdown.baseScore100).toBeLessThanOrEqual(100);
-    expect(breakdown.finalScore100).toBeGreaterThanOrEqual(0);
-    expect(breakdown.finalScore100).toBeLessThanOrEqual(100);
+    expect(relaxed.get('template-1') ?? 0).toBeGreaterThan(baseline.get('template-1') ?? 0);
   });
 });

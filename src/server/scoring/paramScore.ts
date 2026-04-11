@@ -1,7 +1,6 @@
-
 import type { QueryResultRow } from 'pg';
-import { SETTING_KEYS, type SettingKey } from '../constants';
-import { loadNumberSettingOverrides, normalizeNumber, type SettingsRepo } from '../utils/settings';
+import { createDefaultSettingsValue } from '../settings/defaults';
+import { normalizeNumber, type SettingsRepo } from '../utils/settings';
 
 export type BacktestCacheRow = QueryResultRow & {
   parameters: Record<string, unknown>;
@@ -107,33 +106,11 @@ export type ParamScoreOptions = {
 
 const PERCENTILE_TOLERANCE = 1e-12;
 const CORE_SCORE_EPSILON = 1e-9;
+const DEFAULT_SETTINGS = createDefaultSettingsValue();
 export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoreSettings = {
-  minTrades: 20,
-  drawdownLambda: 3.5,
-  neighborThreshold: 0.15,
-  coreScoreQuantile: 0.6,
-  pairwiseNeighborLimit: 1500,
+  ...DEFAULT_SETTINGS.paramScoring,
   stabilityGamma: 2
 };
-
-const PARAM_SCORE_SETTING_KEYS: SettingKey[] = [
-  SETTING_KEYS.PARAM_SCORE_MIN_TRADES,
-  SETTING_KEYS.PARAM_SCORE_DRAWDOWN_LAMBDA,
-  SETTING_KEYS.PARAM_SCORE_NEIGHBOR_THRESHOLD,
-  SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE,
-  SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT
-];
-
-const PARAM_SCORE_SETTING_MAPPING: Array<{
-  settingKey: SettingKey;
-  field: keyof ParamScoreSettings;
-}> = [
-  { settingKey: SETTING_KEYS.PARAM_SCORE_MIN_TRADES, field: 'minTrades' },
-  { settingKey: SETTING_KEYS.PARAM_SCORE_DRAWDOWN_LAMBDA, field: 'drawdownLambda' },
-  { settingKey: SETTING_KEYS.PARAM_SCORE_NEIGHBOR_THRESHOLD, field: 'neighborThreshold' },
-  { settingKey: SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE, field: 'coreScoreQuantile' },
-  { settingKey: SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT, field: 'pairwiseNeighborLimit' }
-];
 
 const resolveParamScoreSettings = (
   overrides?: Partial<ParamScoreSettings>
@@ -172,7 +149,13 @@ const resolveParamScoreSettings = (
 const loadParamScoreSettings = async (
   settingsRepo?: SettingsRepo
 ): Promise<Partial<ParamScoreSettings>> => {
-  return loadNumberSettingOverrides(settingsRepo, PARAM_SCORE_SETTING_KEYS, PARAM_SCORE_SETTING_MAPPING);
+  if (!settingsRepo) {
+    return {};
+  }
+
+  return {
+    ...settingsRepo.value.paramScoring
+  };
 };
 
 const resolveParamScoreSettingsFromOptions = async (

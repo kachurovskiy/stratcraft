@@ -1,6 +1,6 @@
 import type { BacktestScope, StrategyPerformance } from '../types/StrategyTemplate';
-import { SETTING_KEYS, type SettingKey } from '../constants';
-import { loadNumberSettingOverrides, normalizeNumber, type SettingsRepo } from '../utils/settings';
+import { createDefaultSettingsValue } from '../settings/defaults';
+import { normalizeNumber, type SettingsRepo } from '../utils/settings';
 
 export type TemplateScoreSnapshot = {
   templateId: string;
@@ -29,7 +29,7 @@ export type TemplateScoreSettings = {
   verifySharpeScale: number;
   verifyCalmarScale: number;
   verifyCagrScale: number;
-  verifyCagrNegScale: number;
+  verifyCagrNegativeScale: number;
   verifyDrawdownLambda: number;
   verifyMinMultiplier: number;
   verifyMaxMultiplier: number;
@@ -75,59 +75,10 @@ export type TemplateScoreResults = {
   breakdowns: Map<string, TemplateScoreBreakdown>;
 };
 
+const DEFAULT_SETTINGS = createDefaultSettingsValue();
 export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoreSettings = {
-  returnScale: 0.20,
-  validationNegativePenaltyStrength: 2.0,
-  drawdownLambda: 2.5,
-  tradeTarget: 200,
-  tradeWeight: 0.25,
-  recencyHalfLifeDays: 365,
-  verifySharpeScale: 2,
-  verifyCalmarScale: 2,
-  verifyCagrScale: 0.25,
-  verifyCagrNegScale: 0.10,
-  verifyDrawdownLambda: 2.5,
-  verifyMinMultiplier: 0.8,
-  verifyMaxMultiplier: 1.2
+  ...DEFAULT_SETTINGS.templateScoring
 };
-
-const TEMPLATE_SCORE_SETTING_KEYS: SettingKey[] = [
-  SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE,
-  SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH,
-  SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA,
-  SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET,
-  SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT,
-  SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER,
-  SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER
-];
-
-const TEMPLATE_SCORE_SETTING_MAPPING: Array<{
-  settingKey: SettingKey;
-  field: keyof TemplateScoreSettings;
-}> = [
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE, field: 'returnScale' },
-  {
-    settingKey: SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH,
-    field: 'validationNegativePenaltyStrength'
-  },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA, field: 'drawdownLambda' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET, field: 'tradeTarget' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT, field: 'tradeWeight' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS, field: 'recencyHalfLifeDays' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE, field: 'verifySharpeScale' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE, field: 'verifyCalmarScale' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE, field: 'verifyCagrScale' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE, field: 'verifyCagrNegScale' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA, field: 'verifyDrawdownLambda' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER, field: 'verifyMinMultiplier' },
-  { settingKey: SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER, field: 'verifyMaxMultiplier' }
-];
 
 const resolveTemplateScoreSettings = (
   overrides?: Partial<TemplateScoreSettings>
@@ -197,9 +148,9 @@ const resolveTemplateScoreSettings = (
       DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrScale,
       { min: 1e-6 }
     ),
-    verifyCagrNegScale: normalizeNumber(
-      merged.verifyCagrNegScale,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrNegScale,
+    verifyCagrNegativeScale: normalizeNumber(
+      merged.verifyCagrNegativeScale,
+      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrNegativeScale,
       { min: 1e-6 }
     ),
     verifyDrawdownLambda: normalizeNumber(
@@ -215,7 +166,13 @@ const resolveTemplateScoreSettings = (
 const loadTemplateScoreSettings = async (
   settingsRepo?: SettingsRepo
 ): Promise<Partial<TemplateScoreSettings>> => {
-  return loadNumberSettingOverrides(settingsRepo, TEMPLATE_SCORE_SETTING_KEYS, TEMPLATE_SCORE_SETTING_MAPPING);
+  if (!settingsRepo) {
+    return {};
+  }
+
+  return {
+    ...settingsRepo.value.templateScoring
+  };
 };
 
 const resolveTemplateScoreSettingsFromOptions = async (
@@ -359,7 +316,7 @@ const computeVerificationMultiplier = (
   const cagrScore = scoreSignedMetric(
     verifyCagr,
     settings.verifyCagrScale,
-    settings.verifyCagrNegScale
+    settings.verifyCagrNegativeScale
   );
   if (cagrScore !== null) {
     components.push(cagrScore);
