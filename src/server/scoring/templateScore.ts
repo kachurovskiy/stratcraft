@@ -1,6 +1,6 @@
+import type { SettingsValue } from '../database/types';
 import type { BacktestScope, StrategyPerformance } from '../types/StrategyTemplate';
 import { createDefaultSettingsValue } from '../settings/defaults';
-import type { SettingsRepo } from '../utils/settings';
 
 export type TemplateScoreSnapshot = {
   templateId: string;
@@ -38,7 +38,7 @@ export type TemplateScoreSettings = {
 export type TemplateScoreOptions = {
   verificationByTemplate?: Map<string, TemplateVerificationMetrics>;
   templateScoreSettings?: Partial<TemplateScoreSettings>;
-  settingsRepo?: SettingsRepo;
+  settingsRepo?: { value: Pick<SettingsValue, 'templateScoring'> };
 };
 
 export type TemplateScoreBreakdown = {

@@ -1,6 +1,6 @@
 import type { QueryResultRow } from 'pg';
+import type { SettingsValue } from '../database/types';
 import { createDefaultSettingsValue } from '../settings/defaults';
-import type { SettingsRepo } from '../utils/settings';
 
 export type BacktestCacheRow = QueryResultRow & {
   parameters: Record<string, unknown>;
@@ -100,7 +100,7 @@ export type ParamScoreSettings = {
 };
 
 export type ParamScoreOptions = {
-  settingsRepo?: SettingsRepo;
+  settingsRepo?: { value: Pick<SettingsValue, 'paramScoring'> };
   paramScoreSettings?: Partial<ParamScoreSettings>;
 };
 
