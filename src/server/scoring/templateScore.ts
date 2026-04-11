@@ -37,7 +37,6 @@ export type TemplateScoreSettings = {
 
 export type TemplateScoreOptions = {
   verificationByTemplate?: Map<string, TemplateVerificationMetrics>;
-  templateScoreSettings?: Partial<TemplateScoreSettings>;
   settingsRepo?: { value: Pick<SettingsValue, 'templateScoring'> };
 };
 
@@ -83,8 +82,7 @@ export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoreSettings = {
 const resolveTemplateScoreSettings = (options: TemplateScoreOptions): TemplateScoreSettings => {
   const merged: TemplateScoreSettings = {
     ...DEFAULT_TEMPLATE_SCORE_SETTINGS,
-    ...(options.settingsRepo?.value.templateScoring ?? {}),
-    ...(options.templateScoreSettings ?? {})
+    ...(options.settingsRepo?.value.templateScoring ?? {})
   };
 
   return {
