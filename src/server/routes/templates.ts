@@ -440,7 +440,7 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
 
     const scoredCacheSummary = await scoreBacktestParameters(
       backtestCacheRaw as BacktestCacheRow[],
-      { settingsValue: req.db.settings.value.paramScoring }
+      req.db.settings.value.paramScoring
     );
     const scoredCacheResults = scoredCacheSummary.scored;
     const bestCacheEntryId = (() => {

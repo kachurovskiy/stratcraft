@@ -20,9 +20,7 @@ describe('paramScore settings integration', () => {
     const settings = createDefaultSettingsValue();
     settings.paramScoring.minTrades = 0;
 
-    const result = await scoreBacktestParameters([createRow(1)], {
-      settingsValue: settings.paramScoring
-    });
+    const result = await scoreBacktestParameters([createRow(1)], settings.paramScoring);
 
     expect(result.scored).toHaveLength(1);
     expect(result.availabilityById.get('row-1')).toEqual({ eligible: true });
@@ -33,9 +31,7 @@ describe('paramScore settings integration', () => {
     settings.paramScoring.minTrades = 0;
     settings.paramScoring.stabilityGamma = 0;
 
-    const result = await scoreBacktestParameters([createRow(1)], {
-      settingsValue: settings.paramScoring
-    });
+    const result = await scoreBacktestParameters([createRow(1)], settings.paramScoring);
 
     expect(result.scored).toHaveLength(1);
     expect(result.scored[0]?.stabilityScore).toBe(0);

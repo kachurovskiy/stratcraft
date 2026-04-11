@@ -1,6 +1,5 @@
 import type { QueryResultRow } from 'pg';
 import type { ParamScoringSettingsValue } from '../database/types';
-import { createDefaultSettingsValue } from '../settings/defaults';
 
 export type BacktestCacheRow = QueryResultRow & {
   parameters: Record<string, unknown>;
@@ -90,34 +89,20 @@ export type ScoreBacktestParametersSummary = {
 
 type ParameterScaleMap = Map<string, number>;
 
-export type ParamScoreOptions = {
-  settingsValue?: ParamScoringSettingsValue;
-};
-
 const PERCENTILE_TOLERANCE = 1e-12;
 const CORE_SCORE_EPSILON = 1e-9;
-const DEFAULT_SETTINGS = createDefaultSettingsValue();
-export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoringSettingsValue = {
-  ...DEFAULT_SETTINGS.paramScoring
-};
-
-const resolveParamScoreSettings = (options: ParamScoreOptions): ParamScoringSettingsValue => ({
-  ...DEFAULT_PARAM_SCORE_SETTINGS,
-  ...(options.settingsValue ?? {})
-});
 
 const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'maxLeverage', 'ticker']);
 
 export const scoreBacktestParameters = async (
   rows: BacktestCacheRow[],
-  options: ParamScoreOptions = {}
+  settingsValue: ParamScoringSettingsValue
 ): Promise<ScoreBacktestParametersSummary> => {
-  const scoreSettings = resolveParamScoreSettings(options);
   const availabilityById = new Map<string, ScoreAvailabilityResult>();
   const availabilityByRow = new Map<BacktestCacheRow, ScoreAvailabilityResult>();
   const candidates: NormalizedCandidate[] = [];
   rows.forEach((row) => {
-    const evaluation = evaluateCandidateRow(row, scoreSettings);
+    const evaluation = evaluateCandidateRow(row, settingsValue);
     recordAvailability(row, evaluation.availability, availabilityByRow, availabilityById);
     if (evaluation.candidate) {
       candidates.push(evaluation.candidate);
@@ -183,11 +168,11 @@ export const scoreBacktestParameters = async (
       coreScore = Math.sqrt(coreTrain * coreVerify);
     }
 
-    const ddPenaltyTrain = Math.exp(-scoreSettings.drawdownLambda * Math.max(0, candidate.maxDrawdownRatio));
+    const ddPenaltyTrain = Math.exp(-settingsValue.drawdownLambda * Math.max(0, candidate.maxDrawdownRatio));
     let ddPenalty = ddPenaltyTrain;
     const verifyDrawdown = candidate.verifyMaxDrawdownRatio;
     if (verifyDrawdown !== null && verifyDrawdown !== undefined) {
-      const ddPenaltyVerify = Math.exp(-scoreSettings.drawdownLambda * Math.max(0, verifyDrawdown));
+      const ddPenaltyVerify = Math.exp(-settingsValue.drawdownLambda * Math.max(0, verifyDrawdown));
       ddPenalty = Math.sqrt(ddPenaltyTrain * ddPenaltyVerify);
     }
 
@@ -200,12 +185,12 @@ export const scoreBacktestParameters = async (
     };
   });
 
-  applyStabilityScores(scoredCandidates, scoreSettings);
+  applyStabilityScores(scoredCandidates, settingsValue);
 
   const sorted = scoredCandidates
     .map((candidate) => {
       const stability = clampNumber(candidate.stabilityScore, 0, 1);
-      const stabilityFactor = Math.pow(stability, scoreSettings.stabilityGamma);
+      const stabilityFactor = Math.pow(stability, settingsValue.stabilityGamma);
       const balancePenalty = computeBalancePenalty(candidate.balanceTrainingCagr, candidate.balanceValidationCagr);
       const finalScore = candidate.coreScore * candidate.ddPenalty * stabilityFactor * balancePenalty;
       return { ...candidate, finalScore };

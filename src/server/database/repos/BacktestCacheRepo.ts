@@ -259,7 +259,7 @@ export class BacktestCacheRepo {
       }
 
       const normalizedRows = rows.map((row) => this.mapBacktestCacheRow(row));
-      const scored = await scoreBacktestParameters(normalizedRows, { settingsValue: this.settings.value.paramScoring });
+      const scored = await scoreBacktestParameters(normalizedRows, this.settings.value.paramScoring);
       return scored.scored[0] ?? null;
     } catch (error) {
       console.error(`Error getting best params for template ${templateId}:`, error);
@@ -300,7 +300,7 @@ export class BacktestCacheRepo {
         if (!templateRows.length) {
           continue;
         }
-        const scored = await scoreBacktestParameters(templateRows, { settingsValue: this.settings.value.paramScoring });
+        const scored = await scoreBacktestParameters(templateRows, this.settings.value.paramScoring);
         const best = scored.scored[0] ?? null;
         if (best) {
           results[templateId] = best;
