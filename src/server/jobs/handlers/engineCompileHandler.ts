@@ -10,13 +10,13 @@ export function createEngineCompileHandler(deps: JobHandlerDependencies): JobHan
     await deps.engineCli.compile(ctx.abortSignal, logMetadata);
     ctx.loggingService.info(ENGINE_COMPILE_SOURCE, 'Engine compilation completed', logMetadata);
 
-    const hasQueuedCandleJob = ctx.scheduler.hasPendingJob(
-      job => job.type === 'candle-sync' && job.status === 'queued'
+    const hasQueuedTickerJob = ctx.scheduler.hasPendingJob(
+      job => job.type === 'ticker-sync' && job.status === 'queued'
     );
 
-    if (!hasQueuedCandleJob) {
-      ctx.scheduler.scheduleJob('candle-sync', {
-        description: 'Initial candle synchronization after engine compile'
+    if (!hasQueuedTickerJob) {
+      ctx.scheduler.scheduleJob('ticker-sync', {
+        description: 'Initial ticker synchronization after engine compile'
       });
     }
 

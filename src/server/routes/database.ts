@@ -494,11 +494,16 @@ router.post('/clear-all-tickers', requireAuth, requireAdmin, async (req: Request
     const scheduler: JobScheduler | undefined = req.jobScheduler;
     if (scheduler) {
       const reason = 'Ticker deletion requested by admin';
-      const cancelled = scheduler.cancelJobsByType('candle-sync', reason);
+      const cancelled =
+        scheduler.cancelJobsByType('ticker-sync', reason) +
+        scheduler.cancelJobsByType('candle-sync', reason);
       if (cancelled > 0) {
-        const stopped = await waitForJobTermination(scheduler, 'candle-sync');
-        if (!stopped) {
-          return res.redirect('/admin/database?error=Unable to cancel running candle sync job. Try again shortly.');
+        const [tickerStopped, candleStopped] = await Promise.all([
+          waitForJobTermination(scheduler, 'ticker-sync'),
+          waitForJobTermination(scheduler, 'candle-sync')
+        ]);
+        if (!tickerStopped || !candleStopped) {
+          return res.redirect('/admin/database?error=Unable to cancel a running sync job. Try again shortly.');
         }
       }
     }

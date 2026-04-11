@@ -4,6 +4,7 @@ import { LoggingService, LogSource } from '../services/LoggingService';
 
 export type JobType =
   | 'engine-compile'
+  | 'ticker-sync'
   | 'candle-sync'
   | 'export-market-data'
   | 'generate-signals'

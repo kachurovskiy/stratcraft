@@ -41,7 +41,7 @@ const SETTING_GROUPS = [
   {
     key: 'candle-sync',
     label: 'Candle Sync',
-    description: 'Controls for candle refresh behavior.'
+    description: 'Controls for ticker and candle refresh behavior.'
   },
   {
     key: 'expense-ratios',
@@ -225,7 +225,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.AUTO_DAILY_CANDLE_SYNC_ENABLED,
     group: 'candle-sync',
     label: 'Automatic Daily Candle Sync Enabled',
-    description: 'Set to false to stop scheduling the daily 3am London candle sync job (true/false).',
+    description: 'Set to false to stop scheduling the daily 3am London ticker sync pipeline (true/false).',
     placeholder: 'true',
     inputType: 'text',
     isBoolean: true
@@ -234,7 +234,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.AUTO_DAILY_SERVER_UPDATE_ENABLED,
     group: 'candle-sync',
     label: 'Automatic Daily Server Update Enabled',
-    description: 'When true and upstream commits exist, candle sync triggers a server update instead (true/false).',
+    description: 'When true and upstream commits exist, the daily ticker sync triggers a server update instead (true/false).',
     placeholder: 'false',
     inputType: 'text',
     isBoolean: true

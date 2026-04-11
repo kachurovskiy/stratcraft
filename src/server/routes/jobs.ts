@@ -7,6 +7,7 @@ const JOBS_PAGE_PATH = '/admin/jobs';
 const JOB_LOGS_DEFAULT_LIMIT = 1000;
 const JOB_LOGS_MAX_LIMIT = 5000;
 const JOB_TYPE_OPTIONS: Array<{ value: JobType; label: string }> = [
+  { value: 'ticker-sync', label: 'Ticker Sync' },
   { value: 'candle-sync', label: 'Candle Sync' },
   { value: 'export-market-data', label: 'Refresh Market Data Snapshot' },
   { value: 'generate-signals', label: 'Generate Signals' },

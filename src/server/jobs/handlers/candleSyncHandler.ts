@@ -1,62 +1,17 @@
 import { JobHandler, JobHandlerContext } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
-import type { TickerAssetRecord } from '../../database/types';
-import { deploymentService } from '../../services/DeploymentService';
-import {
-  type AssetClassificationSettings,
-  classifyAssetFromName,
-  isTrainingTicker
-} from '../../utils/assetClassification';
 import { toDateKey } from '../../utils/date';
 
 const CANDLE_SOURCE = 'candle-job';
-const SERVER_UPDATE_SOURCE = 'system';
-
-type CandleSyncSettings = AssetClassificationSettings & {
-  maxConcurrentUpdates: number;
-  trainingAllocationRatio: number;
-  matchingRatioThreshold: number;
-};
-
-function loadCandleSyncSettings(db: JobHandlerDependencies['db']): CandleSyncSettings {
-  const { candleSync, expenseRatios, tickerRules } = db.settings.value;
-
-  return {
-    maxConcurrentUpdates: candleSync.maxConcurrentUpdates,
-    etfBaseExpenseRatio: expenseRatios.etfBaseExpenseRatio,
-    inverseEtfExpenseRatio: expenseRatios.inverseEtfExpenseRatio,
-    commodityTrustExpenseRatio: expenseRatios.commodityTrustExpenseRatio,
-    bondEtfExpenseRatio: expenseRatios.bondEtfExpenseRatio,
-    incomeEtfExpenseRatio: expenseRatios.incomeEtfExpenseRatio,
-    leveragedExpenseRatios: {
-      2: expenseRatios.leveraged2xExpenseRatio,
-      3: expenseRatios.leveraged3xExpenseRatio,
-      5: expenseRatios.leveraged5xExpenseRatio
-    },
-    trainingAllocationRatio: tickerRules.trainingAllocationRatio,
-    matchingRatioThreshold: candleSync.matchingRatioThreshold
-  };
-}
 
 export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandler {
   return async (ctx) => {
     const logMetadata = { jobId: ctx.job.id };
-    const settingsValue = deps.db.settings.value;
-    const candleSyncSettings = loadCandleSyncSettings(deps.db);
-    const alwaysValidationTickers = new Set(settingsValue.tickerRules.alwaysValidationTickers);
-    const autoDailyCandleSyncEnabled = settingsValue.candleSync.autoDailyCandleSyncEnabled;
-    const autoDailyServerUpdateEnabled = settingsValue.candleSync.autoDailyServerUpdateEnabled;
-    const ignoredTickers = new Set(settingsValue.tickerRules.ignoredTickers);
-    if (autoDailyServerUpdateEnabled) {
-      const updateTriggered = await triggerServerUpdateIfBehind(ctx, logMetadata);
-      if (updateTriggered) {
-        return { message: 'Server update triggered instead of candle sync' };
-      }
-    }
+    const { candleSync, tickerRules } = deps.db.settings.value;
+    const ignoredTickers = new Set(tickerRules.ignoredTickers);
     const filterIgnoredTickers = <T extends { symbol: string }>(items: T[]) =>
       ignoredTickers.size === 0 ? items : items.filter(item => !ignoredTickers.has(item.symbol));
     const loadFilteredTickers = async () => filterIgnoredTickers(await deps.db.tickers.getTickers());
-    await refreshTickersFromAlpaca(ctx, deps, alwaysValidationTickers, candleSyncSettings);
     const marketClock = await resolveMarketClock(ctx, deps);
     if (marketClock.isOpen) {
       const hasExistingCandles = !!(await deps.db.candles.getLatestGlobalCandleDate());
@@ -76,23 +31,23 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
           nextOpen: marketClock.nextOpen?.toISOString() ?? null,
           nextClose: marketClock.nextClose?.toISOString() ?? null
         });
-        await scheduleNext(deps, ctx, autoDailyCandleSyncEnabled, logMetadata);
+        await finishCandleSync(deps, ctx, logMetadata);
         return { message: 'Candle sync skipped while market is open' };
       }
     }
 
-    let tickers = await loadFilteredTickers();
+    const tickers = await loadFilteredTickers();
 
     if (!tickers.length) {
-      ctx.loggingService.warn(CANDLE_SOURCE, 'No tickers available for candle sync after Alpaca refresh', logMetadata);
-      await scheduleNext(deps, ctx, autoDailyCandleSyncEnabled, logMetadata);
+      ctx.loggingService.warn(CANDLE_SOURCE, 'No tickers available for candle sync', logMetadata);
+      await finishCandleSync(deps, ctx, logMetadata);
       return {
         message: 'No tickers found for synchronization'
       };
     }
 
-    let symbols = buildSymbolList(tickers);
-    let totalTickers = symbols.length;
+    const symbols = buildSymbolList(tickers);
+    const totalTickers = symbols.length;
     const updatedTickers = new Set<string>();
 
     ctx.loggingService.info(CANDLE_SOURCE, 'Checking SPY for new candles', logMetadata);
@@ -121,12 +76,12 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
       symbols,
       latestSpyDate,
       spyCandles.length > 0,
-      candleSyncSettings.matchingRatioThreshold
+      candleSync.matchingRatioThreshold
     );
 
     const errors: string[] = [];
     let nextTickerIndex = 0;
-    const workerCount = Math.min(candleSyncSettings.maxConcurrentUpdates, tickersToRefresh.length);
+    const workerCount = Math.min(candleSync.maxConcurrentUpdates, tickersToRefresh.length);
     const processNextTicker = async (): Promise<void> => {
       while (true) {
         if (ctx.abortSignal.aborted) {
@@ -176,7 +131,7 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
       });
     }
 
-    await scheduleNext(deps, ctx, autoDailyCandleSyncEnabled, logMetadata);
+    await finishCandleSync(deps, ctx, logMetadata);
 
     return {
       message: `Updated ${updatedTickers.size} tickers`,
@@ -188,48 +143,6 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
       }
     };
   };
-}
-
-async function refreshTickersFromAlpaca(
-  ctx: JobHandlerContext,
-  deps: JobHandlerDependencies,
-  alwaysValidationTickers: Set<string>,
-  candleSyncSettings: CandleSyncSettings
-): Promise<void> {
-  try {
-    ctx.loggingService.info(CANDLE_SOURCE, 'Refreshing tickers from Alpaca', {
-      jobId: ctx.job.id
-    });
-    const assets = await deps.alpacaAssetService.fetchActiveEquityAssets();
-    if (!assets.length) {
-      ctx.loggingService.warn(CANDLE_SOURCE, 'Alpaca asset list was empty', { jobId: ctx.job.id });
-      return;
-    }
-
-    const payload: TickerAssetRecord[] = assets.map(asset => ({
-      symbol: asset.symbol,
-      name: asset.name,
-      tradable: asset.tradable,
-      shortable: asset.shortable,
-      easyToBorrow: asset.easyToBorrow,
-      ...classifyAssetFromName(asset.name, candleSyncSettings),
-      training: isTrainingTicker(asset.symbol, alwaysValidationTickers, candleSyncSettings.trainingAllocationRatio)
-    }));
-
-    const result = await deps.db.tickers.syncTickersFromAssets(payload);
-    ctx.loggingService.info(CANDLE_SOURCE, 'Synced Alpaca tickers', {
-      jobId: ctx.job.id,
-      assets: assets.length,
-      upserted: result.upserted,
-      disabled: result.disabled
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.loggingService.error(CANDLE_SOURCE, 'Failed to refresh tickers from Alpaca', {
-      jobId: ctx.job.id,
-      error: message
-    });
-  }
 }
 
 function buildSymbolList(tickers: { symbol: string }[]): string[] {
@@ -280,10 +193,9 @@ async function determineTickersToRefresh(
   return missingTickers;
 }
 
-async function scheduleNext(
+async function finishCandleSync(
   deps: JobHandlerDependencies,
   ctx: JobHandlerContext,
-  autoDailyCandleSyncEnabled: boolean,
   logMetadata: { jobId: string }
 ): Promise<void> {
   ctx.loggingService.info(CANDLE_SOURCE, 'Refreshing market data snapshot after candle update pass', logMetadata);
@@ -295,72 +207,6 @@ async function scheduleNext(
       description: 'Triggered by candle synchronization update'
     });
   }
-
-  if (!autoDailyCandleSyncEnabled) {
-    ctx.loggingService.info(CANDLE_SOURCE, 'Automatic daily candle sync is disabled; skipping schedule', {
-      jobId: ctx.job.id
-    });
-    return;
-  }
-
-  const nextDailyRunAt = getNextDailyCandleSyncUtc();
-  const alreadyScheduled = ctx.scheduler.hasPendingJob(job =>
-    job.type === 'candle-sync' &&
-    Math.abs(job.scheduledFor.getTime() - nextDailyRunAt.getTime()) < 60 * 1000
-  );
-
-  if (!alreadyScheduled) {
-    ctx.scheduler.scheduleJob('candle-sync', {
-      startAt: nextDailyRunAt,
-      description: 'Daily 2am London candle sync pass',
-      metadata: { trigger: 'daily' }
-    });
-  }
-}
-
-async function triggerServerUpdateIfBehind(
-  ctx: JobHandlerContext,
-  logMetadata: { jobId: string }
-): Promise<boolean> {
-  const status = await deploymentService.getUpstreamBehindCount();
-  if (status.error) {
-    ctx.loggingService.warn(SERVER_UPDATE_SOURCE, 'Unable to check upstream commits for auto-update', {
-      ...logMetadata,
-      error: status.error
-    });
-    return false;
-  }
-
-  if (status.behindCount <= 0) {
-    return false;
-  }
-
-  try {
-    await deploymentService.triggerServerUpdate();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.loggingService.error(SERVER_UPDATE_SOURCE, 'Failed to trigger auto server update', {
-      ...logMetadata,
-      behindCount: status.behindCount,
-      error: message
-    });
-    throw error;
-  }
-
-  ctx.loggingService.warn(SERVER_UPDATE_SOURCE, 'Auto server update triggered before candle sync', {
-    ...logMetadata,
-    behindCount: status.behindCount
-  });
-  return true;
-}
-
-function getNextDailyCandleSyncUtc(): Date {
-  const now = new Date();
-  const next = new Date(now);
-  next.setUTCHours(3, 59, 0, 0);
-  next.setUTCDate(next.getUTCDate() + 1);
-
-  return next;
 }
 
 type MarketClockStatus = {

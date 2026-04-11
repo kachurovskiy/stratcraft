@@ -117,7 +117,7 @@ function createHarness(options: HarnessOptions = {}) {
 }
 
 describe('createCandleSyncHandler', () => {
-  test('refreshes tickers even when candle sync is skipped for an open market', async () => {
+  test('skips candle refresh during market hours without touching ticker sync', async () => {
     const { ctx, deps, candleClient, alpacaAssetService, engineCli } = createHarness({
       marketOpen: true,
       hasExistingCandles: true
@@ -126,8 +126,8 @@ describe('createCandleSyncHandler', () => {
     const handler = createCandleSyncHandler(deps);
     const result = await handler(ctx);
 
-    expect(alpacaAssetService.fetchActiveEquityAssets).toHaveBeenCalledTimes(1);
-    expect(deps.db.tickers.syncTickersFromAssets).toHaveBeenCalledTimes(1);
+    expect(alpacaAssetService.fetchActiveEquityAssets).not.toHaveBeenCalled();
+    expect(deps.db.tickers.syncTickersFromAssets).not.toHaveBeenCalled();
     expect(candleClient.updateTickerData).not.toHaveBeenCalled();
     expect(engineCli.run).toHaveBeenCalledWith('export-market-data', [], ctx.abortSignal, { jobId: 'job-1' });
     expect(result).toEqual({ message: 'Candle sync skipped while market is open' });
@@ -162,8 +162,8 @@ describe('createCandleSyncHandler', () => {
     const handler = createCandleSyncHandler(deps);
     const result = await handler(ctx);
 
-    expect(alpacaAssetService.fetchActiveEquityAssets).toHaveBeenCalledTimes(1);
-    expect(deps.db.tickers.syncTickersFromAssets).toHaveBeenCalledTimes(1);
+    expect(alpacaAssetService.fetchActiveEquityAssets).not.toHaveBeenCalled();
+    expect(deps.db.tickers.syncTickersFromAssets).not.toHaveBeenCalled();
     expect(candleClient.updateTickerData).toHaveBeenCalledTimes(2);
     expect(candleClient.updateTickerData).toHaveBeenNthCalledWith(1, 'SPY', true, ctx.abortSignal);
     expect(candleClient.updateTickerData).toHaveBeenNthCalledWith(2, 'AAA', true, ctx.abortSignal);

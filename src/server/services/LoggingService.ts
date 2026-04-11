@@ -7,6 +7,7 @@ export type LogSource =
   | 'engine-compile-job'
   | 'train-lightgbm-job'
   | 'market-data-job'
+  | 'ticker-job'
   | 'candle-job'
   | 'signal-job'
   | 'backtest-job'
@@ -357,6 +358,7 @@ export class LoggingService {
       case 'train-lightgbm-job':
       case 'engine-compile-job': return '\x1b[36m'; // Cyan
       case 'market-data-job': return '\x1b[34m'; // Blue
+      case 'ticker-job': return '\x1b[34m'; // Blue
       case 'candle-job': return '\x1b[34m'; // Blue
       case 'signal-job': return '\x1b[32m'; // Green
       case 'backtest-job': return '\x1b[33m'; // Yellow
