@@ -1,6 +1,5 @@
 import type { TemplateScoringSettingsValue } from '../database/types';
 import type { BacktestScope, StrategyPerformance } from '../types/StrategyTemplate';
-import { createDefaultSettingsValue } from '../settings/defaults';
 
 export type TemplateScoreSnapshot = {
   templateId: string;
@@ -20,8 +19,8 @@ export type TemplateVerificationMetrics = {
 };
 
 export type TemplateScoreOptions = {
+  settingsValue: TemplateScoringSettingsValue;
   verificationByTemplate?: Map<string, TemplateVerificationMetrics>;
-  settingsValue?: TemplateScoringSettingsValue;
 };
 
 export type TemplateScoreBreakdown = {
@@ -56,23 +55,6 @@ export type TemplateScoreBreakdown = {
 export type TemplateScoreResults = {
   scores: Map<string, number>;
   breakdowns: Map<string, TemplateScoreBreakdown>;
-};
-
-const DEFAULT_SETTINGS = createDefaultSettingsValue();
-export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoringSettingsValue = {
-  ...DEFAULT_SETTINGS.templateScoring
-};
-
-const resolveTemplateScoreSettings = (options: TemplateScoreOptions): TemplateScoringSettingsValue => {
-  const merged: TemplateScoringSettingsValue = {
-    ...DEFAULT_TEMPLATE_SCORE_SETTINGS,
-    ...(options.settingsValue ?? {})
-  };
-
-  return {
-    ...merged,
-    verifyMaxMultiplier: Math.max(merged.verifyMinMultiplier, merged.verifyMaxMultiplier)
-  };
 };
 
 const clampNumber = (value: number, minValue: number, maxValue: number): number => {
@@ -233,7 +215,7 @@ const computeVerificationMultiplier = (
 
 export const computeTemplateScores = async (
   snapshots: TemplateScoreSnapshot[],
-  options: TemplateScoreOptions = {}
+  options: TemplateScoreOptions
 ): Promise<Map<string, number>> => {
   const results = await computeTemplateScoreResults(snapshots, options);
   return results.scores;
@@ -259,9 +241,9 @@ type TemplateScorePeriodBreakdown = {
 
 export const computeTemplateScoreResults = async (
   snapshots: TemplateScoreSnapshot[],
-  options: TemplateScoreOptions = {}
+  options: TemplateScoreOptions
 ): Promise<TemplateScoreResults> => {
-  const templateScoreSettings = resolveTemplateScoreSettings(options);
+  const templateScoreSettings = options.settingsValue;
   const strategyMap = new Map<string, {
     templateId: string;
     periods: Map<number, {
