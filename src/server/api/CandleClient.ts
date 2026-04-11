@@ -1,4 +1,5 @@
 import { Database } from '../database/Database';
+import type { EngineSettingsValue } from '../database/types';
 import { Candle, TickerInfo } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { CandleSource } from './candleSources/CandleSource';
@@ -7,15 +8,6 @@ import { EodhdCandleSource } from './candleSources/EodhdCandleSource';
 import { TiingoCandleSource } from './candleSources/TiingoCandleSource';
 
 const PRICE_EPSILON = 1e-6;
-
-type CandleDisableSettings = {
-  tradeEntryPriceMin: number;
-  tradeEntryPriceMax: number;
-  minimumDollarVolumeForEntry: number;
-  minimumDollarVolumeLookback: number;
-  minFluctuationRatio: number;
-  maxFluctuationRatio: number;
-};
 
 export class CandleClient {
   private db: Database;
@@ -204,7 +196,7 @@ export class CandleClient {
     }
 
     const sorted = [...candles].sort((a, b) => a.date.getTime() - b.date.getTime());
-    const settings = this.loadCandleDisableSettings();
+    const settings = this.db.settings.value.engine;
     const maxWindow = Math.max(0, settings.minimumDollarVolumeLookback - 1);
     const historyLimit = useExistingHistory ? Math.max(1, maxWindow + 1) : 0;
     const firstCandleDate = sorted[0].date;
@@ -265,25 +257,12 @@ export class CandleClient {
     return results;
   }
 
-  private loadCandleDisableSettings(): CandleDisableSettings {
-    const engineSettings = this.db.settings.value.engine;
-
-    return {
-      tradeEntryPriceMin: engineSettings.tradeEntryPriceMin,
-      tradeEntryPriceMax: engineSettings.tradeEntryPriceMax,
-      minimumDollarVolumeForEntry: engineSettings.minimumDollarVolumeForEntry,
-      minimumDollarVolumeLookback: engineSettings.minimumDollarVolumeLookback,
-      minFluctuationRatio: engineSettings.minTickerFluctuationRatio,
-      maxFluctuationRatio: engineSettings.maxTickerFluctuationRatio
-    };
-  }
-
   private resolveUnadjustedPrice(candle: Candle): number {
     const price = candle.unadjustedClose ?? candle.close;
     return Number.isFinite(price) ? price : Number.NaN;
   }
 
-  private isPriceWithinBounds(price: number, settings: CandleDisableSettings): boolean {
+  private isPriceWithinBounds(price: number, settings: EngineSettingsValue): boolean {
     if (!Number.isFinite(price)) {
       return false;
     }
@@ -300,7 +279,7 @@ export class CandleClient {
   private hasMinimumDollarVolume(
     volumeWindow: number[],
     currentUsdVolume: number,
-    settings: CandleDisableSettings
+    settings: EngineSettingsValue
   ): boolean {
     if (settings.minimumDollarVolumeForEntry <= 0 || settings.minimumDollarVolumeLookback <= 0) {
       return true;
@@ -317,11 +296,14 @@ export class CandleClient {
     return currentUsdVolume + PRICE_EPSILON >= settings.minimumDollarVolumeForEntry;
   }
 
-  private isFluctuationWithinBounds(maxFluctuation: number, settings: CandleDisableSettings): boolean {
+  private isFluctuationWithinBounds(maxFluctuation: number, settings: EngineSettingsValue): boolean {
     if (!Number.isFinite(maxFluctuation)) {
       return false;
     }
-    return maxFluctuation >= settings.minFluctuationRatio && maxFluctuation <= settings.maxFluctuationRatio;
+    return (
+      maxFluctuation >= settings.minTickerFluctuationRatio &&
+      maxFluctuation <= settings.maxTickerFluctuationRatio
+    );
   }
 
   private async updateTickerVolumeFromLastCandle(symbol: string): Promise<void> {
