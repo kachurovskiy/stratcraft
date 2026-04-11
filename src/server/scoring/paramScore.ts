@@ -1,5 +1,5 @@
 import type { QueryResultRow } from 'pg';
-import type { SettingsValue } from '../database/types';
+import type { ParamScoringSettingsValue } from '../database/types';
 import { createDefaultSettingsValue } from '../settings/defaults';
 
 export type BacktestCacheRow = QueryResultRow & {
@@ -90,26 +90,21 @@ export type ScoreBacktestParametersSummary = {
 
 type ParameterScaleMap = Map<string, number>;
 
-export type ParamScoreSettings = {
-  minTrades: number;
-  drawdownLambda: number;
-  neighborThreshold: number;
-  coreScoreQuantile: number;
-  pairwiseNeighborLimit: number;
-  stabilityGamma: number;
-};
-
 export type ParamScoreOptions = {
-  settingsRepo?: { value: Pick<SettingsValue, 'paramScoring'> };
+  settingsValue?: ParamScoringSettingsValue;
 };
 
 const PERCENTILE_TOLERANCE = 1e-12;
 const CORE_SCORE_EPSILON = 1e-9;
 const DEFAULT_SETTINGS = createDefaultSettingsValue();
-export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoreSettings = {
-  ...DEFAULT_SETTINGS.paramScoring,
-  stabilityGamma: 2
+export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoringSettingsValue = {
+  ...DEFAULT_SETTINGS.paramScoring
 };
+
+const resolveParamScoreSettings = (options: ParamScoreOptions): ParamScoringSettingsValue => ({
+  ...DEFAULT_PARAM_SCORE_SETTINGS,
+  ...(options.settingsValue ?? {})
+});
 
 const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'maxLeverage', 'ticker']);
 
@@ -117,10 +112,7 @@ export const scoreBacktestParameters = async (
   rows: BacktestCacheRow[],
   options: ParamScoreOptions = {}
 ): Promise<ScoreBacktestParametersSummary> => {
-  const scoreSettings: ParamScoreSettings = {
-    ...DEFAULT_PARAM_SCORE_SETTINGS,
-    ...(options.settingsRepo?.value.paramScoring ?? {})
-  };
+  const scoreSettings = resolveParamScoreSettings(options);
   const availabilityById = new Map<string, ScoreAvailabilityResult>();
   const availabilityByRow = new Map<BacktestCacheRow, ScoreAvailabilityResult>();
   const candidates: NormalizedCandidate[] = [];
@@ -250,7 +242,7 @@ type CandidateEvaluationResult = {
 
 const evaluateCandidateRow = (
   row: BacktestCacheRow,
-  scoreSettings: ParamScoreSettings
+  scoreSettings: ParamScoringSettingsValue
 ): CandidateEvaluationResult => {
   const fail = (reasonCode: ScoreAvailabilityReasonCode, reason: string): CandidateEvaluationResult => ({
     candidate: null,
@@ -404,7 +396,7 @@ const computeBalancePenalty = (
 
 const applyStabilityScores = (
   candidates: ScoredCandidate[],
-  scoreSettings: ParamScoreSettings
+  scoreSettings: ParamScoringSettingsValue
 ): void => {
   const scaleMap = computeParameterScales(candidates);
   const qualityValues = candidates.map(candidate => candidate.coreScore * candidate.ddPenalty);

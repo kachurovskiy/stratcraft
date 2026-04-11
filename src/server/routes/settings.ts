@@ -770,6 +770,15 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     min: '1'
   },
   {
+    key: SETTING_KEYS.PARAM_SCORE_STABILITY_GAMMA,
+    group: 'param-scoring',
+    label: 'Param Score Stability Gamma',
+    description: 'Exponent applied to stability before final scoring. Increase to reward stable neighborhoods more; set to 0 to ignore stability.',
+    placeholder: '2',
+    inputType: 'number',
+    min: '0'
+  },
+  {
     key: SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE,
     group: 'template-scoring',
     label: 'Template Return Scale',

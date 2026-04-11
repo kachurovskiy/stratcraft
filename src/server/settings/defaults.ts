@@ -110,7 +110,8 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     drawdownLambda: 3.5,
     neighborThreshold: 0.15,
     coreScoreQuantile: 0.6,
-    pairwiseNeighborLimit: 1500
+    pairwiseNeighborLimit: 1500,
+    stabilityGamma: 2
   },
   templateScoring: {
     returnScale: 0.2,

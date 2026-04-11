@@ -476,6 +476,11 @@ export class SettingsRepo {
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT],
         defaults.paramScoring.pairwiseNeighborLimit,
         { min: 1, integer: true }
+      ),
+      stabilityGamma: this.parseNumber(
+        this.rawSettings[SETTING_KEYS.PARAM_SCORE_STABILITY_GAMMA],
+        defaults.paramScoring.stabilityGamma,
+        { min: 0, clamp: true }
       )
     };
   }

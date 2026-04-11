@@ -155,6 +155,7 @@ export interface ParamScoringSettingsValue {
   neighborThreshold: number;
   coreScoreQuantile: number;
   pairwiseNeighborLimit: number;
+  stabilityGamma: number;
 }
 
 export interface TemplateScoringSettingsValue {
