@@ -14,7 +14,7 @@ const normalizeInitialCapital = (rawValue: unknown, fallback: number): number =>
   return parsed;
 };
 
-export const resolveBacktestInitialCapitalSetting = (rawValue: string | null): number =>
+export const resolveBacktestInitialCapitalSetting = (rawValue: unknown): number =>
   normalizeInitialCapital(rawValue, DEFAULT_BACKTEST_INITIAL_CAPITAL);
 
 export const resolveStrategyInitialCapital = (

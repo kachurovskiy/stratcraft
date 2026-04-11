@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { Database } from '../database/Database';
 import { LoggingService, LogSource } from './LoggingService';
-import { SETTING_KEYS } from '../constants';
 import { normalizeUppercaseString } from '../utils/stringNormalization';
 
 const ASSET_SOURCE: LogSource = 'candle-job';
@@ -46,11 +45,13 @@ export class AlpacaAssetService {
 
   async fetchMarketClock(abortSignal?: AbortSignal): Promise<AlpacaMarketClock> {
     try {
-      const [baseUrl, apiKey, apiSecret] = await Promise.all([
-        this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_PAPER_URL),
-        this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_KEY),
-        this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_SECRET)
-      ]);
+      const alpacaSettings = this.db.settings.value.alpaca;
+      const baseUrl = alpacaSettings.paperUrl;
+      if (!baseUrl) throw new Error('ALPACA_PAPER_URL is missing or empty.');
+      const apiKey = alpacaSettings.apiKey;
+      if (!apiKey) throw new Error('ALPACA_API_KEY is missing or empty.');
+      const apiSecret = alpacaSettings.apiSecret;
+      if (!apiSecret) throw new Error('ALPACA_API_SECRET is missing or empty.');
 
       const url = `${baseUrl.replace(/\/+$/, '')}/clock`;
       const response = await axios.get<AlpacaClockResponse>(url, {
@@ -95,18 +96,15 @@ export class AlpacaAssetService {
 
   async fetchActiveEquityAssets(): Promise<AlpacaAssetSummary[]> {
     try {
-      const [
-        baseUrl,
-        apiKey,
-        apiSecret,
-        ignoredTickers
-      ] = await Promise.all([
-        this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_PAPER_URL),
-        this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_KEY),
-        this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_SECRET),
-        this.db.settings.getSettingArray(SETTING_KEYS.IGNORED_TICKERS)
-      ]);
-      const url = `${baseUrl}/assets`;
+      const alpacaSettings = this.db.settings.value.alpaca;
+      const baseUrl = alpacaSettings.paperUrl;
+      if (!baseUrl) throw new Error('ALPACA_PAPER_URL is missing or empty.');
+      const apiKey = alpacaSettings.apiKey;
+      if (!apiKey) throw new Error('ALPACA_API_KEY is missing or empty.');
+      const apiSecret = alpacaSettings.apiSecret;
+      if (!apiSecret) throw new Error('ALPACA_API_SECRET is missing or empty.');
+      const ignoredTickers = this.db.settings.value.tickerRules.ignoredTickers;
+      const url = `${baseUrl.replace(/\/+$/, '')}/assets`;
       const ignoredSet = new Set(ignoredTickers);
       const response = await axios.get<AlpacaAssetResponse[]>(url, {
         headers: {

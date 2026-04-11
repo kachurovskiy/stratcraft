@@ -1,8 +1,6 @@
 import { Database } from '../database/Database';
 import { Candle, TickerInfo } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
-import { SETTING_KEYS } from '../constants';
-import { normalizeUppercaseString } from '../utils/stringNormalization';
 import { CandleSource } from './candleSources/CandleSource';
 import { AlpacaCandleSource } from './candleSources/AlpacaCandleSource';
 import { EodhdCandleSource } from './candleSources/EodhdCandleSource';
@@ -385,14 +383,7 @@ export class CandleClient {
   }
 
   private async getCandleSource(): Promise<CandleSource> {
-    const providerRaw = await this.db.settings.getSettingValue(SETTING_KEYS.CANDLE_DATA_PROVIDER);
-    const normalizedProvider = normalizeUppercaseString(providerRaw);
-    const provider =
-      normalizedProvider === 'TIINGO'
-        ? 'TIINGO'
-        : normalizedProvider === 'ALPACA'
-          ? 'ALPACA'
-          : 'EODHD';
+    const provider = this.db.settings.value.dataProvider.candleDataProvider;
 
     if (this.candleSource && this.candleSourceName === provider) {
       return this.candleSource;
@@ -403,16 +394,6 @@ export class CandleClient {
     } else if (provider === 'TIINGO') {
       this.candleSource = new TiingoCandleSource(this.db, this.loggingService);
     } else {
-      if (
-        normalizedProvider &&
-        normalizedProvider !== 'EODHD' &&
-        normalizedProvider !== 'TIINGO' &&
-        normalizedProvider !== 'ALPACA'
-      ) {
-        this.loggingService.warn('candle-job', 'Unknown candle data provider; defaulting to EODHD', {
-          provider: normalizedProvider
-        });
-      }
       this.candleSource = new EodhdCandleSource(this.db, this.loggingService);
     }
 

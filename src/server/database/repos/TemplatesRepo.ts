@@ -1,5 +1,4 @@
 import type { PoolClient, QueryResultRow } from 'pg';
-import { SETTING_KEYS } from '../../constants';
 import type { StrategyTemplate } from '../../types/StrategyTemplate';
 import { DbClient } from '../core/DbClient';
 import { SettingsRepo } from './SettingsRepo';
@@ -54,20 +53,13 @@ export class TemplatesRepo {
     };
   }
 
-  private async getLocalOptimizationVersionTarget(): Promise<number> {
-    const rawValue = await this.settings.getSettingValue(SETTING_KEYS.LOCAL_OPTIMIZATION_VERSION);
-    const parsed = rawValue !== null ? Number(rawValue) : NaN;
-    if (!Number.isFinite(parsed)) {
-      if (rawValue !== null) {
-        console.warn('LOCAL_OPTIMIZATION_VERSION setting must be numeric.');
-      }
-      return 0;
-    }
-    return Math.max(0, Math.trunc(parsed));
+  private getLocalOptimizationVersionTarget(): number {
+    const value = this.settings.value.optimizer.localOptimizationVersion;
+    return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
   }
 
   async getTemplateNeedingLocalOptimization(): Promise<StrategyTemplate | null> {
-    const targetLocalOptimizationVersion = await this.getLocalOptimizationVersionTarget();
+    const targetLocalOptimizationVersion = this.getLocalOptimizationVersionTarget();
     const row = await this.db.get<TemplateRow>(
       `
       WITH latest_results AS (

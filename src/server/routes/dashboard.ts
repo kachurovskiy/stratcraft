@@ -1,7 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { AccountSnapshot } from '../types/Account';
 import { BacktestScope, Strategy, TickerInfo } from '../types/StrategyTemplate';
-import { SETTING_KEYS } from '../constants';
 import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel } from './utils';
 
@@ -39,14 +38,12 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const [
       strategiesWithPerformance,
-      rawAccounts,
-      rawBacktestInitialCapital
+      rawAccounts
     ] = await Promise.all([
       fetchStrategiesWithPerformance(req, userId, selectedBacktestPeriodMonths ?? undefined, 'validation'),
-      req.db.accounts.getAccountsForUser(userId),
-      req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_INITIAL_CAPITAL)
+      req.db.accounts.getAccountsForUser(userId)
     ]);
-    const backtestInitialCapital = resolveBacktestInitialCapitalSetting(rawBacktestInitialCapital);
+    const backtestInitialCapital = resolveBacktestInitialCapitalSetting(req.db.settings.value.engine.backtestInitialCapital);
 
     const strategies = strategiesWithPerformance.filter((strategy: Strategy) => {
       const performance = strategy.performance;

@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { Database } from '../../database/Database';
 import { LoggingService } from '../../services/LoggingService';
-import { SETTING_KEYS } from '../../constants';
 import { CandleSource, CandleSourceResult } from './CandleSource';
 import { RequestParams, formatDate, requestWithRetry, sanitizeParams } from './candleSourceUtils';
 
@@ -44,7 +43,8 @@ export class AlpacaCandleSource implements CandleSource {
     endDate: Date,
     abortSignal?: AbortSignal
   ): Promise<CandleSourceResult> {
-    const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_DATA_BASE_URL);
+    const baseUrl = this.db.settings.value.alpaca.dataBaseUrl;
+    if (!baseUrl) throw new Error('ALPACA_DATA_BASE_URL is missing or empty.');
     const trimmedBase = baseUrl.replace(/\/+$/, '');
     const baseWithStocks = trimmedBase.endsWith('/v2/stocks')
       ? trimmedBase
@@ -115,15 +115,18 @@ export class AlpacaCandleSource implements CandleSource {
     symbol?: string,
     abortSignal?: AbortSignal
   ): Promise<{ data: T; noData: boolean }> {
-    const apiKey = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_KEY);
-    const apiSecret = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_API_SECRET);
+    const apiKey = this.db.settings.value.alpaca.apiKey;
+    if (!apiKey) throw new Error('ALPACA_API_KEY is missing or empty.');
+    const apiSecret = this.db.settings.value.alpaca.apiSecret;
+    if (!apiSecret) throw new Error('ALPACA_API_SECRET is missing or empty.');
     const headers = {
       'Content-Type': 'application/json',
       'APCA-API-KEY-ID': apiKey,
       'APCA-API-SECRET-KEY': apiSecret
     };
+    const waitSeconds = this.db.settings.value.alpaca.dataRateLimitWaitSeconds;
 
-    const requestWithParams = (requestParams: RequestParams) => requestWithRetry<T>(this.db, this.loggingService, {
+    const requestWithParams = (requestParams: RequestParams) => requestWithRetry<T>(this.loggingService, {
       url,
       request: () => axios.get(url, {
         headers,
@@ -134,7 +137,7 @@ export class AlpacaCandleSource implements CandleSource {
       logParams: requestParams,
       symbol,
       sourceLabel: 'Alpaca',
-      waitSecondsSettingKey: SETTING_KEYS.ALPACA_DATA_RATE_LIMIT_WAIT_SECONDS,
+      waitSeconds,
       abortSignal
     });
 

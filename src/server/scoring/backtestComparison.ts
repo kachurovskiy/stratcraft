@@ -1025,14 +1025,14 @@ const loadExpenseRatioMap = async (db: Database, tickers: string[]): Promise<Map
   return expenseMap;
 };
 
-const parseSettingNumber = (raw: string | null, fallback: number | null): number | null => {
-  if (typeof raw === 'string' && raw.trim().length > 0) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return fallback;
+const parseSettingNumber = (raw: unknown, fallback: number | null): number | null => {
+  const parsed =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim().length > 0
+        ? Number(raw)
+        : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : fallback;
 };
 
 const pickLatestBacktest = (
@@ -1092,16 +1092,17 @@ export const buildBacktestComparisonView = async ({
     };
   }
 
-  const [slippageRaw, penetrationRaw, engineTradesRaw, liveTradesRaw, strategy] = await Promise.all([
-    db.settings.getSettingValue(SETTING_KEYS.TRADE_SLIPPAGE_RATE),
-    db.settings.getSettingValue(SETTING_KEYS.LIMIT_BUY_PENETRATION_RATIO),
+  const [engineTradesRaw, liveTradesRaw, strategy] = await Promise.all([
     db.trades.getTrades(strategyId, undefined, undefined, undefined, undefined, engineBacktest!.id, userId),
     db.trades.getTrades(strategyId, undefined, undefined, undefined, undefined, liveBacktest!.id, userId),
     db.strategies.getStrategy(strategyId, userId)
   ]);
 
-  const slippageSetting = parseSettingNumber(slippageRaw, SLIPPAGE_DEFAULT);
-  const penetrationSetting = parseSettingNumber(penetrationRaw, PENETRATION_DEFAULT);
+  const slippageSetting = parseSettingNumber(db.settings.value.engine.tradeSlippageRate, SLIPPAGE_DEFAULT);
+  const penetrationSetting = parseSettingNumber(
+    db.settings.value.engine.limitBuyPenetrationRatio,
+    PENETRATION_DEFAULT
+  );
   const engineTrades = engineTradesRaw.filter(isEntryTrade);
   const liveTrades = liveTradesRaw.filter(isEntryTrade);
   const engineCancelledTrades = engineTradesRaw.filter(isCancelledTrade);

@@ -1,11 +1,11 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { MtlsAccessBundleEmailError } from '../services/MtlsLockdownService';
-import { SETTING_KEYS } from '../constants';
 
 const router = express.Router();
 
-const normalizeInviteLinkDays = (rawValue: string | null): number => {
-  return Number(rawValue) || 7;
+const normalizeInviteLinkDays = (rawValue: unknown): number => {
+  const parsed = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 7;
 };
 
 // Admin users
@@ -15,12 +15,12 @@ router.get('/users', (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAdmin(req, res, next);
 }, async (req: Request, res: Response) => {
   try {
-    const [allUsers, inviteLinkDays, activeSessions, clientCertLockdown] = await Promise.all([
+    const [allUsers, activeSessions, clientCertLockdown] = await Promise.all([
       req.authService.getAllUsers(),
-      req.db.settings.getSettingValue(SETTING_KEYS.INVITE_LINK_VALID_DAYS).then(normalizeInviteLinkDays),
       req.db.users.listActiveUserSessions(),
       req.mtlsLockdownService.getLockdownState()
     ]);
+    const inviteLinkDays = normalizeInviteLinkDays(req.db.settings.value.userAccess.inviteLinkValidDays);
 
     const sessionsByUserId = new Map<number, typeof activeSessions>();
     for (const session of activeSessions) {
@@ -234,9 +234,7 @@ router.post('/invite-user', (req: Request, res: Response, next: NextFunction) =>
       return res.redirect('/admin/users?error=Email is required');
     }
 
-    const inviteLinkDays = normalizeInviteLinkDays(
-      await req.db.settings.getSettingValue(SETTING_KEYS.INVITE_LINK_VALID_DAYS)
-    );
+    const inviteLinkDays = normalizeInviteLinkDays(req.db.settings.value.userAccess.inviteLinkValidDays);
     const host = req.get('host');
     if (!host) {
       return res.redirect('/admin/users?error=Unable to determine host for invite link');

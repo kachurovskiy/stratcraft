@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 import { Database } from '../database/Database';
-import { normalizeMtlsAccessCertPassword, SETTING_KEYS } from '../constants';
+import { normalizeMtlsAccessCertPassword } from '../constants';
 import { LoggingService } from './LoggingService';
 import { isLocalDomain, resolveAppBaseUrl, resolveAppDomain, resolveFromEmail, resolveSiteName } from '../utils/appUrl';
 import {
@@ -122,8 +122,7 @@ export class EmailService {
     if (!domain) {
       throw new AppDomainMissingError();
     }
-    const apiKey = await this.db.settings.getSettingValue(SETTING_KEYS.RESEND_API_KEY);
-    const normalizedKey = apiKey?.trim() ?? '';
+    const normalizedKey = this.db.settings.value.email.resendApiKey;
     if (!normalizedKey) {
       throw new ResendApiKeyMissingError();
     }
@@ -483,8 +482,7 @@ export class EmailService {
     certificateBundle: Buffer;
   }): Promise<{ sent: number; adminCount: number; }> {
     const context = await this.resolveSendContextRequired();
-    const rawPassword = await this.db.settings.getSettingValue(SETTING_KEYS.MTLS_ACCESS_CERT_PASSWORD);
-    const p12Password = normalizeMtlsAccessCertPassword(rawPassword);
+    const p12Password = normalizeMtlsAccessCertPassword(this.db.settings.value.userAccess.mtlsAccessCertPassword);
 
     const allUsers = await this.db.users.listUsers('ASC');
     const uniqueByEmail = new Map<string, { email: string; isAdmin: boolean }>();
@@ -550,8 +548,7 @@ export class EmailService {
   private async sendEmailWithKey(fromEmail: string, apiKey: string, options: EmailOptions): Promise<void> {
     let subject = options.subject;
     try {
-      const rawEmoji = await this.db.settings.getSettingValue(SETTING_KEYS.EMAIL_SECURITY_EMOJI);
-      const emoji = typeof rawEmoji === 'string' ? rawEmoji.trim() : '';
+      const emoji = this.db.settings.value.email.emailSecurityEmoji;
       const emojiPrefix = emoji.length > 0 ? `${emoji} ` : '';
       subject = emojiPrefix && !options.subject.startsWith(emojiPrefix)
         ? `${emojiPrefix} ${options.subject}`
@@ -613,8 +610,7 @@ export class EmailService {
       );
     }
 
-    const rawPassword = await this.db.settings.getSettingValue(SETTING_KEYS.MTLS_ACCESS_CERT_PASSWORD);
-    const p12Password = normalizeMtlsAccessCertPassword(rawPassword);
+    const p12Password = normalizeMtlsAccessCertPassword(this.db.settings.value.userAccess.mtlsAccessCertPassword);
     return { certificateBundle: await mtlsService.readClientCertificateBundle(), p12Password };
   }
 
@@ -679,8 +675,7 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
       this.loggingService.warn('system', 'Skipping email send; app domain not configured', {});
       return null;
     }
-    const apiKey = await this.db.settings.getSettingValue(SETTING_KEYS.RESEND_API_KEY);
-    const normalizedKey = apiKey?.trim() ?? '';
+    const normalizedKey = this.db.settings.value.email.resendApiKey;
     if (!normalizedKey) {
       this.loggingService.warn('system', 'Skipping email send; Resend API key missing', {});
       return null;
@@ -706,8 +701,7 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
       throw new AppDomainMissingError();
     }
 
-    const apiKey = await this.db.settings.getSettingValue(SETTING_KEYS.RESEND_API_KEY);
-    const normalizedKey = apiKey?.trim() ?? '';
+    const normalizedKey = this.db.settings.value.email.resendApiKey;
     if (!normalizedKey) {
       throw new ResendApiKeyMissingError();
     }

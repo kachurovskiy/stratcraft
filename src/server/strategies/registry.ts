@@ -117,8 +117,7 @@ export class StrategyRegistry {
       if (!appBaseUrl) {
         return null;
       }
-      const rawSecret = await this.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_API_SECRET);
-      const secret = typeof rawSecret === 'string' ? rawSecret.trim() : '';
+      const secret = this.db.settings.value.optimizer.backtestApiSecret;
       const headers: Record<string, string> = {};
       if (secret) {
         headers['x-backtest-secret'] = secret;

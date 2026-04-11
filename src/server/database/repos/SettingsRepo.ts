@@ -17,14 +17,10 @@ import { normalizeUppercaseString, normalizeUppercaseStrings } from '../../utils
 import { DbClient } from '../core/DbClient';
 import type { SettingsCandleDataProvider, SettingsOptimizationObjective, SettingsValue } from '../types';
 
-const SETTINGS_CACHE_TTL_MS = 1_000;
 const KNOWN_SETTING_KEYS = new Set<SettingKey>(SETTING_KEY_LIST);
 const DEFAULT_CANDLE_DATA_PROVIDER: SettingsCandleDataProvider = 'TIINGO';
 const DEFAULT_OPTIMIZATION_OBJECTIVE: SettingsOptimizationObjective = 'SHARPE';
 
-type CachedSetting = { value: string | null; loadedAt: number };
-
-type SettingValueRow = QueryResultRow & { value: string | null };
 type SettingRow = QueryResultRow & { setting_key: string; value: string | null };
 
 const createEmptySettingsRecord = (): Record<SettingKey, string | null> => {
@@ -162,7 +158,6 @@ const createDefaultSettingsValue = (): SettingsValue => ({
 });
 
 export class SettingsRepo {
-  private cache = new Map<string, CachedSetting>();
   private rawSettings = createEmptySettingsRecord();
   private valueInitialized = false;
 
@@ -177,22 +172,6 @@ export class SettingsRepo {
 
     await this.getSettingsByKeys(SETTING_KEY_LIST);
     this.valueInitialized = true;
-  }
-
-  private readFromCache(settingKey: string): string | null | undefined {
-    const cached = this.cache.get(settingKey);
-    if (!cached) {
-      return undefined;
-    }
-    if (Date.now() - cached.loadedAt > SETTINGS_CACHE_TTL_MS) {
-      this.cache.delete(settingKey);
-      return undefined;
-    }
-    return cached.value;
-  }
-
-  private cacheValue(settingKey: string, value: string | null): void {
-    this.cache.set(settingKey, { value, loadedAt: Date.now() });
   }
 
   private isKnownSettingKey(settingKey: string): settingKey is SettingKey {
@@ -670,7 +649,7 @@ export class SettingsRepo {
   }
 
   private parseString(rawValue: string | null | undefined, fallback: string): string {
-    return typeof rawValue === 'string' ? rawValue : fallback;
+    return typeof rawValue === 'string' ? rawValue.trim() : fallback;
   }
 
   private parseBoolean(rawValue: string | null | undefined, fallback: boolean): boolean {
@@ -770,42 +749,6 @@ export class SettingsRepo {
     return DEFAULT_OPTIMIZATION_OBJECTIVE;
   }
 
-  async getSettingValue(settingKey: string): Promise<string | null> {
-    if (!settingKey || typeof settingKey !== 'string') {
-      throw new Error('settingKey is required for getSettingValue');
-    }
-
-    const cached = this.readFromCache(settingKey);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const row = await this.db.get<SettingValueRow>(
-      'SELECT value FROM settings WHERE setting_key = ?',
-      [settingKey]
-    );
-    const rawValue = typeof row?.value === 'string' ? row.value : null;
-    const value = rawValue && isSensitiveSettingKey(settingKey) ? decryptValue(rawValue) : rawValue;
-    this.cacheValue(settingKey, value ?? null);
-    if (this.isKnownSettingKey(settingKey)) {
-      this.applyKnownSettings({ [settingKey]: value ?? null });
-    }
-    return value ?? null;
-  }
-
-  async getRequiredSettingValue(settingKey: string): Promise<string> {
-    const value = await this.getSettingValue(settingKey);
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-    throw new Error(`Required setting "${settingKey}" is missing or empty.`);
-  }
-
-  async getSettingArray(settingKey: string): Promise<string[]> {
-    const rawValue = await this.getSettingValue(settingKey);
-    return this.parseSettingArrayValue(rawValue);
-  }
-
   async getSettingsByKeys(settingKeys: SettingKey[]): Promise<Record<string, string | null>> {
     if (!Array.isArray(settingKeys) || settingKeys.length === 0) {
       return {};
@@ -836,7 +779,7 @@ export class SettingsRepo {
           : row.value === null || row.value === undefined
             ? null
             : String(row.value);
-      const value = rawValue && isSensitiveSettingKey(key) ? decryptValue(rawValue) : rawValue;
+      const value = rawValue && isSensitiveSettingKey(key) ? decryptValue(rawValue).trim() : rawValue?.trim() ?? null;
       result[key] = value ?? null;
       if (this.isKnownSettingKey(key)) {
         knownSettings[key] = value ?? null;
@@ -857,7 +800,7 @@ export class SettingsRepo {
 
     await this.db.withTransaction(async (client: PoolClient) => {
       for (const [key, rawValue] of entries) {
-        const value = typeof rawValue === 'string' ? rawValue : String(rawValue ?? '');
+        const value = (typeof rawValue === 'string' ? rawValue : String(rawValue ?? '')).trim();
         const storedValue = isSensitiveSettingKey(key) && value.length > 0 ? encryptValue(value) : value;
         await this.db.run(
           `
@@ -874,8 +817,7 @@ export class SettingsRepo {
 
     const knownSettings: Partial<Record<SettingKey, string | null>> = {};
     for (const [key, rawValue] of entries) {
-      const value = typeof rawValue === 'string' ? rawValue : String(rawValue ?? '');
-      this.cacheValue(key, value);
+      const value = (typeof rawValue === 'string' ? rawValue : String(rawValue ?? '')).trim();
       if (this.isKnownSettingKey(key)) {
         knownSettings[key] = value;
       }

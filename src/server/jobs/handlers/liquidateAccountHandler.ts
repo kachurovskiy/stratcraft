@@ -89,10 +89,10 @@ export function createLiquidateAccountHandler(deps: JobHandlerDependencies): Job
     }
 
     const discountPercent = normalizeLiquidationDiscountPercent(
-      await deps.db.settings.getSettingValue(SETTING_KEYS.ACCOUNT_LIQUIDATION_DISCOUNT_PERCENT)
+      deps.db.settings.value.alpaca.accountLiquidationDiscountPercent
     );
     const deviationBandPercent = normalizeDeviationBandPercent(
-      await deps.db.settings.getSettingValue(SETTING_KEYS.ACCOUNT_LIQUIDATION_DEVIATION_BAND_PERCENT)
+      deps.db.settings.value.alpaca.accountLiquidationDeviationBandPercent
     );
     const dryRun = Boolean(ctx.job.metadata?.dryRun);
 

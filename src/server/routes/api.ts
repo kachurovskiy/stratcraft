@@ -1,7 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { timingSafeEqual } from 'crypto';
 import { TemplateParams } from '../types/Express';
-import { SETTING_KEYS } from '../constants';
 const router = express.Router();
 
 const BACKTEST_SECRET_HEADER = 'x-backtest-secret';
@@ -25,8 +24,7 @@ const secretsMatch = (provided: string, expected: string): boolean => {
 
 const requireBacktestSecret = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const rawSecret = await req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_API_SECRET);
-    const expectedSecret = typeof rawSecret === 'string' ? rawSecret.trim() : '';
+    const expectedSecret = req.db.settings.value.optimizer.backtestApiSecret;
     if (!expectedSecret) {
       return res.status(503).json({ error: 'Backtest API secret is not configured' });
     }

@@ -215,7 +215,7 @@ export class AlpacaAccountConnector implements AccountConnector {
       );
     }
 
-    const marketOrderPriceCapRatio = await this.resolveMarketOrderPriceCapRatio();
+    const marketOrderPriceCapRatio = this.resolveMarketOrderPriceCapRatio();
     const payload = this.buildAlpacaOrderPayload(operation, ticker, marketOrderPriceCapRatio);
 
     if (operation.operationType === 'update_stop_loss') {
@@ -515,20 +515,18 @@ export class AlpacaAccountConnector implements AccountConnector {
   private async getBaseUrl(environment: AccountEnvironment): Promise<string> {
     const normalized = typeof environment === 'string' ? environment.trim().toLowerCase() : '';
     const isLive = normalized === 'live';
-    const settingKey = isLive ? SETTING_KEYS.ALPACA_LIVE_URL : SETTING_KEYS.ALPACA_PAPER_URL;
-    const configured = await this.db.settings.getRequiredSettingValue(settingKey);
-    return configured.trim();
+    const configured = isLive
+      ? this.db.settings.value.alpaca.liveUrl
+      : this.db.settings.value.alpaca.paperUrl;
+    const baseUrl = configured;
+    if (!baseUrl) throw new Error(isLive ? 'ALPACA_LIVE_URL is missing or empty.' : 'ALPACA_PAPER_URL is missing or empty.');
+    return baseUrl;
   }
 
-  private async resolveMarketOrderPriceCapRatio(): Promise<number> {
-    const rawValue = await this.db.settings.getSettingValue(SETTING_KEYS.MARKET_ORDER_PRICE_CAP_RATIO);
-    const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
-    if (!trimmed) {
-      return DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO;
-    }
-    const parsed = Number(trimmed);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      return parsed;
+  private resolveMarketOrderPriceCapRatio(): number {
+    const value = this.db.settings.value.alpaca.marketOrderPriceCapRatio;
+    if (Number.isFinite(value) && value >= 0) {
+      return value;
     }
     return DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO;
   }
@@ -541,7 +539,8 @@ export class AlpacaAccountConnector implements AccountConnector {
   }
 
   private async getMarketDataBaseUrl(): Promise<string> {
-    const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.ALPACA_DATA_BASE_URL);
+    const baseUrl = this.db.settings.value.alpaca.dataBaseUrl;
+    if (!baseUrl) throw new Error('ALPACA_DATA_BASE_URL is missing or empty.');
     const trimmedBase = baseUrl.replace(/\/+$/, '');
     if (trimmedBase.endsWith('/v2/stocks')) {
       return trimmedBase;

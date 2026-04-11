@@ -1,5 +1,4 @@
 import type { AxiosResponse } from 'axios';
-import { Database } from '../../database/Database';
 import { LoggingService } from '../../services/LoggingService';
 
 export type RequestParams = Record<string, string | number | undefined>;
@@ -10,7 +9,7 @@ type RequestWithRetryOptions<T> = {
   logParams?: RequestParams;
   symbol?: string;
   sourceLabel: string;
-  waitSecondsSettingKey: string;
+  waitSeconds: number;
   redactKeys?: string[];
   abortSignal?: AbortSignal;
 };
@@ -59,7 +58,6 @@ function extractResponseText(data: unknown, maxLength: number = MAX_RESPONSE_TEX
 }
 
 export async function requestWithRetry<T>(
-  db: Database,
   loggingService: LoggingService,
   options: RequestWithRetryOptions<T>
 ): Promise<{ data: T; noData: boolean }> {
@@ -69,7 +67,7 @@ export async function requestWithRetry<T>(
     logParams = {},
     symbol,
     sourceLabel,
-    waitSecondsSettingKey,
+    waitSeconds,
     redactKeys = [],
     abortSignal
   } = options;
@@ -90,7 +88,6 @@ export async function requestWithRetry<T>(
       const responseText = error.response?.data
         ? (typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data))
         : undefined;
-      const waitSeconds = Number(await db.settings.getSettingValue(waitSecondsSettingKey));
       loggingService.warn('candle-job', `${sourceLabel} API rate limit exceeded, waiting ${waitSeconds} seconds...`, {
         url,
         params: sanitizedParams,
@@ -98,7 +95,7 @@ export async function requestWithRetry<T>(
         response_text: responseText
       });
       await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
-      return requestWithRetry(db, loggingService, options);
+      return requestWithRetry(loggingService, options);
     }
 
     if (status === 404) {

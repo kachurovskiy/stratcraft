@@ -72,16 +72,16 @@ const createLoggingService = (): LoggingService => ({
 
 const createDb = (candlesByTicker: Record<string, Candle[]>): Database => ({
   settings: {
-    getSettingValue: jest.fn().mockImplementation(async (key: string) => {
-      if (key === 'RESEND_API_KEY') {
-        return 're_test_key';
+    value: {
+      app: {
+        domain: 'example.com',
+        siteName: 'StratCraft'
+      },
+      email: {
+        emailSecurityEmoji: '',
+        resendApiKey: 're_test_key'
       }
-      if (key === 'DOMAIN') {
-        return 'example.com';
-      }
-      return null;
-    }),
-    getRequiredSettingValue: jest.fn().mockResolvedValue('re_test_key')
+    }
   },
   candles: buildCandlesRepo(candlesByTicker)
 } as unknown as Database);

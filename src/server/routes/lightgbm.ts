@@ -141,10 +141,8 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
     const usedLightgbmNames = new Set(lightgbmModels.map(model => model.name.toLowerCase()));
     const defaultLightgbmModelName = pickDefaultLightgbmModelName(buildLightgbmModelName(), usedLightgbmNames);
 
-    const [trainingStartDate, trainingEndDate] = await Promise.all([
-      req.db.settings.getSettingValue('LIGHTGBM_TRAINING_START_DATE'),
-      req.db.settings.getSettingValue('LIGHTGBM_TRAINING_END_DATE')
-    ]);
+    const trainingStartDate = req.db.settings.value.optimizer.lightgbmTrainingStartDate;
+    const trainingEndDate = req.db.settings.value.optimizer.lightgbmTrainingEndDate;
 
     const tickers = await req.db.tickers.getTickers();
     const trainingTickerCount = tickers.filter(ticker => ticker.training).length;

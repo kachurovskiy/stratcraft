@@ -1213,7 +1213,6 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       recentSignals,
       signalLineCounts,
       signalConfidenceMaxByDay,
-      rawBacktestInitialCapital,
       rawStrategyLogs
     ] = await Promise.all([
       req.db.backtestResults.getBacktestResults(strategyId, 'all'),
@@ -1222,7 +1221,6 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       req.db.signals.getSignalsForStrategy(strategyId),
       req.db.signals.getSignalLineCountsByDay(strategyId, 3),
       req.db.signals.getSignalConfidenceMaxByDay(strategyId, 365),
-      req.db.settings.getSettingValue(SETTING_KEYS.BACKTEST_INITIAL_CAPITAL),
       loadOptionalStrategySection<LogEntry[]>({
         strategyId,
         label: 'strategy logs',
@@ -1233,6 +1231,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
             : []
       })
     ]);
+    const rawBacktestInitialCapital = req.db.settings.value.engine.backtestInitialCapital;
     const loadQqqSignalPriceSeries = async (): Promise<Array<{ isoDate: string; close: number }>> => {
       if (signalLineCounts.length === 0) {
         return [];

@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { Database } from '../../database/Database';
 import { LoggingService } from '../../services/LoggingService';
-import { SETTING_KEYS } from '../../constants';
 import { CandleSource, CandleSourceResult } from './CandleSource';
 import { RequestParams, formatDate, requestWithRetry } from './candleSourceUtils';
 
@@ -34,7 +33,8 @@ export class EodhdCandleSource implements CandleSource {
     endDate: Date,
     abortSignal?: AbortSignal
   ): Promise<CandleSourceResult> {
-    const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.EODHD_BASE_URL);
+    const baseUrl = this.db.settings.value.eodhd.baseUrl;
+    if (!baseUrl) throw new Error('EODHD_BASE_URL is missing or empty.');
     const url = `${baseUrl}/${encodeURIComponent(symbol)}`;
     const params: RequestParams = {
       period: 'd',
@@ -84,14 +84,16 @@ export class EodhdCandleSource implements CandleSource {
     symbol?: string,
     abortSignal?: AbortSignal
   ): Promise<{ data: T; noData: boolean }> {
-    const apiToken = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.EODHD_API_TOKEN);
+    const apiToken = this.db.settings.value.eodhd.apiToken;
+    if (!apiToken) throw new Error('EODHD_API_TOKEN is missing or empty.');
     const requestParams: RequestParams = {
       api_token: apiToken,
       fmt: 'json',
       ...params
     };
+    const waitSeconds = this.db.settings.value.eodhd.rateLimitWaitSeconds;
 
-    return requestWithRetry<T>(this.db, this.loggingService, {
+    return requestWithRetry<T>(this.loggingService, {
       url,
       request: () => axios.get(url, {
         headers: {
@@ -104,7 +106,7 @@ export class EodhdCandleSource implements CandleSource {
       logParams: requestParams,
       symbol,
       sourceLabel: 'EODHD',
-      waitSecondsSettingKey: SETTING_KEYS.EODHD_RATE_LIMIT_WAIT_SECONDS,
+      waitSeconds,
       redactKeys: ['api_token'],
       abortSignal
     });

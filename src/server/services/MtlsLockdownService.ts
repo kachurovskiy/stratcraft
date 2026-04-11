@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { normalizeMtlsAccessCertPassword, SETTING_KEYS } from '../constants';
+import { normalizeMtlsAccessCertPassword } from '../constants';
 import type { Database } from '../database/Database';
 import type { LoggingService } from './LoggingService';
 import { resolveSiteName } from '../utils/appUrl';
@@ -132,8 +132,7 @@ export class MtlsLockdownService {
   }
 
   async generateClientCertificateBundleFromDatabase(db: Database): Promise<void> {
-    const rawPassword = await db.settings.getSettingValue(SETTING_KEYS.MTLS_ACCESS_CERT_PASSWORD);
-    const p12Password = normalizeMtlsAccessCertPassword(rawPassword);
+    const p12Password = normalizeMtlsAccessCertPassword(db.settings.value.userAccess.mtlsAccessCertPassword);
     await this.generateClientCertificateBundle(p12Password, await resolveSiteName(db));
   }
 

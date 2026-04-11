@@ -879,12 +879,8 @@ router.post<TemplateParams>('/:templateId/remote-optimize', requireAuth, require
       });
     }
 
-    const [rawPublicKey, rawKeyName] = await Promise.all([
-      req.db.settings.getSettingValue(SETTING_KEYS.HETZNER_PUBLIC_KEY),
-      req.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SSH_KEY_NAME)
-    ]);
-    const sshKeyName = String(rawKeyName).trim();
-    const publicKey = String(rawPublicKey).trim();
+    const sshKeyName = req.db.settings.value.optimizer.hetznerSshKeyName;
+    const publicKey = req.db.settings.value.optimizer.hetznerPublicKey;
     const successMessage = `Remote optimizer queued (job ${job.id}). You'll receive an email when the server finishes. Ensure that public key "${publicKey}" is in "Hetzner -> Projects -> Security" with name "${sshKeyName}" before starting optimizers.`;
     return res.redirect(`/templates?success=${encodeURIComponent(successMessage)}`);
   } catch (error) {

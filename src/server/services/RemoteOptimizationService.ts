@@ -469,17 +469,14 @@ export class RemoteOptimizationService {
   }
 
   private async resolveHetznerServerConfig(): Promise<{ serverType: string; serverLocation: string }> {
-    const [rawType, rawLocation] = await Promise.all([
-      this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SERVER_TYPE),
-      this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SERVER_LOCATION)
-    ]);
+    const { hetznerServerType: rawType, hetznerServerLocation: rawLocation } = this.db.settings.value.optimizer;
     const serverType =
-      typeof rawType === 'string' && rawType.trim().length > 0
-        ? rawType.trim()
+      rawType.length > 0
+        ? rawType
         : DEFAULT_HETZNER_SERVER_TYPE;
     const serverLocation =
-      typeof rawLocation === 'string' && rawLocation.trim().length > 0
-        ? rawLocation.trim()
+      rawLocation.length > 0
+        ? rawLocation
         : DEFAULT_HETZNER_SERVER_LOCATION;
     return { serverType, serverLocation };
   }
@@ -488,7 +485,7 @@ export class RemoteOptimizationService {
     const name = this.buildServerName(job);
     this.enterStage(job, 'provisioning-server', `Provisioning Hetzner server ${name}`);
     const userData = this.buildCloudInitUserData();
-    const sshKeyName = await this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_SSH_KEY_NAME);
+    const sshKeyName = this.db.settings.value.optimizer.hetznerSshKeyName;
     const { serverType, serverLocation } = await this.resolveHetznerServerConfig();
     try {
       const response = await this.httpClient.post<HetznerServerCreateResponse>('/servers', {
@@ -1050,8 +1047,7 @@ printf '%s\\n' "$PID" > ${REMOTE_SCRIPT_PID_PATH}
     const templateId = job.templateId;
     const jobId = job.id;
     const emailTo = this.getRequesterEmail(job) ?? '';
-    const rawResendKey = await this.db.settings.getSettingValue(SETTING_KEYS.RESEND_API_KEY);
-    const resendKey = rawResendKey?.trim() ?? '';
+    const resendKey = this.db.settings.value.email.resendApiKey;
     const hetznerToken = this.hetznerToken ?? '';
     const hetznerServerId = job.hetznerServerId ? String(job.hetznerServerId) : '';
     const resolvedFrom = await resolveFromEmail(this.db);
@@ -1364,12 +1360,9 @@ exit 0
   }
 
   private async ensureHetznerSshKeysInternal(): Promise<void> {
-    const [rawPrivateKey, rawPublicKey] = await Promise.all([
-      this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_PRIVATE_KEY),
-      this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_PUBLIC_KEY)
-    ]);
-    const privateKey = typeof rawPrivateKey === 'string' ? rawPrivateKey.trim() : '';
-    const publicKey = typeof rawPublicKey === 'string' ? rawPublicKey.trim() : '';
+    const { hetznerPrivateKey: rawPrivateKey, hetznerPublicKey: rawPublicKey } = this.db.settings.value.optimizer;
+    const privateKey = rawPrivateKey;
+    const publicKey = rawPublicKey;
     const hasPrivateKey = privateKey.length > 0;
     const hasPublicKey = publicKey.length > 0;
 
@@ -1416,8 +1409,7 @@ exit 0
   }
 
   private async requireHetznerPrivateKey(): Promise<string> {
-    const rawValue = await this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_PRIVATE_KEY);
-    const privateKey = typeof rawValue === 'string' ? rawValue.trim() : '';
+    const privateKey = this.db.settings.value.optimizer.hetznerPrivateKey;
     if (privateKey.length === 0) {
       throw new Error(
         'Hetzner SSH private key is not configured. Set HETZNER_PRIVATE_KEY in Settings to enable remote optimization.'
@@ -1563,8 +1555,7 @@ exit 0
   }
 
   private async refreshHetznerToken(): Promise<string | null> {
-    const rawToken = await this.db.settings.getSettingValue(SETTING_KEYS.HETZNER_API_TOKEN);
-    const token = typeof rawToken === 'string' ? rawToken.trim() : '';
+    const token = this.db.settings.value.optimizer.hetznerApiToken;
     this.hetznerToken = token.length > 0 ? token : null;
 
     const headers = this.httpClient.defaults.headers.common as Record<string, string>;

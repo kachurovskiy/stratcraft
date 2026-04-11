@@ -274,7 +274,7 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
         return valueB - valueA;
       });
     const liquidationDiscountPercent = normalizeLiquidationDiscountPercent(
-      await req.db.settings.getSettingValue(SETTING_KEYS.ACCOUNT_LIQUIDATION_DISCOUNT_PERCENT)
+      req.db.settings.value.alpaca.accountLiquidationDiscountPercent
     );
     const strategiesForAccount = (strategiesByAccount[tradingAccount.id] ? [...strategiesByAccount[tradingAccount.id]] : []).map(
       (strategySummary) => {

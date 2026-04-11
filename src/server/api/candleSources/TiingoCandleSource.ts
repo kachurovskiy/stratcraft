@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { Database } from '../../database/Database';
 import { LoggingService } from '../../services/LoggingService';
-import { SETTING_KEYS } from '../../constants';
 import { CandleSource, CandleSourceResult } from './CandleSource';
 import { RequestParams, formatDate, requestWithRetry, sanitizeParams } from './candleSourceUtils';
 
@@ -40,7 +39,9 @@ export class TiingoCandleSource implements CandleSource {
     endDate: Date,
     abortSignal?: AbortSignal
   ): Promise<CandleSourceResult> {
-    const baseUrl = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.TIINGO_BASE_URL);
+    const tiingoSettings = this.db.settings.value.tiingo;
+    const baseUrl = tiingoSettings.baseUrl;
+    if (!baseUrl) throw new Error('TIINGO_BASE_URL is missing or empty.');
     const trimmedBase = baseUrl.replace(/\/+$/, '');
     const url = `${trimmedBase}/${encodeURIComponent(symbol)}/prices`;
     const params: RequestParams = {
@@ -54,7 +55,7 @@ export class TiingoCandleSource implements CandleSource {
     }
 
     if (!Array.isArray(data)) {
-      const waitSeconds = Number(await this.db.settings.getSettingValue(SETTING_KEYS.TIINGO_RATE_LIMIT_WAIT_SECONDS));
+      const waitSeconds = tiingoSettings.rateLimitWaitSeconds;
       this.loggingService.warn('candle-job', `Tiingo returned non-array payload; pausing requests for ${waitSeconds} seconds`, {
         url,
         params: sanitizeParams(params, ['token']),
@@ -102,13 +103,15 @@ export class TiingoCandleSource implements CandleSource {
     symbol?: string,
     abortSignal?: AbortSignal
   ): Promise<{ data: T; noData: boolean }> {
-    const apiToken = await this.db.settings.getRequiredSettingValue(SETTING_KEYS.TIINGO_API_TOKEN);
+    const apiToken = this.db.settings.value.tiingo.apiToken;
+    if (!apiToken) throw new Error('TIINGO_API_TOKEN is missing or empty.');
     const requestParams: RequestParams = {
       token: apiToken,
       ...params
     };
+    const waitSeconds = this.db.settings.value.tiingo.rateLimitWaitSeconds;
 
-    return requestWithRetry<T>(this.db, this.loggingService, {
+    return requestWithRetry<T>(this.loggingService, {
       url,
       request: () => axios.get(url, {
         headers: {
@@ -122,7 +125,7 @@ export class TiingoCandleSource implements CandleSource {
       logParams: requestParams,
       symbol,
       sourceLabel: 'Tiingo',
-      waitSecondsSettingKey: SETTING_KEYS.TIINGO_RATE_LIMIT_WAIT_SECONDS,
+      waitSeconds,
       redactKeys: ['token'],
       abortSignal
     });

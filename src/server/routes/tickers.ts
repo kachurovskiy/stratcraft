@@ -793,10 +793,7 @@ router.get<TickerParams>('/:symbol', requireAuth, async (req, res) => {
     const hasUsdVolumeStats = minUsdVolume !== null && maxUsdVolume !== null;
     const hasUnadjustedCloseStats = minUnadjustedClose !== null && maxUnadjustedClose !== null;
     const hasPriceRangeStats = minLow !== null && maxHigh !== null;
-    const tradingViewChartsEnabledRaw = await req.db.settings.getSettingValue(
-      SETTING_KEYS.TRADINGVIEW_CHARTS_ENABLED
-    );
-    const showTradingViewChart = tradingViewChartsEnabledRaw?.trim().toLowerCase() !== 'false';
+    const showTradingViewChart = req.db.settings.value.app.tradingViewChartsEnabled;
 
     res.render('pages/ticker-detail', {
       title: `${symbol} - Ticker Details`,

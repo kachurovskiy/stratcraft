@@ -109,7 +109,7 @@ export class Server {
   }
 
   private async ensureBacktestApiSecret(): Promise<void> {
-    const existing = this.db.settings.value.optimizer.backtestApiSecret.trim();
+    const existing = this.db.settings.value.optimizer.backtestApiSecret;
     if (existing.length > 0) {
       return;
     }

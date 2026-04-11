@@ -1096,10 +1096,7 @@ router.get<TradeParams>('/trades/:id', requireAuth, async (req, res) => {
       count: tradeOperationsSummary.counts[status] ?? 0
     }));
     const tradeOrders = buildTradeOrderViews(trade, tradeOperations);
-    const tradingViewChartsEnabledRaw = await req.db.settings.getSettingValue(
-      SETTING_KEYS.TRADINGVIEW_CHARTS_ENABLED
-    );
-    const showTradingViewChart = tradingViewChartsEnabledRaw?.trim().toLowerCase() !== 'false';
+    const showTradingViewChart = req.db.settings.value.app.tradingViewChartsEnabled;
 
     res.render('pages/trade', {
       title: `Trade ${trade.ticker} - Trade Details`,
