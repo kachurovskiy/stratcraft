@@ -192,7 +192,22 @@ impl Engine {
             }
         }
 
-        if let (Some(strategy_ref), Some(existing)) = (strategy, existing_backtest) {
+        let candles_by_ticker = group_candles_for_tickers(&tickers_for_run, all_candles);
+        if let Some(strategy_ref) = strategy {
+            if strategy_ref.get_template_id().starts_with("lightgbm") {
+                crate::strategy::lightgbm::prime_cross_sectional_context_from_ref_map(
+                    &candles_by_ticker,
+                );
+            }
+        }
+        let mut resume_state = if let Some(existing) = existing_backtest {
+            self.prepare_resume_state(existing, unique_dates, &candles_by_ticker)?
+        } else {
+            None
+        };
+        if let (Some(strategy_ref), Some(existing), Some(_)) =
+            (strategy, existing_backtest, resume_state.as_ref())
+        {
             if let Some(state) = existing.strategy_state.as_ref() {
                 if state.template_id == strategy_ref.get_template_id() {
                     if let Err(err) = strategy_ref.restore_state(&state.data) {
@@ -204,20 +219,6 @@ impl Engine {
                 }
             }
         }
-
-        let candles_by_ticker = group_candles_for_tickers(&tickers_for_run, all_candles);
-        if let Some(strategy_ref) = strategy {
-            if strategy_ref.get_template_id().starts_with("lightgbm") {
-                crate::strategy::lightgbm::prime_cross_sectional_context_from_ref_map(
-                    &candles_by_ticker,
-                );
-            }
-        }
-        let mut resume_state = if let Some(existing) = existing_backtest {
-            self.prepare_resume_state(existing, unique_dates)?
-        } else {
-            None
-        };
         let resume_start_date = resume_state.as_ref().map(|state| state.start_date);
         let loop_start_index = resume_state
             .as_ref()
@@ -725,6 +726,7 @@ impl Engine {
         &self,
         existing: &BacktestResult,
         unique_dates: &[DateTime<Utc>],
+        candles_by_ticker: &HashMap<String, Vec<&Candle>>,
     ) -> Result<Option<BacktestResumeState>> {
         if unique_dates.is_empty() {
             return Ok(None);
@@ -748,6 +750,16 @@ impl Engine {
             loop_start_index += 1;
         }
         if loop_start_index >= unique_dates.len() {
+            return Ok(None);
+        }
+
+        if let Err(error) =
+            self.validate_trades(&existing.trades, candles_by_ticker, existing.end_date)
+        {
+            warn!(
+                "Stored backtest ending at {} no longer matches current candle data: {}. Falling back to full rerun.",
+                existing.end_date, error
+            );
             return Ok(None);
         }
 
@@ -3753,6 +3765,83 @@ mod tests {
                 .iter()
                 .any(|snapshot| snapshot.date == unique_dates_full[history_offset + 2]),
             "resume should append new daily snapshot"
+        );
+    }
+
+    #[test]
+    fn test_backtest_falls_back_to_full_rerun_when_resume_trade_is_stale() {
+        let engine = Engine::new(test_runtime_settings());
+        let ticker = "STALE".to_string();
+        let spy = "SPY".to_string();
+        let prices = vec![0.1479, 0.1500, 0.1600];
+        let (candles_full, unique_dates_full, history_offset) =
+            generate_candles_with_history(&ticker, prices);
+        let split_index = history_offset + 2;
+        let candles_initial: Vec<Candle> = candles_full[..split_index].to_vec();
+        let unique_dates_initial: Vec<DateTime<Utc>> = unique_dates_full[..split_index].to_vec();
+        let candles_initial_with_spy = with_spy_reference(&candles_initial);
+
+        let buy_signal = GeneratedSignal {
+            date: unique_dates_full[history_offset],
+            ticker: ticker.clone(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        };
+        let sell_signal = GeneratedSignal {
+            date: unique_dates_full[history_offset + 2],
+            ticker: ticker.clone(),
+            action: SignalAction::Sell,
+            confidence: Some(1.0),
+        };
+        let initial_signals = vec![buy_signal.clone()];
+        let BacktestRun {
+            result: initial_result,
+            ..
+        } = engine
+            .backtest(
+                None,
+                "stale_resume_template",
+                &[ticker.clone(), spy.clone()],
+                &candles_initial_with_spy,
+                &unique_dates_initial,
+                Some(&initial_signals),
+                Some(unique_dates_initial[0]),
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(initial_result.trades.len(), 1);
+        assert!(initial_result.trades[0].price < 1.0);
+
+        let mut stale_candles = candles_full.clone();
+        let entry_candle = &mut stale_candles[history_offset + 1];
+        entry_candle.open = 2.7000;
+        entry_candle.high = 3.0880;
+        entry_candle.low = 2.7000;
+        entry_candle.close = 3.0000;
+        entry_candle.unadjusted_close = Some(3.0000);
+        let stale_candles_with_spy = with_spy_reference(&stale_candles);
+
+        let resumed_signals = vec![buy_signal, sell_signal];
+        let BacktestRun {
+            result: resumed_result,
+            ..
+        } = engine
+            .backtest(
+                None,
+                "stale_resume_template",
+                &[ticker.clone(), spy.clone()],
+                &stale_candles_with_spy,
+                &unique_dates_full,
+                Some(&resumed_signals),
+                Some(unique_dates_full[0]),
+                Some(&initial_result),
+            )
+            .unwrap();
+
+        assert!(
+            resumed_result.trades.is_empty(),
+            "stale stored trades should trigger a full rerun instead of resuming"
         );
     }
 
