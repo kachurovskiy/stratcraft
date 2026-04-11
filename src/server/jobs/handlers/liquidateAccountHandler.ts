@@ -1,28 +1,7 @@
 import { JobHandler } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
-import {
-  DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT,
-  DEFAULT_LIQUIDATION_DISCOUNT_PERCENT,
-  SETTING_KEYS
-} from '../../constants';
 
 const LIQUIDATE_SOURCE = 'liquidate-account-job';
-
-const normalizeLiquidationDiscountPercent = (rawValue: unknown): number => {
-  const parsed = typeof rawValue === 'string' ? Number(rawValue.trim()) : Number(rawValue);
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_LIQUIDATION_DISCOUNT_PERCENT;
-  }
-  return Math.max(0, parsed);
-};
-
-const normalizeDeviationBandPercent = (rawValue: unknown): number => {
-  const parsed = typeof rawValue === 'string' ? Number(rawValue.trim()) : Number(rawValue);
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT;
-  }
-  return Math.max(0, parsed);
-};
 
 const buildLiquidationSummary = (result: {
   totalPositions: number;
@@ -88,12 +67,8 @@ export function createLiquidateAccountHandler(deps: JobHandlerDependencies): Job
       throw new Error('Liquidation is only supported for Alpaca accounts.');
     }
 
-    const discountPercent = normalizeLiquidationDiscountPercent(
-      deps.db.settings.value.alpaca.accountLiquidationDiscountPercent
-    );
-    const deviationBandPercent = normalizeDeviationBandPercent(
-      deps.db.settings.value.alpaca.accountLiquidationDeviationBandPercent
-    );
+    const discountPercent = deps.db.settings.value.alpaca.accountLiquidationDiscountPercent;
+    const deviationBandPercent = deps.db.settings.value.alpaca.accountLiquidationDeviationBandPercent;
     const dryRun = Boolean(ctx.job.metadata?.dryRun);
 
     const result = await deps.accountDataService.liquidatePositions(

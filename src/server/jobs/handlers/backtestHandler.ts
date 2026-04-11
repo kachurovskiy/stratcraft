@@ -11,11 +11,6 @@ export function createBacktestHandler(deps: JobHandlerDependencies): JobHandler 
     ctx.loggingService.info(BACKTEST_SOURCE, 'Running backtest-active job', logMetadata);
 
     const parsedMonths = deps.db.settings.value.engine.backtestActiveMonths;
-    if (parsedMonths.length === 0) {
-      const message = 'BACKTEST_ACTIVE_MONTHS is required but empty.';
-      ctx.loggingService.error(BACKTEST_SOURCE, message, logMetadata);
-      throw new Error(message);
-    }
 
     for (const scope of BACKTEST_SCOPES) {
       ctx.loggingService.info(

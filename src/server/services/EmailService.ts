@@ -1,6 +1,5 @@
 import { Resend } from 'resend';
 import { Database } from '../database/Database';
-import { normalizeMtlsAccessCertPassword } from '../constants';
 import { LoggingService } from './LoggingService';
 import { isLocalDomain, resolveAppBaseUrl, resolveAppDomain, resolveFromEmail, resolveSiteName } from '../utils/appUrl';
 import {
@@ -482,7 +481,7 @@ export class EmailService {
     certificateBundle: Buffer;
   }): Promise<{ sent: number; adminCount: number; }> {
     const context = await this.resolveSendContextRequired();
-    const p12Password = normalizeMtlsAccessCertPassword(this.db.settings.value.userAccess.mtlsAccessCertPassword);
+    const p12Password = this.db.settings.value.userAccess.mtlsAccessCertPassword;
 
     const allUsers = await this.db.users.listUsers('ASC');
     const uniqueByEmail = new Map<string, { email: string; isAdmin: boolean }>();
@@ -610,7 +609,7 @@ export class EmailService {
       );
     }
 
-    const p12Password = normalizeMtlsAccessCertPassword(this.db.settings.value.userAccess.mtlsAccessCertPassword);
+    const p12Password = this.db.settings.value.userAccess.mtlsAccessCertPassword;
     return { certificateBundle: await mtlsService.readClientCertificateBundle(), p12Password };
   }
 

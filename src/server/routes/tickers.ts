@@ -1,8 +1,6 @@
 import express, { NextFunction, Request, Response } from 'express';
 import { TickerQueryParams, TickerParams } from '../types/Express';
 import { BacktestScope, Candle, Strategy, TickerInfo } from '../types/StrategyTemplate';
-import { SETTING_KEYS } from '../constants';
-import { parseOptionalNumberSetting } from '../utils/settings';
 import { formatBacktestPeriodLabel, getReqUserId, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -309,27 +307,12 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       shouldShowControls: totalPages > 1
     };
 
-    const entrySettingsMap = await req.db.settings.getSettingsByKeys([
-      SETTING_KEYS.TRADE_ENTRY_PRICE_MIN,
-      SETTING_KEYS.TRADE_ENTRY_PRICE_MAX,
-      SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY,
-      SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK
-    ]);
-    const parseSetting = (settingKey: string, fallback: number) =>
-      parseOptionalNumberSetting(entrySettingsMap[settingKey]) ?? fallback;
-    const tradeEntryPriceMin = Math.max(0, parseSetting(SETTING_KEYS.TRADE_ENTRY_PRICE_MIN, 0));
-    let tradeEntryPriceMax = parseSetting(SETTING_KEYS.TRADE_ENTRY_PRICE_MAX, Number.POSITIVE_INFINITY);
-    if (!Number.isFinite(tradeEntryPriceMax) || tradeEntryPriceMax <= 0) {
-      tradeEntryPriceMax = Number.POSITIVE_INFINITY;
-    }
-    if (tradeEntryPriceMax < tradeEntryPriceMin) {
-      tradeEntryPriceMax = tradeEntryPriceMin;
-    }
-    const minimumDollarVolumeForEntry = Math.max(0, parseSetting(SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY, 0));
-    const minimumDollarVolumeLookback = Math.max(
-      0,
-      Math.floor(parseSetting(SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK, 0))
-    );
+    const {
+      tradeEntryPriceMin,
+      tradeEntryPriceMax,
+      minimumDollarVolumeForEntry,
+      minimumDollarVolumeLookback
+    } = req.db.settings.value.engine;
     const entryRuleSettings: EntryRuleSettingsPayload = {
       tradeEntryPriceMin,
       tradeEntryPriceMax: Number.isFinite(tradeEntryPriceMax) ? tradeEntryPriceMax : null,

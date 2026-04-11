@@ -6,7 +6,6 @@ import {
   TradingAccount
 } from '../types/Account';
 import { AccountOperation } from '../types/StrategyTemplate';
-import { DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO, SETTING_KEYS } from '../constants';
 import { Database } from '../database/Database';
 import { LoggingService } from './LoggingService';
 import type { AccountConnector, DispatchResult, LiquidationRequest, LiquidationResult } from './AccountDataService';
@@ -515,20 +514,13 @@ export class AlpacaAccountConnector implements AccountConnector {
   private async getBaseUrl(environment: AccountEnvironment): Promise<string> {
     const normalized = typeof environment === 'string' ? environment.trim().toLowerCase() : '';
     const isLive = normalized === 'live';
-    const configured = isLive
+    return isLive
       ? this.db.settings.value.alpaca.liveUrl
       : this.db.settings.value.alpaca.paperUrl;
-    const baseUrl = configured;
-    if (!baseUrl) throw new Error(isLive ? 'ALPACA_LIVE_URL is missing or empty.' : 'ALPACA_PAPER_URL is missing or empty.');
-    return baseUrl;
   }
 
   private resolveMarketOrderPriceCapRatio(): number {
-    const value = this.db.settings.value.alpaca.marketOrderPriceCapRatio;
-    if (Number.isFinite(value) && value >= 0) {
-      return value;
-    }
-    return DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO;
+    return this.db.settings.value.alpaca.marketOrderPriceCapRatio;
   }
 
   private buildHeaders(account: TradingAccount) {

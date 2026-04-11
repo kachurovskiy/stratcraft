@@ -51,9 +51,6 @@ const REMOTE_JOB_RUNNING_STALE_AFTER_MS = 15 * 60 * 1000;
 const REMOTE_JOB_QUEUED_STALE_AFTER_MS = 5 * 60 * 1000;
 const MARKET_DATA_WAIT_INTERVAL_MS = 2000;
 const MARKET_DATA_WAIT_LOG_INTERVAL_MS = 30_000;
-const DEFAULT_HETZNER_SERVER_TYPE = 'cpx62';
-const DEFAULT_HETZNER_SERVER_LOCATION = 'hel1';
-
 interface RemoteOptimizationJobRecord extends RemoteOptimizationJobSnapshot {
   logBuffer: string[];
   remoteHandoffComplete?: boolean;
@@ -469,16 +466,8 @@ export class RemoteOptimizationService {
   }
 
   private async resolveHetznerServerConfig(): Promise<{ serverType: string; serverLocation: string }> {
-    const { hetznerServerType: rawType, hetznerServerLocation: rawLocation } = this.db.settings.value.optimizer;
-    const serverType =
-      rawType.length > 0
-        ? rawType
-        : DEFAULT_HETZNER_SERVER_TYPE;
-    const serverLocation =
-      rawLocation.length > 0
-        ? rawLocation
-        : DEFAULT_HETZNER_SERVER_LOCATION;
-    return { serverType, serverLocation };
+    const { hetznerServerType, hetznerServerLocation } = this.db.settings.value.optimizer;
+    return { serverType: hetznerServerType, serverLocation: hetznerServerLocation };
   }
 
   private async createHetznerServer(job: RemoteOptimizationJobRecord): Promise<HetznerServer> {

@@ -1,30 +1,7 @@
 import { Database } from '../database/Database';
-import { SETTING_KEYS } from '../constants';
+import { isLocalDomain, normalizeDomain } from './domain';
 
-const LOCAL_DOMAIN_PREFIXES = ['localhost', '127.0.0.1', '[::1]'];
-const DOMAIN_REGEX = /^[A-Za-z0-9.-]+$/;
-
-export const isLocalDomain = (value: string): boolean => {
-  const lowered = value.toLowerCase();
-  return LOCAL_DOMAIN_PREFIXES.some(prefix => lowered.startsWith(prefix));
-};
-
-export const normalizeDomain = (value?: string | null): string | null => {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (trimmed.includes('://') || trimmed.includes('/') || trimmed.includes('?') || trimmed.includes('#')) {
-    return null;
-  }
-  if (trimmed.includes(':')) {
-    return null;
-  }
-  if (!DOMAIN_REGEX.test(trimmed)) {
-    return null;
-  }
-  return trimmed;
-};
+export { isLocalDomain, normalizeDomain } from './domain';
 
 export const resolveSiteName = async (db: Database): Promise<string> => {
   return db.settings.value.app.siteName;
@@ -38,7 +15,7 @@ export const resolveAppDomain = async (db?: Database): Promise<string | null> =>
   if (!db) {
     return null;
   }
-  return normalizeDomain(db.settings.value.app.domain);
+  return db.settings.value.app.domain || null;
 };
 
 export const resolveAppBaseUrl = async (db?: Database): Promise<string | null> => {

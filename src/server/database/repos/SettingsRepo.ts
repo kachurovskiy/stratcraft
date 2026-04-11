@@ -11,6 +11,7 @@ import {
   SETTING_KEYS,
   type SettingKey
 } from '../../constants';
+import { normalizeDomain } from '../../utils/domain';
 import { DEFAULT_FOOTER_DISCLAIMER_HTML } from '../../utils/footerDisclaimer';
 import { decryptValue, encryptValue } from '../../utils/encryption';
 import { normalizeUppercaseString, normalizeUppercaseStrings } from '../../utils/stringNormalization';
@@ -20,8 +21,10 @@ import type { SettingsCandleDataProvider, SettingsOptimizationObjective, Setting
 const KNOWN_SETTING_KEYS = new Set<SettingKey>(SETTING_KEY_LIST);
 const DEFAULT_CANDLE_DATA_PROVIDER: SettingsCandleDataProvider = 'TIINGO';
 const DEFAULT_OPTIMIZATION_OBJECTIVE: SettingsOptimizationObjective = 'SHARPE';
+const ISO_DATE_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 type SettingRow = QueryResultRow & { setting_key: string; value: string | null };
+type NumberParseOptions = { integer?: boolean; min?: number; max?: number; clamp?: boolean };
 
 const createEmptySettingsRecord = (): Record<SettingKey, string | null> => {
   const settings = {} as Record<SettingKey, string | null>;
@@ -237,8 +240,8 @@ export class SettingsRepo {
 
   private buildAppValue(defaults: SettingsValue): SettingsValue['app'] {
     return {
-      siteName: this.parseString(this.rawSettings[SETTING_KEYS.SITE_NAME], defaults.app.siteName),
-      domain: this.parseString(this.rawSettings[SETTING_KEYS.DOMAIN], defaults.app.domain),
+      siteName: this.parseNonEmptyString(this.rawSettings[SETTING_KEYS.SITE_NAME], defaults.app.siteName),
+      domain: this.parseDomain(this.rawSettings[SETTING_KEYS.DOMAIN]),
       footerDisclaimerHtml: this.parseString(
         this.rawSettings[SETTING_KEYS.FOOTER_DISCLAIMER_HTML],
         defaults.app.footerDisclaimerHtml
@@ -257,49 +260,57 @@ export class SettingsRepo {
   }
 
   private buildAlpacaValue(defaults: SettingsValue): SettingsValue['alpaca'] {
+    const marketOrderPriceCapRatio = this.parseNumber(
+      this.rawSettings[SETTING_KEYS.MARKET_ORDER_PRICE_CAP_RATIO],
+      defaults.alpaca.marketOrderPriceCapRatio,
+      { min: 0 }
+    );
+
     return {
-      paperUrl: this.parseString(this.rawSettings[SETTING_KEYS.ALPACA_PAPER_URL], defaults.alpaca.paperUrl),
-      liveUrl: this.parseString(this.rawSettings[SETTING_KEYS.ALPACA_LIVE_URL], defaults.alpaca.liveUrl),
-      dataBaseUrl: this.parseString(this.rawSettings[SETTING_KEYS.ALPACA_DATA_BASE_URL], defaults.alpaca.dataBaseUrl),
+      paperUrl: this.parseHttpUrl(this.rawSettings[SETTING_KEYS.ALPACA_PAPER_URL], defaults.alpaca.paperUrl),
+      liveUrl: this.parseHttpUrl(this.rawSettings[SETTING_KEYS.ALPACA_LIVE_URL], defaults.alpaca.liveUrl),
+      dataBaseUrl: this.parseHttpUrl(this.rawSettings[SETTING_KEYS.ALPACA_DATA_BASE_URL], defaults.alpaca.dataBaseUrl),
       apiKey: this.parseString(this.rawSettings[SETTING_KEYS.ALPACA_API_KEY], defaults.alpaca.apiKey),
       apiSecret: this.parseString(this.rawSettings[SETTING_KEYS.ALPACA_API_SECRET], defaults.alpaca.apiSecret),
       dataRateLimitWaitSeconds: this.parseNumber(
         this.rawSettings[SETTING_KEYS.ALPACA_DATA_RATE_LIMIT_WAIT_SECONDS],
-        defaults.alpaca.dataRateLimitWaitSeconds
+        defaults.alpaca.dataRateLimitWaitSeconds,
+        { min: 1, integer: true }
       ),
-      marketOrderPriceCapRatio: this.parseNumber(
-        this.rawSettings[SETTING_KEYS.MARKET_ORDER_PRICE_CAP_RATIO],
-        defaults.alpaca.marketOrderPriceCapRatio
-      ),
+      marketOrderPriceCapRatio,
       accountLiquidationDiscountPercent: this.parseNumber(
         this.rawSettings[SETTING_KEYS.ACCOUNT_LIQUIDATION_DISCOUNT_PERCENT],
-        defaults.alpaca.accountLiquidationDiscountPercent
+        defaults.alpaca.accountLiquidationDiscountPercent,
+        { min: 0, clamp: true }
       ),
       accountLiquidationDeviationBandPercent: this.parseNumber(
         this.rawSettings[SETTING_KEYS.ACCOUNT_LIQUIDATION_DEVIATION_BAND_PERCENT],
-        defaults.alpaca.accountLiquidationDeviationBandPercent
+        defaults.alpaca.accountLiquidationDeviationBandPercent,
+        { min: 0, clamp: true }
       )
     };
   }
 
   private buildEodhdValue(defaults: SettingsValue): SettingsValue['eodhd'] {
     return {
-      baseUrl: this.parseString(this.rawSettings[SETTING_KEYS.EODHD_BASE_URL], defaults.eodhd.baseUrl),
+      baseUrl: this.parseHttpUrl(this.rawSettings[SETTING_KEYS.EODHD_BASE_URL], defaults.eodhd.baseUrl),
       apiToken: this.parseString(this.rawSettings[SETTING_KEYS.EODHD_API_TOKEN], defaults.eodhd.apiToken),
       rateLimitWaitSeconds: this.parseNumber(
         this.rawSettings[SETTING_KEYS.EODHD_RATE_LIMIT_WAIT_SECONDS],
-        defaults.eodhd.rateLimitWaitSeconds
+        defaults.eodhd.rateLimitWaitSeconds,
+        { min: 1, integer: true }
       )
     };
   }
 
   private buildTiingoValue(defaults: SettingsValue): SettingsValue['tiingo'] {
     return {
-      baseUrl: this.parseString(this.rawSettings[SETTING_KEYS.TIINGO_BASE_URL], defaults.tiingo.baseUrl),
+      baseUrl: this.parseHttpUrl(this.rawSettings[SETTING_KEYS.TIINGO_BASE_URL], defaults.tiingo.baseUrl),
       apiToken: this.parseString(this.rawSettings[SETTING_KEYS.TIINGO_API_TOKEN], defaults.tiingo.apiToken),
       rateLimitWaitSeconds: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TIINGO_RATE_LIMIT_WAIT_SECONDS],
-        defaults.tiingo.rateLimitWaitSeconds
+        defaults.tiingo.rateLimitWaitSeconds,
+        { min: 1, integer: true }
       )
     };
   }
@@ -308,15 +319,18 @@ export class SettingsRepo {
     return {
       candleMismatchThreshold: this.parseNumber(
         this.rawSettings[SETTING_KEYS.CANDLE_MISMATCH_THRESHOLD],
-        defaults.candleSync.candleMismatchThreshold
+        defaults.candleSync.candleMismatchThreshold,
+        { min: 0, clamp: true }
       ),
       maxConcurrentUpdates: this.parseNumber(
         this.rawSettings[SETTING_KEYS.CANDLE_SYNC_MAX_CONCURRENT_UPDATES],
-        defaults.candleSync.maxConcurrentUpdates
+        defaults.candleSync.maxConcurrentUpdates,
+        { min: 1, integer: true }
       ),
       matchingRatioThreshold: this.parseNumber(
         this.rawSettings[SETTING_KEYS.CANDLE_SYNC_MATCHING_RATIO_THRESHOLD],
-        defaults.candleSync.matchingRatioThreshold
+        defaults.candleSync.matchingRatioThreshold,
+        { min: 0, max: 1, clamp: true }
       ),
       autoDailyCandleSyncEnabled: this.parseBoolean(
         this.rawSettings[SETTING_KEYS.AUTO_DAILY_CANDLE_SYNC_ENABLED],
@@ -333,89 +347,111 @@ export class SettingsRepo {
     return {
       etfBaseExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.ETF_BASE_EXPENSE_RATIO],
-        defaults.expenseRatios.etfBaseExpenseRatio
+        defaults.expenseRatios.etfBaseExpenseRatio,
+        { min: 0, clamp: true }
       ),
       inverseEtfExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.INVERSE_ETF_EXPENSE_RATIO],
-        defaults.expenseRatios.inverseEtfExpenseRatio
+        defaults.expenseRatios.inverseEtfExpenseRatio,
+        { min: 0, clamp: true }
       ),
       commodityTrustExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.COMMODITY_TRUST_EXPENSE_RATIO],
-        defaults.expenseRatios.commodityTrustExpenseRatio
+        defaults.expenseRatios.commodityTrustExpenseRatio,
+        { min: 0, clamp: true }
       ),
       bondEtfExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.BOND_ETF_EXPENSE_RATIO],
-        defaults.expenseRatios.bondEtfExpenseRatio
+        defaults.expenseRatios.bondEtfExpenseRatio,
+        { min: 0, clamp: true }
       ),
       incomeEtfExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.INCOME_ETF_EXPENSE_RATIO],
-        defaults.expenseRatios.incomeEtfExpenseRatio
+        defaults.expenseRatios.incomeEtfExpenseRatio,
+        { min: 0, clamp: true }
       ),
       leveraged2xExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.LEVERAGED_2X_EXPENSE_RATIO],
-        defaults.expenseRatios.leveraged2xExpenseRatio
+        defaults.expenseRatios.leveraged2xExpenseRatio,
+        { min: 0, clamp: true }
       ),
       leveraged3xExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.LEVERAGED_3X_EXPENSE_RATIO],
-        defaults.expenseRatios.leveraged3xExpenseRatio
+        defaults.expenseRatios.leveraged3xExpenseRatio,
+        { min: 0, clamp: true }
       ),
       leveraged5xExpenseRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.LEVERAGED_5X_EXPENSE_RATIO],
-        defaults.expenseRatios.leveraged5xExpenseRatio
+        defaults.expenseRatios.leveraged5xExpenseRatio,
+        { min: 0, clamp: true }
       )
     };
   }
 
   private buildEngineValue(defaults: SettingsValue): SettingsValue['engine'] {
+    const tradeEntryPriceMin = this.parseNumber(
+      this.rawSettings[SETTING_KEYS.TRADE_ENTRY_PRICE_MIN],
+      defaults.engine.tradeEntryPriceMin,
+      { min: 0, clamp: true }
+    );
+    const minTickerFluctuationRatio = this.parseNumber(
+      this.rawSettings[SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO],
+      defaults.engine.minTickerFluctuationRatio,
+      { min: 0, clamp: true }
+    );
+
     return {
       tradeCloseFeeRate: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TRADE_CLOSE_FEE_RATE],
-        defaults.engine.tradeCloseFeeRate
+        defaults.engine.tradeCloseFeeRate,
+        { min: 0, clamp: true }
       ),
       tradeSlippageRate: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TRADE_SLIPPAGE_RATE],
-        defaults.engine.tradeSlippageRate
+        defaults.engine.tradeSlippageRate,
+        { min: 0, clamp: true }
       ),
       limitBuyPenetrationRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.LIMIT_BUY_PENETRATION_RATIO],
-        defaults.engine.limitBuyPenetrationRatio
+        defaults.engine.limitBuyPenetrationRatio,
+        { min: 0, clamp: true }
       ),
       shortBorrowFeeAnnualRate: this.parseNumber(
         this.rawSettings[SETTING_KEYS.SHORT_BORROW_FEE_ANNUAL_RATE],
-        defaults.engine.shortBorrowFeeAnnualRate
+        defaults.engine.shortBorrowFeeAnnualRate,
+        { min: 0, clamp: true }
       ),
-      tradeEntryPriceMin: this.parseNumber(
-        this.rawSettings[SETTING_KEYS.TRADE_ENTRY_PRICE_MIN],
-        defaults.engine.tradeEntryPriceMin
-      ),
-      tradeEntryPriceMax: this.parseNumber(
+      tradeEntryPriceMin,
+      tradeEntryPriceMax: this.parseUpperBound(
         this.rawSettings[SETTING_KEYS.TRADE_ENTRY_PRICE_MAX],
-        defaults.engine.tradeEntryPriceMax
+        defaults.engine.tradeEntryPriceMax,
+        tradeEntryPriceMin
       ),
       minimumDollarVolumeForEntry: this.parseNumber(
         this.rawSettings[SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_FOR_ENTRY],
-        defaults.engine.minimumDollarVolumeForEntry
+        defaults.engine.minimumDollarVolumeForEntry,
+        { min: 0, clamp: true }
       ),
       minimumDollarVolumeLookback: this.parseNumber(
         this.rawSettings[SETTING_KEYS.MINIMUM_DOLLAR_VOLUME_LOOKBACK],
-        defaults.engine.minimumDollarVolumeLookback
+        defaults.engine.minimumDollarVolumeLookback,
+        { min: 0, integer: true, clamp: true }
       ),
-      minTickerFluctuationRatio: this.parseNumber(
-        this.rawSettings[SETTING_KEYS.MIN_TICKER_FLUCTUATION_RATIO],
-        defaults.engine.minTickerFluctuationRatio
-      ),
-      maxTickerFluctuationRatio: this.parseNumber(
+      minTickerFluctuationRatio,
+      maxTickerFluctuationRatio: this.parseUpperBound(
         this.rawSettings[SETTING_KEYS.MAX_TICKER_FLUCTUATION_RATIO],
-        defaults.engine.maxTickerFluctuationRatio
+        defaults.engine.maxTickerFluctuationRatio,
+        minTickerFluctuationRatio
       ),
       backtestActiveMonths: this.parseNumberArray(
         this.rawSettings[SETTING_KEYS.BACKTEST_ACTIVE_MONTHS],
         defaults.engine.backtestActiveMonths,
-        { integer: true, min: 1 }
+        { integer: true, min: 1, fallbackOnEmpty: true }
       ),
       backtestInitialCapital: this.parseNumber(
         this.rawSettings[SETTING_KEYS.BACKTEST_INITIAL_CAPITAL],
-        defaults.engine.backtestInitialCapital
+        defaults.engine.backtestInitialCapital,
+        { min: 1 }
       )
     };
   }
@@ -432,7 +468,8 @@ export class SettingsRepo {
       ),
       trainingAllocationRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TRAINING_ALLOCATION_RATIO],
-        defaults.tickerRules.trainingAllocationRatio
+        defaults.tickerRules.trainingAllocationRatio,
+        { min: 0, max: 1, clamp: true }
       )
     };
   }
@@ -445,51 +482,54 @@ export class SettingsRepo {
       ),
       autoOptimizationDelaySeconds: this.parseNumber(
         this.rawSettings[SETTING_KEYS.AUTO_OPTIMIZATION_DELAY_SECONDS],
-        defaults.optimizer.autoOptimizationDelaySeconds
+        defaults.optimizer.autoOptimizationDelaySeconds,
+        { min: 0, clamp: true }
       ),
       allowShortSellingOptimizationEnabled: this.parseBoolean(
         this.rawSettings[SETTING_KEYS.ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED],
         defaults.optimizer.allowShortSellingOptimizationEnabled
       ),
-      lightgbmTrainingStartDate: this.parseString(
+      lightgbmTrainingStartDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE],
         defaults.optimizer.lightgbmTrainingStartDate
       ),
-      lightgbmTrainingEndDate: this.parseString(
+      lightgbmTrainingEndDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.LIGHTGBM_TRAINING_END_DATE],
         defaults.optimizer.lightgbmTrainingEndDate
       ),
-      optimizerTrainingStartDate: this.parseString(
+      optimizerTrainingStartDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.OPTIMIZER_TRAINING_START_DATE],
         defaults.optimizer.optimizerTrainingStartDate
       ),
-      optimizerTrainingEndDate: this.parseString(
+      optimizerTrainingEndDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.OPTIMIZER_TRAINING_END_DATE],
         defaults.optimizer.optimizerTrainingEndDate
       ),
-      verifyWindowStartDate: this.parseString(
+      verifyWindowStartDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.VERIFY_WINDOW_START_DATE],
         defaults.optimizer.verifyWindowStartDate
       ),
-      verifyWindowEndDate: this.parseString(
+      verifyWindowEndDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.VERIFY_WINDOW_END_DATE],
         defaults.optimizer.verifyWindowEndDate
       ),
-      balanceWindowStartDate: this.parseString(
+      balanceWindowStartDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.BALANCE_WINDOW_START_DATE],
         defaults.optimizer.balanceWindowStartDate
       ),
-      balanceWindowEndDate: this.parseString(
+      balanceWindowEndDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.BALANCE_WINDOW_END_DATE],
         defaults.optimizer.balanceWindowEndDate
       ),
       localOptimizationVersion: this.parseNumber(
         this.rawSettings[SETTING_KEYS.LOCAL_OPTIMIZATION_VERSION],
-        defaults.optimizer.localOptimizationVersion
+        defaults.optimizer.localOptimizationVersion,
+        { min: 0, integer: true, clamp: true }
       ),
       localOptimizationMultiStartSeeds: this.parseNumber(
         this.rawSettings[SETTING_KEYS.LOCAL_OPTIMIZATION_MULTI_START_SEEDS],
-        defaults.optimizer.localOptimizationMultiStartSeeds
+        defaults.optimizer.localOptimizationMultiStartSeeds,
+        { min: 0, integer: true, clamp: true }
       ),
       optimizationObjective: this.parseOptimizationObjective(
         this.rawSettings[SETTING_KEYS.OPTIMIZATION_OBJECTIVE]
@@ -498,15 +538,15 @@ export class SettingsRepo {
         this.rawSettings[SETTING_KEYS.HETZNER_API_TOKEN],
         defaults.optimizer.hetznerApiToken
       ),
-      hetznerServerType: this.parseString(
+      hetznerServerType: this.parseNonEmptyString(
         this.rawSettings[SETTING_KEYS.HETZNER_SERVER_TYPE],
         defaults.optimizer.hetznerServerType
       ),
-      hetznerServerLocation: this.parseString(
+      hetznerServerLocation: this.parseNonEmptyString(
         this.rawSettings[SETTING_KEYS.HETZNER_SERVER_LOCATION],
         defaults.optimizer.hetznerServerLocation
       ),
-      hetznerSshKeyName: this.parseString(
+      hetznerSshKeyName: this.parseNonEmptyString(
         this.rawSettings[SETTING_KEYS.HETZNER_SSH_KEY_NAME],
         defaults.optimizer.hetznerSshKeyName
       ),
@@ -521,16 +561,17 @@ export class SettingsRepo {
       localOptimizationStepMultipliers: this.parseNumberArray(
         this.rawSettings[SETTING_KEYS.LOCAL_OPTIMIZATION_STEP_MULTIPLIERS],
         defaults.optimizer.localOptimizationStepMultipliers,
-        { integer: true }
+        { integer: true, fallbackOnEmpty: true }
       ),
       localOptimizationMaxUnadjustedPriceValues: this.parseNumberArray(
         this.rawSettings[SETTING_KEYS.LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES],
         defaults.optimizer.localOptimizationMaxUnadjustedPriceValues,
-        { integer: true, min: 1 }
+        { integer: true, min: 1, fallbackOnEmpty: true }
       ),
       maxAllowedDrawdownRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.MAX_ALLOWED_DRAWDOWN_RATIO],
-        defaults.optimizer.maxAllowedDrawdownRatio
+        defaults.optimizer.maxAllowedDrawdownRatio,
+        { min: 0, clamp: true }
       ),
       backtestApiSecret: this.parseString(
         this.rawSettings[SETTING_KEYS.BACKTEST_API_SECRET],
@@ -543,80 +584,103 @@ export class SettingsRepo {
     return {
       minTrades: this.parseNumber(
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_MIN_TRADES],
-        defaults.paramScoring.minTrades
+        defaults.paramScoring.minTrades,
+        { min: 0, integer: true, clamp: true }
       ),
       drawdownLambda: this.parseNumber(
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_DRAWDOWN_LAMBDA],
-        defaults.paramScoring.drawdownLambda
+        defaults.paramScoring.drawdownLambda,
+        { min: 0, clamp: true }
       ),
       neighborThreshold: this.parseNumber(
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_NEIGHBOR_THRESHOLD],
-        defaults.paramScoring.neighborThreshold
+        defaults.paramScoring.neighborThreshold,
+        { min: 0, clamp: true }
       ),
       coreScoreQuantile: this.parseNumber(
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE],
-        defaults.paramScoring.coreScoreQuantile
+        defaults.paramScoring.coreScoreQuantile,
+        { min: 0, max: 1, clamp: true }
       ),
       pairwiseNeighborLimit: this.parseNumber(
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT],
-        defaults.paramScoring.pairwiseNeighborLimit
+        defaults.paramScoring.pairwiseNeighborLimit,
+        { min: 1, integer: true }
       )
     };
   }
 
   private buildTemplateScoringValue(defaults: SettingsValue): SettingsValue['templateScoring'] {
+    const verifyMinMultiplier = this.parseNumber(
+      this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER],
+      defaults.templateScoring.verifyMinMultiplier,
+      { min: 0, clamp: true }
+    );
+
     return {
       returnScale: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_RETURN_SCALE],
-        defaults.templateScoring.returnScale
+        defaults.templateScoring.returnScale,
+        { min: 1e-6 }
       ),
       validationNegativePenaltyStrength: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VALIDATION_NEGATIVE_PENALTY_STRENGTH],
-        defaults.templateScoring.validationNegativePenaltyStrength
+        defaults.templateScoring.validationNegativePenaltyStrength,
+        { min: 0, clamp: true }
       ),
       drawdownLambda: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_DRAWDOWN_LAMBDA],
-        defaults.templateScoring.drawdownLambda
+        defaults.templateScoring.drawdownLambda,
+        { min: 0, clamp: true }
       ),
       tradeTarget: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_TRADE_TARGET],
-        defaults.templateScoring.tradeTarget
+        defaults.templateScoring.tradeTarget,
+        { min: 1 }
       ),
       tradeWeight: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_TRADE_WEIGHT],
-        defaults.templateScoring.tradeWeight
+        defaults.templateScoring.tradeWeight,
+        { min: 0, max: 1, clamp: true }
       ),
       recencyHalfLifeDays: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_RECENCY_HALF_LIFE_DAYS],
-        defaults.templateScoring.recencyHalfLifeDays
+        defaults.templateScoring.recencyHalfLifeDays,
+        { min: 1 }
       ),
       verifySharpeScale: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_SHARPE_SCALE],
-        defaults.templateScoring.verifySharpeScale
+        defaults.templateScoring.verifySharpeScale,
+        { min: 1e-6 }
       ),
       verifyCalmarScale: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CALMAR_SCALE],
-        defaults.templateScoring.verifyCalmarScale
+        defaults.templateScoring.verifyCalmarScale,
+        { min: 1e-6 }
       ),
       verifyCagrScale: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_SCALE],
-        defaults.templateScoring.verifyCagrScale
+        defaults.templateScoring.verifyCagrScale,
+        { min: 1e-6 }
       ),
       verifyCagrNegativeScale: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_CAGR_NEG_SCALE],
-        defaults.templateScoring.verifyCagrNegativeScale
+        defaults.templateScoring.verifyCagrNegativeScale,
+        { min: 1e-6 }
       ),
       verifyDrawdownLambda: this.parseNumber(
         this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_DRAWDOWN_LAMBDA],
-        defaults.templateScoring.verifyDrawdownLambda
+        defaults.templateScoring.verifyDrawdownLambda,
+        { min: 0, clamp: true }
       ),
-      verifyMinMultiplier: this.parseNumber(
-        this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MIN_MULTIPLIER],
-        defaults.templateScoring.verifyMinMultiplier
-      ),
-      verifyMaxMultiplier: this.parseNumber(
-        this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER],
-        defaults.templateScoring.verifyMaxMultiplier
+      verifyMinMultiplier,
+      verifyMaxMultiplier: Math.max(
+        verifyMinMultiplier,
+        this.parseNumber(
+          this.rawSettings[SETTING_KEYS.TEMPLATE_SCORE_VERIFY_MAX_MULTIPLIER],
+          defaults.templateScoring.verifyMaxMultiplier,
+          { min: 0, clamp: true }
+        )
       )
     };
   }
@@ -625,13 +689,15 @@ export class SettingsRepo {
     return {
       inviteLinkValidDays: this.parseNumber(
         this.rawSettings[SETTING_KEYS.INVITE_LINK_VALID_DAYS],
-        defaults.userAccess.inviteLinkValidDays
+        defaults.userAccess.inviteLinkValidDays,
+        { min: 1, integer: true }
       ),
       sessionCookieValidDays: this.parseNumber(
         this.rawSettings[SETTING_KEYS.SESSION_COOKIE_VALID_DAYS],
-        defaults.userAccess.sessionCookieValidDays
+        defaults.userAccess.sessionCookieValidDays,
+        { min: 1, integer: true }
       ),
-      mtlsAccessCertPassword: this.parseString(
+      mtlsAccessCertPassword: this.parseNonEmptyString(
         this.rawSettings[SETTING_KEYS.MTLS_ACCESS_CERT_PASSWORD],
         defaults.userAccess.mtlsAccessCertPassword
       )
@@ -652,6 +718,33 @@ export class SettingsRepo {
     return typeof rawValue === 'string' ? rawValue.trim() : fallback;
   }
 
+  private parseNonEmptyString(rawValue: string | null | undefined, fallback: string): string {
+    const parsed = this.parseString(rawValue, fallback);
+    return parsed.length > 0 ? parsed : fallback;
+  }
+
+  private parseDomain(rawValue: string | null | undefined): string {
+    return normalizeDomain(this.parseString(rawValue, '')) ?? '';
+  }
+
+  private parseHttpUrl(rawValue: string | null | undefined, fallback: string): string {
+    const parsed = this.parseString(rawValue, '');
+    if (!parsed) {
+      return fallback;
+    }
+
+    try {
+      const url = new URL(parsed);
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        return parsed;
+      }
+    } catch {
+      // Fall back to the configured default below.
+    }
+
+    return fallback;
+  }
+
   private parseBoolean(rawValue: string | null | undefined, fallback: boolean): boolean {
     if (typeof rawValue !== 'string') {
       return fallback;
@@ -659,16 +752,87 @@ export class SettingsRepo {
     return rawValue.trim().toLowerCase() === 'true';
   }
 
-  private parseNumber(rawValue: string | null | undefined, fallback: number): number {
-    if (typeof rawValue !== 'string') {
+  private parseNumber(
+    rawValue: string | null | undefined,
+    fallback: number,
+    options: NumberParseOptions = {}
+  ): number {
+    const parsed = this.parseRawNumber(rawValue);
+    if (parsed === null) {
       return fallback;
+    }
+
+    const normalized = options.integer ? Math.trunc(parsed) : parsed;
+
+    if (options.clamp) {
+      let clamped = normalized;
+      if (options.min !== undefined) {
+        clamped = Math.max(options.min, clamped);
+      }
+      if (options.max !== undefined) {
+        clamped = Math.min(options.max, clamped);
+      }
+      return clamped;
+    }
+
+    if (options.min !== undefined && normalized < options.min) {
+      return fallback;
+    }
+    if (options.max !== undefined && normalized > options.max) {
+      return fallback;
+    }
+
+    return normalized;
+  }
+
+  private parseUpperBound(rawValue: string | null | undefined, fallback: number, minimum: number): number {
+    const parsed = this.parseRawNumber(rawValue);
+    if (parsed === null) {
+      return Math.max(fallback, minimum);
+    }
+    if (parsed <= 0) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return Math.max(parsed, minimum);
+  }
+
+  private parseIsoDate(rawValue: string | null | undefined, fallback: string): string {
+    const parsed = this.parseString(rawValue, '');
+    if (!parsed) {
+      return fallback;
+    }
+
+    const match = ISO_DATE_REGEX.exec(parsed);
+    if (!match) {
+      return fallback;
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    if (
+      Number.isNaN(utcDate.getTime()) ||
+      utcDate.getUTCFullYear() !== year ||
+      utcDate.getUTCMonth() !== month - 1 ||
+      utcDate.getUTCDate() !== day
+    ) {
+      return fallback;
+    }
+
+    return parsed;
+  }
+
+  private parseRawNumber(rawValue: string | null | undefined): number | null {
+    if (typeof rawValue !== 'string') {
+      return null;
     }
     const trimmed = rawValue.trim();
     if (!trimmed) {
-      return fallback;
+      return null;
     }
     const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : fallback;
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   private parseStringArray(rawValue: string | null | undefined, fallback: string[]): string[] {
@@ -681,7 +845,7 @@ export class SettingsRepo {
   private parseNumberArray(
     rawValue: string | null | undefined,
     fallback: number[],
-    options: { integer?: boolean; min?: number; max?: number } = {}
+    options: { integer?: boolean; min?: number; max?: number; fallbackOnEmpty?: boolean } = {}
   ): number[] {
     if (rawValue === null || rawValue === undefined) {
       return [...fallback];
@@ -689,7 +853,7 @@ export class SettingsRepo {
 
     const trimmed = rawValue.trim();
     if (!trimmed) {
-      return [];
+      return options.fallbackOnEmpty ? [...fallback] : [];
     }
 
     const entries = this.parseRawArrayEntries(trimmed);
@@ -717,7 +881,11 @@ export class SettingsRepo {
       values.push(parsed);
     }
 
-    return values.length > 0 ? values : [];
+    if (values.length > 0) {
+      return values;
+    }
+
+    return options.fallbackOnEmpty ? [...fallback] : [];
   }
 
   private parseRawArrayEntries(rawValue: string): unknown[] {

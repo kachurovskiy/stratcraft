@@ -54,8 +54,7 @@ export class TemplatesRepo {
   }
 
   private getLocalOptimizationVersionTarget(): number {
-    const value = this.settings.value.optimizer.localOptimizationVersion;
-    return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+    return this.settings.value.optimizer.localOptimizationVersion;
   }
 
   async getTemplateNeedingLocalOptimization(): Promise<StrategyTemplate | null> {

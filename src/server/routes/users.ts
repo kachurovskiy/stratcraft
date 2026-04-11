@@ -3,11 +3,6 @@ import { MtlsAccessBundleEmailError } from '../services/MtlsLockdownService';
 
 const router = express.Router();
 
-const normalizeInviteLinkDays = (rawValue: unknown): number => {
-  const parsed = typeof rawValue === 'number' ? rawValue : Number(rawValue);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 7;
-};
-
 // Admin users
 router.get('/users', (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAuth(req, res, next);
@@ -20,7 +15,7 @@ router.get('/users', (req: Request, res: Response, next: NextFunction) => {
       req.db.users.listActiveUserSessions(),
       req.mtlsLockdownService.getLockdownState()
     ]);
-    const inviteLinkDays = normalizeInviteLinkDays(req.db.settings.value.userAccess.inviteLinkValidDays);
+    const inviteLinkDays = req.db.settings.value.userAccess.inviteLinkValidDays;
 
     const sessionsByUserId = new Map<number, typeof activeSessions>();
     for (const session of activeSessions) {
@@ -234,7 +229,7 @@ router.post('/invite-user', (req: Request, res: Response, next: NextFunction) =>
       return res.redirect('/admin/users?error=Email is required');
     }
 
-    const inviteLinkDays = normalizeInviteLinkDays(req.db.settings.value.userAccess.inviteLinkValidDays);
+    const inviteLinkDays = req.db.settings.value.userAccess.inviteLinkValidDays;
     const host = req.get('host');
     if (!host) {
       return res.redirect('/admin/users?error=Unable to determine host for invite link');

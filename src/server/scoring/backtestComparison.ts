@@ -92,8 +92,6 @@ export type BacktestComparisonView = {
   sampleDays: TradeEntrySampleDay[];
 };
 
-const SLIPPAGE_DEFAULT = 0.003;
-const PENETRATION_DEFAULT = 0.005;
 const SAMPLE_DAY_LIMIT = 5;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -1025,16 +1023,6 @@ const loadExpenseRatioMap = async (db: Database, tickers: string[]): Promise<Map
   return expenseMap;
 };
 
-const parseSettingNumber = (raw: unknown, fallback: number | null): number | null => {
-  const parsed =
-    typeof raw === 'number'
-      ? raw
-      : typeof raw === 'string' && raw.trim().length > 0
-        ? Number(raw)
-        : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
 const pickLatestBacktest = (
   backtests: BacktestResultRecord[],
   scopes: BacktestScope[]
@@ -1098,11 +1086,8 @@ export const buildBacktestComparisonView = async ({
     db.strategies.getStrategy(strategyId, userId)
   ]);
 
-  const slippageSetting = parseSettingNumber(db.settings.value.engine.tradeSlippageRate, SLIPPAGE_DEFAULT);
-  const penetrationSetting = parseSettingNumber(
-    db.settings.value.engine.limitBuyPenetrationRatio,
-    PENETRATION_DEFAULT
-  );
+  const slippageSetting = db.settings.value.engine.tradeSlippageRate;
+  const penetrationSetting = db.settings.value.engine.limitBuyPenetrationRatio;
   const engineTrades = engineTradesRaw.filter(isEntryTrade);
   const liveTrades = liveTradesRaw.filter(isEntryTrade);
   const engineCancelledTrades = engineTradesRaw.filter(isCancelledTrade);

@@ -7,7 +7,6 @@ import {
 } from '../types/Account';
 import { AccountParams } from '../types/Express';
 import { AccountOperation, Strategy, Trade } from '../types/StrategyTemplate';
-import { DEFAULT_LIQUIDATION_DISCOUNT_PERCENT, SETTING_KEYS } from '../constants';
 import { normalizeUppercaseStrings } from '../utils/stringNormalization';
 import { getReqUserId } from './utils';
 
@@ -52,14 +51,6 @@ const parseExcludedKeywordsInput = (rawValue: unknown) => {
     text,
     keywords: text.length === 0 ? [] : normalizeKeywordList(text)
   };
-};
-
-const normalizeLiquidationDiscountPercent = (rawValue: unknown): number => {
-  const parsed = typeof rawValue === 'string' ? Number(rawValue.trim()) : Number(rawValue);
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_LIQUIDATION_DISCOUNT_PERCENT;
-  }
-  return Math.max(0, parsed);
 };
 
 const extractQueryMessage = (param: unknown): string | undefined => {
@@ -273,9 +264,7 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
         const valueB = Math.abs(b?.marketValue ?? 0);
         return valueB - valueA;
       });
-    const liquidationDiscountPercent = normalizeLiquidationDiscountPercent(
-      req.db.settings.value.alpaca.accountLiquidationDiscountPercent
-    );
+    const liquidationDiscountPercent = req.db.settings.value.alpaca.accountLiquidationDiscountPercent;
     const strategiesForAccount = (strategiesByAccount[tradingAccount.id] ? [...strategiesByAccount[tradingAccount.id]] : []).map(
       (strategySummary) => {
         const operationsStats = strategyOperationsLookup.get(strategySummary.id);

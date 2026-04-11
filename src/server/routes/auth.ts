@@ -2,7 +2,6 @@ import express, { NextFunction, Request, Response } from 'express';
 import { RequestQuotaError, type AuthSession } from '../services/AuthService';
 
 const router = express.Router();
-const DEFAULT_SESSION_COOKIE_DAYS = 30;
 
 const formatRetryAfter = (retryAfterMs: number | null): string => {
   if (!retryAfterMs || retryAfterMs <= 0) {
@@ -17,11 +16,7 @@ const formatRetryAfter = (retryAfterMs: number | null): string => {
 };
 
 const resolveSessionCookieMaxAge = (req: Request): number => {
-  const parsedDays = req.db.settings.value.userAccess.sessionCookieValidDays;
-  const normalizedDays = Number.isFinite(parsedDays) && parsedDays > 0
-    ? Math.trunc(parsedDays)
-    : DEFAULT_SESSION_COOKIE_DAYS;
-  return normalizedDays * 24 * 60 * 60 * 1000;
+  return req.db.settings.value.userAccess.sessionCookieValidDays * 24 * 60 * 60 * 1000;
 };
 
 const issueSessionCookie = async (req: Request, res: Response, session: AuthSession): Promise<void> => {

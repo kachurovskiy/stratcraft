@@ -268,34 +268,13 @@ export class CandleClient {
   private loadCandleDisableSettings(): CandleDisableSettings {
     const engineSettings = this.db.settings.value.engine;
 
-    const tradeEntryPriceMin = Math.max(0, engineSettings.tradeEntryPriceMin);
-    let tradeEntryPriceMax = engineSettings.tradeEntryPriceMax;
-    if (!Number.isFinite(tradeEntryPriceMax) || tradeEntryPriceMax <= 0) {
-      tradeEntryPriceMax = Number.POSITIVE_INFINITY;
-    }
-    if (tradeEntryPriceMax < tradeEntryPriceMin) {
-      tradeEntryPriceMax = tradeEntryPriceMin;
-    }
-
-    const minimumDollarVolumeForEntry = Math.max(0, engineSettings.minimumDollarVolumeForEntry);
-    const minimumDollarVolumeLookback = Math.max(0, Math.floor(engineSettings.minimumDollarVolumeLookback));
-
-    const minFluctuationRatio = Math.max(0, engineSettings.minTickerFluctuationRatio);
-    let maxFluctuationRatio = engineSettings.maxTickerFluctuationRatio;
-    if (!Number.isFinite(maxFluctuationRatio) || maxFluctuationRatio <= 0) {
-      maxFluctuationRatio = Number.POSITIVE_INFINITY;
-    }
-    if (maxFluctuationRatio < minFluctuationRatio) {
-      maxFluctuationRatio = minFluctuationRatio;
-    }
-
     return {
-      tradeEntryPriceMin,
-      tradeEntryPriceMax,
-      minimumDollarVolumeForEntry,
-      minimumDollarVolumeLookback,
-      minFluctuationRatio,
-      maxFluctuationRatio
+      tradeEntryPriceMin: engineSettings.tradeEntryPriceMin,
+      tradeEntryPriceMax: engineSettings.tradeEntryPriceMax,
+      minimumDollarVolumeForEntry: engineSettings.minimumDollarVolumeForEntry,
+      minimumDollarVolumeLookback: engineSettings.minimumDollarVolumeLookback,
+      minFluctuationRatio: engineSettings.minTickerFluctuationRatio,
+      maxFluctuationRatio: engineSettings.maxTickerFluctuationRatio
     };
   }
 

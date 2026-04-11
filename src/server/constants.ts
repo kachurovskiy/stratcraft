@@ -122,11 +122,3 @@ export const DEFAULT_BACKTEST_INITIAL_CAPITAL = 100000;
 export const DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO = 0.08;
 export const DEFAULT_LIQUIDATION_DISCOUNT_PERCENT = 0;
 export const DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT = 10;
-
-export const normalizeMtlsAccessCertPassword = (rawValue: string | null): string => {
-  const trimmed = typeof rawValue === 'string' ? rawValue.trim() : '';
-  if (trimmed.length > 0) {
-    return trimmed;
-  }
-  return DEFAULT_MTLS_ACCESS_CERT_PASSWORD;
-};

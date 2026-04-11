@@ -1,5 +1,3 @@
-import { DEFAULT_BACKTEST_INITIAL_CAPITAL } from '../constants';
-
 const normalizeInitialCapital = (rawValue: unknown, fallback: number): number => {
   const parsed = typeof rawValue === 'number'
     ? rawValue
@@ -13,9 +11,6 @@ const normalizeInitialCapital = (rawValue: unknown, fallback: number): number =>
 
   return parsed;
 };
-
-export const resolveBacktestInitialCapitalSetting = (rawValue: unknown): number =>
-  normalizeInitialCapital(rawValue, DEFAULT_BACKTEST_INITIAL_CAPITAL);
 
 export const resolveStrategyInitialCapital = (
   strategy: { accountId?: string | null; parameters?: Record<string, unknown> | null },

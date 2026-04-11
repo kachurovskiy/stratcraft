@@ -1,7 +1,6 @@
 import { JobHandler, JobHandlerContext } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
 import type { TickerAssetRecord } from '../../database/types';
-import { SETTING_KEYS } from '../../constants';
 import { deploymentService } from '../../services/DeploymentService';
 import {
   type AssetClassificationSettings,
@@ -9,7 +8,6 @@ import {
   isTrainingTicker
 } from '../../utils/assetClassification';
 import { toDateKey } from '../../utils/date';
-import { parseRequiredNumberSetting } from '../../utils/settings';
 
 const CANDLE_SOURCE = 'candle-job';
 const SERVER_UPDATE_SOURCE = 'system';
@@ -24,63 +22,19 @@ function loadCandleSyncSettings(db: JobHandlerDependencies['db']): CandleSyncSet
   const { candleSync, expenseRatios, tickerRules } = db.settings.value;
 
   return {
-    maxConcurrentUpdates: parseRequiredNumberSetting(
-      SETTING_KEYS.CANDLE_SYNC_MAX_CONCURRENT_UPDATES,
-      String(candleSync.maxConcurrentUpdates),
-      { min: 1, integer: true }
-    ),
-    etfBaseExpenseRatio: parseRequiredNumberSetting(
-      SETTING_KEYS.ETF_BASE_EXPENSE_RATIO,
-      String(expenseRatios.etfBaseExpenseRatio),
-      { min: 0 }
-    ),
-    inverseEtfExpenseRatio: parseRequiredNumberSetting(
-      SETTING_KEYS.INVERSE_ETF_EXPENSE_RATIO,
-      String(expenseRatios.inverseEtfExpenseRatio),
-      { min: 0 }
-    ),
-    commodityTrustExpenseRatio: parseRequiredNumberSetting(
-      SETTING_KEYS.COMMODITY_TRUST_EXPENSE_RATIO,
-      String(expenseRatios.commodityTrustExpenseRatio),
-      { min: 0 }
-    ),
-    bondEtfExpenseRatio: parseRequiredNumberSetting(
-      SETTING_KEYS.BOND_ETF_EXPENSE_RATIO,
-      String(expenseRatios.bondEtfExpenseRatio),
-      { min: 0 }
-    ),
-    incomeEtfExpenseRatio: parseRequiredNumberSetting(
-      SETTING_KEYS.INCOME_ETF_EXPENSE_RATIO,
-      String(expenseRatios.incomeEtfExpenseRatio),
-      { min: 0 }
-    ),
+    maxConcurrentUpdates: candleSync.maxConcurrentUpdates,
+    etfBaseExpenseRatio: expenseRatios.etfBaseExpenseRatio,
+    inverseEtfExpenseRatio: expenseRatios.inverseEtfExpenseRatio,
+    commodityTrustExpenseRatio: expenseRatios.commodityTrustExpenseRatio,
+    bondEtfExpenseRatio: expenseRatios.bondEtfExpenseRatio,
+    incomeEtfExpenseRatio: expenseRatios.incomeEtfExpenseRatio,
     leveragedExpenseRatios: {
-      2: parseRequiredNumberSetting(
-        SETTING_KEYS.LEVERAGED_2X_EXPENSE_RATIO,
-        String(expenseRatios.leveraged2xExpenseRatio),
-        { min: 0 }
-      ),
-      3: parseRequiredNumberSetting(
-        SETTING_KEYS.LEVERAGED_3X_EXPENSE_RATIO,
-        String(expenseRatios.leveraged3xExpenseRatio),
-        { min: 0 }
-      ),
-      5: parseRequiredNumberSetting(
-        SETTING_KEYS.LEVERAGED_5X_EXPENSE_RATIO,
-        String(expenseRatios.leveraged5xExpenseRatio),
-        { min: 0 }
-      )
+      2: expenseRatios.leveraged2xExpenseRatio,
+      3: expenseRatios.leveraged3xExpenseRatio,
+      5: expenseRatios.leveraged5xExpenseRatio
     },
-    trainingAllocationRatio: parseRequiredNumberSetting(
-      SETTING_KEYS.TRAINING_ALLOCATION_RATIO,
-      String(tickerRules.trainingAllocationRatio),
-      { min: 0, max: 1 }
-    ),
-    matchingRatioThreshold: parseRequiredNumberSetting(
-      SETTING_KEYS.CANDLE_SYNC_MATCHING_RATIO_THRESHOLD,
-      String(candleSync.matchingRatioThreshold),
-      { min: 0, max: 1 }
-    )
+    trainingAllocationRatio: tickerRules.trainingAllocationRatio,
+    matchingRatioThreshold: candleSync.matchingRatioThreshold
   };
 }
 

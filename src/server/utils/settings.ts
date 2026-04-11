@@ -18,27 +18,6 @@ export const parseOptionalNumberSetting = (rawValue: string | null): number | nu
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export const parseRequiredNumberSetting = (
-  settingKey: string,
-  rawValue: string,
-  options: { min?: number; max?: number; integer?: boolean } = {}
-): number => {
-  const value = Number(rawValue);
-  if (!Number.isFinite(value)) {
-    throw new Error(`Setting "${settingKey}" must be a valid number.`);
-  }
-  if (options.integer && !Number.isInteger(value)) {
-    throw new Error(`Setting "${settingKey}" must be an integer.`);
-  }
-  if (options.min !== undefined && value < options.min) {
-    throw new Error(`Setting "${settingKey}" must be at least ${options.min}.`);
-  }
-  if (options.max !== undefined && value > options.max) {
-    throw new Error(`Setting "${settingKey}" must be at most ${options.max}.`);
-  }
-  return value;
-};
-
 export const buildNumberSettingOverrides = <T extends Record<string, number>>(
   settingsMap: Record<string, string | null>,
   mapping: NumberSettingMapping<T>[]

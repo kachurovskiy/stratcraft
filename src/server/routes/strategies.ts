@@ -17,7 +17,7 @@ import {
   normalizeBacktestScope
 } from '../scoring/backtestComparison';
 import { formatSignalSkipReason } from '../utils/skipReasonFormatting';
-import { resolveBacktestInitialCapitalSetting, resolveStrategyInitialCapital } from '../utils/initialCapital';
+import { resolveStrategyInitialCapital } from '../utils/initialCapital';
 import { buildParameterContexts, formatParameterValue } from '../utils/parameters';
 import {
   normalizeNullableUppercaseString as normalizeTickerParam,
@@ -1231,7 +1231,6 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
             : []
       })
     ]);
-    const rawBacktestInitialCapital = req.db.settings.value.engine.backtestInitialCapital;
     const loadQqqSignalPriceSeries = async (): Promise<Array<{ isoDate: string; close: number }>> => {
       if (signalLineCounts.length === 0) {
         return [];
@@ -1267,7 +1266,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       });
     };
     const strategyLogViews = rawStrategyLogs.map((entry: LogEntry) => buildStrategyLogView(entry));
-    const backtestInitialCapital = resolveBacktestInitialCapitalSetting(rawBacktestInitialCapital);
+    const backtestInitialCapital = req.db.settings.value.engine.backtestInitialCapital;
     const initialCapital = resolveStrategyInitialCapital(strategy, backtestInitialCapital);
     const hasInitialCapital = Number.isFinite(initialCapital) && initialCapital > 0;
 

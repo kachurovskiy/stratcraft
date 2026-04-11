@@ -137,7 +137,7 @@ export class Server {
       return;
     }
 
-    const existingDomain = normalizeDomain(this.db.settings.value.app.domain);
+    const existingDomain = this.db.settings.value.app.domain;
     if (existingDomain) {
       return;
     }
