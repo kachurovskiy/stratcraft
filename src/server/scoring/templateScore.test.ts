@@ -62,10 +62,10 @@ describe('templateScore settings integration', () => {
     relaxedLiquiditySettings.templateScoring.tradeWeight = 0;
 
     const baseline = await computeTemplateScores(createSnapshots(), {
-      settingsRepo: { value: baselineSettings }
+      settingsValue: baselineSettings.templateScoring
     });
     const relaxed = await computeTemplateScores(createSnapshots(), {
-      settingsRepo: { value: relaxedLiquiditySettings }
+      settingsValue: relaxedLiquiditySettings.templateScoring
     });
 
     expect(relaxed.get('template-1') ?? 0).toBeGreaterThan(baseline.get('template-1') ?? 0);

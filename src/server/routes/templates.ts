@@ -156,7 +156,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     const templateScoreResults = await computeTemplateScoreResults(defaultBacktestSnapshots, {
       verificationByTemplate,
-      settingsRepo: req.db.settings
+      settingsValue: req.db.settings.value.templateScoring
     });
     const templateScoreById = templateScoreResults.scores;
     const templateScoreBreakdowns = templateScoreResults.breakdowns;

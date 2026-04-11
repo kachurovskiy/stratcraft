@@ -1,4 +1,4 @@
-import type { SettingsValue } from '../database/types';
+import type { TemplateScoringSettingsValue } from '../database/types';
 import type { BacktestScope, StrategyPerformance } from '../types/StrategyTemplate';
 import { createDefaultSettingsValue } from '../settings/defaults';
 
@@ -19,25 +19,9 @@ export type TemplateVerificationMetrics = {
   verifyMaxDrawdownRatio?: number | null;
 };
 
-export type TemplateScoreSettings = {
-  returnScale: number;
-  validationNegativePenaltyStrength: number;
-  drawdownLambda: number;
-  tradeTarget: number;
-  tradeWeight: number;
-  recencyHalfLifeDays: number;
-  verifySharpeScale: number;
-  verifyCalmarScale: number;
-  verifyCagrScale: number;
-  verifyCagrNegativeScale: number;
-  verifyDrawdownLambda: number;
-  verifyMinMultiplier: number;
-  verifyMaxMultiplier: number;
-};
-
 export type TemplateScoreOptions = {
   verificationByTemplate?: Map<string, TemplateVerificationMetrics>;
-  settingsRepo?: { value: Pick<SettingsValue, 'templateScoring'> };
+  settingsValue?: TemplateScoringSettingsValue;
 };
 
 export type TemplateScoreBreakdown = {
@@ -75,14 +59,14 @@ export type TemplateScoreResults = {
 };
 
 const DEFAULT_SETTINGS = createDefaultSettingsValue();
-export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoreSettings = {
+export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoringSettingsValue = {
   ...DEFAULT_SETTINGS.templateScoring
 };
 
-const resolveTemplateScoreSettings = (options: TemplateScoreOptions): TemplateScoreSettings => {
-  const merged: TemplateScoreSettings = {
+const resolveTemplateScoreSettings = (options: TemplateScoreOptions): TemplateScoringSettingsValue => {
+  const merged: TemplateScoringSettingsValue = {
     ...DEFAULT_TEMPLATE_SCORE_SETTINGS,
-    ...(options.settingsRepo?.value.templateScoring ?? {})
+    ...(options.settingsValue ?? {})
   };
 
   return {
@@ -128,7 +112,7 @@ const computeTradesPerYear = (
   return totalTrades / years;
 };
 
-const computeRecencyWeight = (createdAt: Date | null, settings: TemplateScoreSettings): number => {
+const computeRecencyWeight = (createdAt: Date | null, settings: TemplateScoringSettingsValue): number => {
   if (!(createdAt instanceof Date) || Number.isNaN(createdAt.getTime())) {
     return 1;
   }
@@ -139,7 +123,7 @@ const computeRecencyWeight = (createdAt: Date | null, settings: TemplateScoreSet
   return 0.6 + 0.4 * decay;
 };
 
-const scoreReturn = (validationCagr: number, settings: TemplateScoreSettings): number => {
+const scoreReturn = (validationCagr: number, settings: TemplateScoringSettingsValue): number => {
   if (!Number.isFinite(validationCagr)) {
     return 0;
   }
@@ -153,17 +137,17 @@ const scoreConsistency = (trainingCagr: number, validationCagr: number): number 
   return clamp01(computeConsistencyScore(trainingCagr, validationCagr));
 };
 
-const scoreRisk = (validationDrawdown: number, settings: TemplateScoreSettings): number => {
+const scoreRisk = (validationDrawdown: number, settings: TemplateScoringSettingsValue): number => {
   return Math.exp(-settings.drawdownLambda * Math.max(0, validationDrawdown));
 };
 
-const scoreLiquidity = (tradesPerYear: number, settings: TemplateScoreSettings): number => {
+const scoreLiquidity = (tradesPerYear: number, settings: TemplateScoringSettingsValue): number => {
   const target = Math.max(1e-6, settings.tradeTarget);
   const confidence = 1 - Math.exp(-tradesPerYear / target);
   return (1 - settings.tradeWeight) + settings.tradeWeight * confidence;
 };
 
-const negativeValidationPenalty = (validationCagr: number, settings: TemplateScoreSettings): number => {
+const negativeValidationPenalty = (validationCagr: number, settings: TemplateScoringSettingsValue): number => {
   if (!Number.isFinite(validationCagr) || validationCagr >= 0) {
     return 1;
   }
@@ -195,7 +179,7 @@ const scoreSignedMetric = (value: number | null, posScale: number, negScale: num
 
 const computeVerificationMultiplier = (
   metrics: TemplateVerificationMetrics | undefined,
-  settings: TemplateScoreSettings
+  settings: TemplateScoringSettingsValue
 ): number | null => {
   if (!metrics) {
     return null;
