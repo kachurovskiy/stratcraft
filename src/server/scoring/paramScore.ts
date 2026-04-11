@@ -101,7 +101,6 @@ export type ParamScoreSettings = {
 
 export type ParamScoreOptions = {
   settingsRepo?: { value: Pick<SettingsValue, 'paramScoring'> };
-  paramScoreSettings?: Partial<ParamScoreSettings>;
 };
 
 const PERCENTILE_TOLERANCE = 1e-12;
@@ -112,19 +111,16 @@ export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoreSettings = {
   stabilityGamma: 2
 };
 
-const resolveParamScoreSettings = (options: ParamScoreOptions): ParamScoreSettings => ({
-  ...DEFAULT_PARAM_SCORE_SETTINGS,
-  ...(options.settingsRepo?.value.paramScoring ?? {}),
-  ...(options.paramScoreSettings ?? {})
-});
-
 const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'maxLeverage', 'ticker']);
 
 export const scoreBacktestParameters = async (
   rows: BacktestCacheRow[],
   options: ParamScoreOptions = {}
 ): Promise<ScoreBacktestParametersSummary> => {
-  const scoreSettings = resolveParamScoreSettings(options);
+  const scoreSettings: ParamScoreSettings = {
+    ...DEFAULT_PARAM_SCORE_SETTINGS,
+    ...(options.settingsRepo?.value.paramScoring ?? {})
+  };
   const availabilityById = new Map<string, ScoreAvailabilityResult>();
   const availabilityByRow = new Map<BacktestCacheRow, ScoreAvailabilityResult>();
   const candidates: NormalizedCandidate[] = [];
