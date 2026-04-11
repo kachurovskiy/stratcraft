@@ -1,6 +1,6 @@
 import type { QueryResultRow } from 'pg';
 import { createDefaultSettingsValue } from '../settings/defaults';
-import { normalizeNumber, type SettingsRepo } from '../utils/settings';
+import type { SettingsRepo } from '../utils/settings';
 
 export type BacktestCacheRow = QueryResultRow & {
   parameters: Record<string, unknown>;
@@ -112,61 +112,11 @@ export const DEFAULT_PARAM_SCORE_SETTINGS: ParamScoreSettings = {
   stabilityGamma: 2
 };
 
-const resolveParamScoreSettings = (
-  overrides?: Partial<ParamScoreSettings>
-): ParamScoreSettings => {
-  const merged: ParamScoreSettings = {
-    ...DEFAULT_PARAM_SCORE_SETTINGS,
-    ...(overrides ?? {})
-  };
-
-  return {
-    minTrades: normalizeNumber(merged.minTrades, DEFAULT_PARAM_SCORE_SETTINGS.minTrades, { min: 0, integer: true }),
-    drawdownLambda: normalizeNumber(merged.drawdownLambda, DEFAULT_PARAM_SCORE_SETTINGS.drawdownLambda, { min: 0 }),
-    neighborThreshold: normalizeNumber(
-      merged.neighborThreshold,
-      DEFAULT_PARAM_SCORE_SETTINGS.neighborThreshold,
-      { min: 0 }
-    ),
-    coreScoreQuantile: normalizeNumber(
-      merged.coreScoreQuantile,
-      DEFAULT_PARAM_SCORE_SETTINGS.coreScoreQuantile,
-      { min: 0, max: 1 }
-    ),
-    pairwiseNeighborLimit: normalizeNumber(
-      merged.pairwiseNeighborLimit,
-      DEFAULT_PARAM_SCORE_SETTINGS.pairwiseNeighborLimit,
-      { min: 1, integer: true }
-    ),
-    stabilityGamma: normalizeNumber(
-      merged.stabilityGamma,
-      DEFAULT_PARAM_SCORE_SETTINGS.stabilityGamma,
-      { min: 0 }
-    )
-  };
-};
-
-const loadParamScoreSettings = async (
-  settingsRepo?: SettingsRepo
-): Promise<Partial<ParamScoreSettings>> => {
-  if (!settingsRepo) {
-    return {};
-  }
-
-  return {
-    ...settingsRepo.value.paramScoring
-  };
-};
-
-const resolveParamScoreSettingsFromOptions = async (
-  options: ParamScoreOptions
-): Promise<ParamScoreSettings> => {
-  const settingsOverrides = await loadParamScoreSettings(options.settingsRepo);
-  return resolveParamScoreSettings({
-    ...settingsOverrides,
-    ...(options.paramScoreSettings ?? {})
-  });
-};
+const resolveParamScoreSettings = (options: ParamScoreOptions): ParamScoreSettings => ({
+  ...DEFAULT_PARAM_SCORE_SETTINGS,
+  ...(options.settingsRepo?.value.paramScoring ?? {}),
+  ...(options.paramScoreSettings ?? {})
+});
 
 const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'maxLeverage', 'ticker']);
 
@@ -174,7 +124,7 @@ export const scoreBacktestParameters = async (
   rows: BacktestCacheRow[],
   options: ParamScoreOptions = {}
 ): Promise<ScoreBacktestParametersSummary> => {
-  const scoreSettings = await resolveParamScoreSettingsFromOptions(options);
+  const scoreSettings = resolveParamScoreSettings(options);
   const availabilityById = new Map<string, ScoreAvailabilityResult>();
   const availabilityByRow = new Map<BacktestCacheRow, ScoreAvailabilityResult>();
   const candidates: NormalizedCandidate[] = [];

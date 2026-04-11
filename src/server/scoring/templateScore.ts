@@ -1,6 +1,6 @@
 import type { BacktestScope, StrategyPerformance } from '../types/StrategyTemplate';
 import { createDefaultSettingsValue } from '../settings/defaults';
-import { normalizeNumber, type SettingsRepo } from '../utils/settings';
+import type { SettingsRepo } from '../utils/settings';
 
 export type TemplateScoreSnapshot = {
   templateId: string;
@@ -80,109 +80,17 @@ export const DEFAULT_TEMPLATE_SCORE_SETTINGS: TemplateScoreSettings = {
   ...DEFAULT_SETTINGS.templateScoring
 };
 
-const resolveTemplateScoreSettings = (
-  overrides?: Partial<TemplateScoreSettings>
-): TemplateScoreSettings => {
+const resolveTemplateScoreSettings = (options: TemplateScoreOptions): TemplateScoreSettings => {
   const merged: TemplateScoreSettings = {
     ...DEFAULT_TEMPLATE_SCORE_SETTINGS,
-    ...(overrides ?? {})
-  };
-
-  const verifyMinMultiplier = normalizeNumber(
-    merged.verifyMinMultiplier,
-    DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyMinMultiplier,
-    { min: 0 }
-  );
-  const verifyMaxMultiplier = Math.max(
-    verifyMinMultiplier,
-    normalizeNumber(
-      merged.verifyMaxMultiplier,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyMaxMultiplier,
-      { min: 0 }
-    )
-  );
-
-  return {
-    returnScale: normalizeNumber(
-      merged.returnScale,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.returnScale,
-      { min: 1e-6 }
-    ),
-    validationNegativePenaltyStrength: normalizeNumber(
-      merged.validationNegativePenaltyStrength,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.validationNegativePenaltyStrength,
-      { min: 0 }
-    ),
-    drawdownLambda: normalizeNumber(
-      merged.drawdownLambda,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.drawdownLambda,
-      { min: 0 }
-    ),
-    tradeTarget: normalizeNumber(
-      merged.tradeTarget,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.tradeTarget,
-      { min: 1e-6 }
-    ),
-    tradeWeight: normalizeNumber(
-      merged.tradeWeight,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.tradeWeight,
-      { min: 0, max: 1 }
-    ),
-    recencyHalfLifeDays: normalizeNumber(
-      merged.recencyHalfLifeDays,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.recencyHalfLifeDays,
-      { min: 1e-6 }
-    ),
-    verifySharpeScale: normalizeNumber(
-      merged.verifySharpeScale,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifySharpeScale,
-      { min: 1e-6 }
-    ),
-    verifyCalmarScale: normalizeNumber(
-      merged.verifyCalmarScale,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCalmarScale,
-      { min: 1e-6 }
-    ),
-    verifyCagrScale: normalizeNumber(
-      merged.verifyCagrScale,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrScale,
-      { min: 1e-6 }
-    ),
-    verifyCagrNegativeScale: normalizeNumber(
-      merged.verifyCagrNegativeScale,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyCagrNegativeScale,
-      { min: 1e-6 }
-    ),
-    verifyDrawdownLambda: normalizeNumber(
-      merged.verifyDrawdownLambda,
-      DEFAULT_TEMPLATE_SCORE_SETTINGS.verifyDrawdownLambda,
-      { min: 0 }
-    ),
-    verifyMinMultiplier,
-    verifyMaxMultiplier
-  };
-};
-
-const loadTemplateScoreSettings = async (
-  settingsRepo?: SettingsRepo
-): Promise<Partial<TemplateScoreSettings>> => {
-  if (!settingsRepo) {
-    return {};
-  }
-
-  return {
-    ...settingsRepo.value.templateScoring
-  };
-};
-
-const resolveTemplateScoreSettingsFromOptions = async (
-  options: TemplateScoreOptions
-): Promise<TemplateScoreSettings> => {
-  const settingsOverrides = await loadTemplateScoreSettings(options.settingsRepo);
-  return resolveTemplateScoreSettings({
-    ...settingsOverrides,
+    ...(options.settingsRepo?.value.templateScoring ?? {}),
     ...(options.templateScoreSettings ?? {})
-  });
+  };
+
+  return {
+    ...merged,
+    verifyMaxMultiplier: Math.max(merged.verifyMinMultiplier, merged.verifyMaxMultiplier)
+  };
 };
 
 const clampNumber = (value: number, minValue: number, maxValue: number): number => {
@@ -371,7 +279,7 @@ export const computeTemplateScoreResults = async (
   snapshots: TemplateScoreSnapshot[],
   options: TemplateScoreOptions = {}
 ): Promise<TemplateScoreResults> => {
-  const templateScoreSettings = await resolveTemplateScoreSettingsFromOptions(options);
+  const templateScoreSettings = resolveTemplateScoreSettings(options);
   const strategyMap = new Map<string, {
     templateId: string;
     periods: Map<number, {
