@@ -1,11 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
 import {
-  DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS,
-  DEFAULT_BACKTEST_INITIAL_CAPITAL,
-  DEFAULT_LIQUIDATION_DISCOUNT_PERCENT,
-  DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT,
-  DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO,
-  DEFAULT_MTLS_ACCESS_CERT_PASSWORD,
   SETTING_KEYS,
   SETTING_KEY_LIST,
   type SettingKey
@@ -417,7 +411,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'engine',
     label: 'Backtest Initial Capital (USD)',
     description: 'Initial capital used for optimization and non-account backtests.',
-    placeholder: String(DEFAULT_BACKTEST_INITIAL_CAPITAL),
+    placeholder: String(DEFAULT_SETTINGS.engine.backtestInitialCapital),
     inputType: 'number',
     min: '1'
   },
@@ -475,7 +469,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'alpaca',
     label: 'Market Order Price Cap Ratio',
     description: 'Cap market order fills by converting to a limit order (e.g. 0.08 = 8%). Set to 0 to disable.',
-    placeholder: String(DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO),
+    placeholder: String(DEFAULT_SETTINGS.alpaca.marketOrderPriceCapRatio),
     inputType: 'number',
     min: '0'
   },
@@ -484,7 +478,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'alpaca',
     label: 'Account Liquidation Discount (%)',
     description: 'Discount applied to Alpaca latest prices when placing liquidation limit sells. Suggested defaults: 0, 1, 2, or 3.',
-    placeholder: String(DEFAULT_LIQUIDATION_DISCOUNT_PERCENT),
+    placeholder: String(DEFAULT_SETTINGS.alpaca.accountLiquidationDiscountPercent),
     inputType: 'number',
     min: '0'
   },
@@ -493,7 +487,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'alpaca',
     label: 'Account Liquidation Deviation Band (%)',
     description: 'Skip liquidation orders if latest price deviates from last close by more than this percent (0 disables).',
-    placeholder: String(DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT),
+    placeholder: String(DEFAULT_SETTINGS.alpaca.accountLiquidationDeviationBandPercent),
     inputType: 'number',
     min: '0'
   },
@@ -538,7 +532,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     group: 'optimizer',
     label: 'Automatic Optimization Delay (Seconds)',
     description: 'Seconds to wait after the scheduler is idle before running auto optimization.',
-    placeholder: String(DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS),
+    placeholder: String(DEFAULT_SETTINGS.optimizer.autoOptimizationDelaySeconds),
     inputType: 'number',
     min: '0'
   },
@@ -917,8 +911,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.MTLS_ACCESS_CERT_PASSWORD,
     group: 'user-access',
     label: 'Access Certificate Password',
-    description: `Password used when exporting access.p12 (Android requires a non-empty password). Default: ${DEFAULT_MTLS_ACCESS_CERT_PASSWORD}.`,
-    placeholder: DEFAULT_MTLS_ACCESS_CERT_PASSWORD,
+    description: `Password used when exporting access.p12 (Android requires a non-empty password). Default: ${DEFAULT_SETTINGS.userAccess.mtlsAccessCertPassword}.`,
+    placeholder: DEFAULT_SETTINGS.userAccess.mtlsAccessCertPassword,
     inputType: 'password'
   },
   {

@@ -116,10 +116,3 @@ export const SENSITIVE_SETTING_KEYS: ReadonlySet<SettingKey> = new Set([
 export const isSensitiveSettingKey = (key: string): key is SettingKey => (
   SENSITIVE_SETTING_KEYS.has(key as SettingKey)
 );
-
-export const DEFAULT_MTLS_ACCESS_CERT_PASSWORD = 'stratcraft';
-export const DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS = 300;
-export const DEFAULT_BACKTEST_INITIAL_CAPITAL = 100000;
-export const DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO = 0.08;
-export const DEFAULT_LIQUIDATION_DISCOUNT_PERCENT = 0;
-export const DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT = 10;

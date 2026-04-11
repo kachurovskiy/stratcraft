@@ -1,11 +1,3 @@
-import {
-  DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS,
-  DEFAULT_BACKTEST_INITIAL_CAPITAL,
-  DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT,
-  DEFAULT_LIQUIDATION_DISCOUNT_PERCENT,
-  DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO,
-  DEFAULT_MTLS_ACCESS_CERT_PASSWORD
-} from '../constants';
 import type { SettingsCandleDataProvider, SettingsOptimizationObjective, SettingsValue } from '../database/types';
 import { DEFAULT_FOOTER_DISCLAIMER_HTML } from '../utils/footerDisclaimer';
 
@@ -29,9 +21,9 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     apiKey: '',
     apiSecret: '',
     dataRateLimitWaitSeconds: 60,
-    marketOrderPriceCapRatio: DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO,
-    accountLiquidationDiscountPercent: DEFAULT_LIQUIDATION_DISCOUNT_PERCENT,
-    accountLiquidationDeviationBandPercent: DEFAULT_LIQUIDATION_DEVIATION_BAND_PERCENT
+    marketOrderPriceCapRatio: 0.08,
+    accountLiquidationDiscountPercent: 0,
+    accountLiquidationDeviationBandPercent: 10
   },
   eodhd: {
     baseUrl: 'https://eodhd.com/api/eod',
@@ -72,7 +64,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     minTickerFluctuationRatio: 0.03,
     maxTickerFluctuationRatio: 10,
     backtestActiveMonths: [1, 3, 6, 12, 24, 36, 48, 60, 120],
-    backtestInitialCapital: DEFAULT_BACKTEST_INITIAL_CAPITAL
+    backtestInitialCapital: 100000
   },
   tickerRules: {
     ignoredTickers: [],
@@ -81,7 +73,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
   },
   optimizer: {
     autoOptimizationEnabled: true,
-    autoOptimizationDelaySeconds: DEFAULT_AUTO_OPTIMIZATION_DELAY_SECONDS,
+    autoOptimizationDelaySeconds: 300,
     allowShortSellingOptimizationEnabled: false,
     lightgbmTrainingStartDate: '2021-01-01',
     lightgbmTrainingEndDate: '2024-12-31',
@@ -131,7 +123,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
   userAccess: {
     inviteLinkValidDays: 7,
     sessionCookieValidDays: 30,
-    mtlsAccessCertPassword: DEFAULT_MTLS_ACCESS_CERT_PASSWORD
+    mtlsAccessCertPassword: 'stratcraft'
   },
   email: {
     emailSecurityEmoji: '',
