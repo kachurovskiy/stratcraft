@@ -1,11 +1,24 @@
 import type { PoolClient, QueryResultRow } from 'pg';
-import { normalizeUppercaseStrings } from '../../utils/stringNormalization';
+import { normalizeUppercaseString, normalizeUppercaseStrings } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { parseDate } from '../core/valueParsers';
-import type { CorporateActionRecord } from '../types';
+import type { CorporateActionRecord, CorporateActionType } from '../types';
 
 type LatestProcessDateRow = QueryResultRow & {
-  process_date: Date | string | null;
+  process_date: string | null;
+};
+
+type CorporateActionRow = QueryResultRow & {
+  id: string;
+  action_type: CorporateActionType;
+  primary_symbol: string;
+  related_symbols: string[];
+  process_date: string;
+  effective_date: string | null;
+  ex_date: string | null;
+  record_date: string | null;
+  payable_date: string | null;
+  payload: Record<string, unknown>;
 };
 
 export class CorporateActionsRepo {
@@ -17,6 +30,55 @@ export class CorporateActionsRepo {
          FROM corporate_actions`
     );
     return parseDate(row?.process_date);
+  }
+
+  async getCorporateActionsForSymbol(symbol: string): Promise<CorporateActionRecord[]> {
+    const normalizedSymbol = normalizeUppercaseString(symbol);
+    if (!normalizedSymbol) {
+      return [];
+    }
+
+    const rows = await this.db.all<CorporateActionRow>(
+      `SELECT id,
+              action_type,
+              primary_symbol,
+              related_symbols,
+              process_date,
+              effective_date,
+              ex_date,
+              record_date,
+              payable_date,
+              payload
+         FROM corporate_actions
+        WHERE primary_symbol = ?
+           OR ? = ANY(related_symbols)
+        ORDER BY process_date DESC, effective_date DESC NULLS LAST, ex_date DESC NULLS LAST, id DESC`,
+      [normalizedSymbol, normalizedSymbol]
+    );
+
+    const actions: CorporateActionRecord[] = [];
+
+    for (const row of rows) {
+      const processDate = parseDate(row.process_date);
+      if (!processDate) {
+        continue;
+      }
+
+      actions.push({
+        id: row.id,
+        actionType: row.action_type,
+        primarySymbol: normalizeUppercaseString(row.primary_symbol),
+        relatedSymbols: normalizeUppercaseStrings(row.related_symbols),
+        processDate,
+        effectiveDate: parseDate(row.effective_date) ?? null,
+        exDate: parseDate(row.ex_date) ?? null,
+        recordDate: parseDate(row.record_date) ?? null,
+        payableDate: parseDate(row.payable_date) ?? null,
+        payload: row.payload
+      });
+    }
+
+    return actions;
   }
 
   async upsertCorporateActions(actions: CorporateActionRecord[]): Promise<{ upserted: number }> {
