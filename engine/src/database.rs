@@ -1314,6 +1314,60 @@ impl Database {
         Ok(())
     }
 
+    pub async fn find_name_change_successor(
+        &self,
+        symbol: &str,
+        opened_at: DateTime<Utc>,
+    ) -> Result<Option<String>> {
+        let opened_date = opened_at.date_naive();
+        let rows = self
+            .client
+            .query(
+                "SELECT primary_symbol, related_symbols, payload
+                 FROM corporate_actions
+                 WHERE action_type = 'name_change'
+                   AND (
+                        primary_symbol = $1
+                        OR $1 = ANY(related_symbols)
+                        OR UPPER(COALESCE(payload ->> 'old_symbol', '')) = $1
+                   )
+                   AND COALESCE(
+                        effective_date,
+                        process_date,
+                        ex_date,
+                        record_date,
+                        payable_date
+                   ) >= $2
+                 ORDER BY COALESCE(
+                        effective_date,
+                        process_date,
+                        ex_date,
+                        record_date,
+                        payable_date
+                   ) ASC,
+                          process_date ASC,
+                          id ASC",
+                &[&symbol, &opened_date],
+            )
+            .await?;
+
+        for row in rows {
+            let primary_symbol: String = row.get(0);
+            let related_symbols: Vec<String> = row.get(1);
+            let payload: Value = row.get(2);
+            let Some((from_symbol, to_symbol)) =
+                resolve_name_change_symbols(&primary_symbol, &related_symbols, &payload)
+            else {
+                continue;
+            };
+            if from_symbol == symbol && to_symbol != symbol {
+                return Ok(Some(to_symbol));
+            }
+        }
+
+        Ok(None)
+    }
+
     pub async fn backtest_cache_entries_for_template(
         &self,
         template_id: &str,
@@ -1565,6 +1619,56 @@ fn parse_excluded_keywords(json: &str) -> Vec<String> {
         }
     }
     cleaned
+}
+
+fn resolve_name_change_symbols(
+    primary_symbol: &str,
+    related_symbols: &[String],
+    payload: &Value,
+) -> Option<(String, String)> {
+    let normalized_primary = normalize_ticker_symbol(primary_symbol)?;
+    let old_symbol = payload
+        .get("old_symbol")
+        .and_then(Value::as_str)
+        .and_then(normalize_ticker_symbol);
+    let new_symbol = payload
+        .get("new_symbol")
+        .and_then(Value::as_str)
+        .and_then(normalize_ticker_symbol);
+
+    if let (Some(old_symbol), Some(new_symbol)) = (old_symbol.clone(), new_symbol.clone()) {
+        if old_symbol != new_symbol {
+            return Some((old_symbol, new_symbol));
+        }
+    }
+
+    if let Some(new_symbol) = new_symbol {
+        if normalized_primary != new_symbol {
+            return Some((normalized_primary.clone(), new_symbol));
+        }
+    }
+
+    let mut candidates = related_symbols
+        .iter()
+        .filter_map(|symbol| normalize_ticker_symbol(symbol))
+        .filter(|symbol| symbol != &normalized_primary)
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.dedup();
+
+    match candidates.as_slice() {
+        [successor] => Some((normalized_primary, successor.clone())),
+        _ => None,
+    }
+}
+
+fn normalize_ticker_symbol(value: &str) -> Option<String> {
+    let normalized = value.trim().to_ascii_uppercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
 }
 
 fn decrypt_database_value(value: &str) -> Result<String> {
@@ -1896,6 +2000,47 @@ mod tests {
             .expect_err("encrypted values should fail without DATABASE_KEY");
         assert!(error.to_string().contains(DATABASE_KEY_ENV_VAR));
         drop(guard);
+    }
+
+    #[test]
+    fn resolve_name_change_symbols_prefers_old_and_new_payload_fields() {
+        let payload = json!({
+            "symbol": "META",
+            "old_symbol": "FB",
+            "new_symbol": "META"
+        });
+
+        let rename = resolve_name_change_symbols("META", &[String::from("FB")], &payload)
+            .expect("expected explicit old/new symbol mapping");
+
+        assert_eq!(rename, (String::from("FB"), String::from("META")));
+    }
+
+    #[test]
+    fn resolve_name_change_symbols_falls_back_to_single_related_symbol() {
+        let payload = json!({
+            "symbol": "META"
+        });
+
+        let rename = resolve_name_change_symbols("FB", &[String::from("META")], &payload)
+            .expect("expected primary-to-related fallback");
+
+        assert_eq!(rename, (String::from("FB"), String::from("META")));
+    }
+
+    #[test]
+    fn resolve_name_change_symbols_rejects_ambiguous_related_symbols() {
+        let payload = json!({
+            "symbol": "META"
+        });
+
+        let rename = resolve_name_change_symbols(
+            "FB",
+            &[String::from("META"), String::from("MVRS")],
+            &payload,
+        );
+
+        assert_eq!(rename, None);
     }
 
     fn encrypt_test_value(value: &str, key: &[u8; 32]) -> String {

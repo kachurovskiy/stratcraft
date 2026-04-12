@@ -126,15 +126,14 @@ pub async fn run(app: &AppContext) -> Result<()> {
             }
         };
 
-        let trades_snapshot = trades.clone();
         for mut trade in trades {
             match reconcile_trade(
+                &db,
                 &client,
                 &mut trade,
                 &position_prices,
                 &positions,
                 &stop_loss_configs,
-                &trades_snapshot,
             )
             .await
             {
@@ -166,12 +165,12 @@ pub async fn run(app: &AppContext) -> Result<()> {
 }
 
 async fn reconcile_trade(
+    db: &Database,
     client: &AlpacaClient<'_>,
     trade: &mut Trade,
     position_prices: &HashMap<String, f64>,
     positions: &[AccountPositionState],
     stop_loss_configs: &HashMap<String, Option<StopLossConfig>>,
-    trades: &[Trade],
 ) -> Result<bool> {
     if !(trade.entry_order_id.is_some()
         || trade.stop_order_id.is_some()
@@ -257,14 +256,7 @@ async fn reconcile_trade(
         }
     }
 
-    if let Some(ticker) = detect_renamed_ticker(
-        trade,
-        positions,
-        &entry_eval,
-        &stop_eval,
-        &exit_eval,
-        trades,
-    ) {
+    if let Some(ticker) = resolve_renamed_ticker_from_corporate_actions(db, trade).await? {
         trade.set_ticker(ticker, Utc::now());
         changed = true;
     }
@@ -599,100 +591,35 @@ fn find_position_match<'a>(
         .find(|position| position.quantity == trade.quantity && position.ticker == trade.ticker)
 }
 
-fn detect_renamed_ticker(
+async fn resolve_renamed_ticker_from_corporate_actions(
+    db: &Database,
     trade: &Trade,
-    positions: &[AccountPositionState],
-    entry_eval: &Option<OrderEvaluation>,
-    stop_eval: &Option<OrderEvaluation>,
-    exit_eval: &Option<OrderEvaluation>,
-    trades: &[Trade],
-) -> Option<String> {
+) -> Result<Option<String>> {
     if trade.status != TradeStatus::Active {
-        return None;
+        return Ok(None);
     }
 
-    if find_position_match(trade, positions).is_some() {
-        return None;
+    let mut visited = HashSet::new();
+    let mut current_symbol = trade.ticker.clone();
+
+    while visited.insert(current_symbol.clone()) {
+        let Some(next_symbol) = db
+            .find_name_change_successor(&current_symbol, trade.date)
+            .await?
+        else {
+            break;
+        };
+        if next_symbol == current_symbol {
+            break;
+        }
+        current_symbol = next_symbol;
     }
 
-    if let Some(symbol) = resolve_renamed_order_symbol(trade, &[entry_eval, stop_eval, exit_eval]) {
-        return Some(symbol);
+    if current_symbol == trade.ticker {
+        Ok(None)
+    } else {
+        Ok(Some(current_symbol))
     }
-
-    let position = find_renamed_position_match(trade, positions)?;
-    if has_trade_shape_collision(trade, &position.ticker, trades) {
-        return None;
-    }
-    Some(position.ticker.clone())
-}
-
-fn resolve_renamed_order_symbol(
-    trade: &Trade,
-    evaluations: &[&Option<OrderEvaluation>],
-) -> Option<String> {
-    let mut symbols = evaluations
-        .iter()
-        .filter_map(|evaluation| evaluation.as_ref())
-        .filter_map(|evaluation| evaluation.symbol.as_deref())
-        .map(str::trim)
-        .filter(|symbol| !symbol.is_empty())
-        .map(str::to_uppercase)
-        .collect::<Vec<_>>();
-    symbols.sort();
-    symbols.dedup();
-
-    match symbols.as_slice() {
-        [symbol] if symbol != &trade.ticker => Some(symbol.clone()),
-        _ => None,
-    }
-}
-
-fn find_renamed_position_match<'a>(
-    trade: &Trade,
-    positions: &'a [AccountPositionState],
-) -> Option<&'a AccountPositionState> {
-    if trade.status != TradeStatus::Active {
-        return None;
-    }
-
-    if find_position_match(trade, positions).is_some() {
-        return None;
-    }
-
-    let mut candidates: Vec<&AccountPositionState> = positions
-        .iter()
-        .filter(|position| position.quantity == trade.quantity)
-        .collect();
-    if candidates.is_empty() {
-        return None;
-    }
-
-    candidates.retain(|position| prices_close(position.avg_entry_price, trade.price));
-    if candidates.len() == 1 {
-        return Some(candidates[0]);
-    }
-
-    None
-}
-
-fn has_trade_shape_collision(trade: &Trade, ticker: &str, trades: &[Trade]) -> bool {
-    trades.iter().any(|other| {
-        other.id != trade.id
-            && matches!(other.status, TradeStatus::Pending | TradeStatus::Active)
-            && other.ticker == ticker
-            && other.quantity == trade.quantity
-            && prices_close(other.price, trade.price)
-    })
-}
-
-fn prices_close(a: f64, b: f64) -> bool {
-    if !a.is_finite() || !b.is_finite() || a <= 0.0 || b <= 0.0 {
-        return false;
-    }
-    let magnitude = a.abs().max(b.abs());
-    let abs_tolerance = if magnitude >= 1.0 { 0.02 } else { 0.002 };
-    let rel_tolerance = 0.02 * magnitude;
-    (a - b).abs() <= abs_tolerance || (a - b).abs() <= rel_tolerance
 }
 
 fn normalize_trade_date(date: DateTime<Utc>) -> DateTime<Utc> {
@@ -882,21 +809,6 @@ mod tests {
         }
     }
 
-    fn sample_active_trade(ticker: &str, quantity: i32, price: f64) -> Trade {
-        let mut trade = sample_trade(ticker, quantity, price);
-        trade.status = TradeStatus::Active;
-        trade
-    }
-
-    fn sample_eval(symbol: &str) -> Option<OrderEvaluation> {
-        Some(OrderEvaluation {
-            state: OrderState::Pending,
-            filled_price: None,
-            symbol: Some(symbol.to_string()),
-            timestamp: None,
-        })
-    }
-
     #[test]
     fn find_position_match_requires_same_ticker() {
         let trade = sample_trade("GPRO", 697, 1.04);
@@ -930,72 +842,6 @@ mod tests {
 
         let matched = find_position_match(&trade, &positions).expect("expected UPXI match");
         assert_eq!(matched.ticker, "UPXI");
-    }
-
-    #[test]
-    fn detect_renamed_ticker_does_not_rename_pending_trade_from_position_shape() {
-        let trade = sample_trade("GPRO", 697, 1.04);
-        let positions = vec![AccountPositionState {
-            ticker: "UPXI".to_string(),
-            quantity: 697,
-            avg_entry_price: 1.04,
-            current_price: Some(1.08),
-        }];
-
-        assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &None, &None, &[]),
-            None
-        );
-    }
-
-    #[test]
-    fn detect_renamed_ticker_uses_order_symbol_for_active_trade() {
-        let trade = sample_active_trade("FB", 10, 200.0);
-        let positions = vec![AccountPositionState {
-            ticker: "META".to_string(),
-            quantity: 10,
-            avg_entry_price: 200.0,
-            current_price: Some(250.0),
-        }];
-
-        assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &sample_eval("META"), &None, &[]),
-            Some("META".to_string())
-        );
-    }
-
-    #[test]
-    fn detect_renamed_ticker_falls_back_to_unique_position_for_active_trade() {
-        let trade = sample_active_trade("FB", 10, 200.0);
-        let positions = vec![AccountPositionState {
-            ticker: "META".to_string(),
-            quantity: 10,
-            avg_entry_price: 200.01,
-            current_price: Some(250.0),
-        }];
-
-        assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &None, &None, &[]),
-            Some("META".to_string())
-        );
-    }
-
-    #[test]
-    fn detect_renamed_ticker_skips_when_shape_collision_exists() {
-        let trade = sample_active_trade("CDXS", 120, 3.5);
-        let positions = vec![AccountPositionState {
-            ticker: "HUMA".to_string(),
-            quantity: 120,
-            avg_entry_price: 3.5,
-            current_price: Some(3.6),
-        }];
-        let other_trade = sample_active_trade("HUMA", 120, 3.5);
-        let trades = vec![trade.clone(), other_trade];
-
-        assert_eq!(
-            detect_renamed_ticker(&trade, &positions, &None, &None, &None, &trades),
-            None
-        );
     }
 
     #[test]
