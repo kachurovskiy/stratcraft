@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS trades (
     exit_order_status TEXT,
     exit_order_status_updated_at TIMESTAMPTZ,
     changes TEXT NOT NULL DEFAULT '[]',
+    applied_corporate_actions TEXT NOT NULL DEFAULT '[]',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (strategy_id) REFERENCES strategies(id),
     FOREIGN KEY (user_id) REFERENCES users(id),
@@ -231,7 +232,8 @@ ALTER TABLE trades
     ADD COLUMN IF NOT EXISTS stop_order_status_updated_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS exit_order_status TEXT,
     ADD COLUMN IF NOT EXISTS exit_order_status_updated_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS cancellation_source TEXT;
+    ADD COLUMN IF NOT EXISTS cancellation_source TEXT,
+    ADD COLUMN IF NOT EXISTS applied_corporate_actions TEXT NOT NULL DEFAULT '[]';
 
 CREATE TABLE IF NOT EXISTS account_operations (
     id TEXT PRIMARY KEY,

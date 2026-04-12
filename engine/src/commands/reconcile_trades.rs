@@ -1,7 +1,7 @@
 use crate::alpaca::{AlpacaClient, OrderEvaluation, OrderState};
 use crate::config::{EngineConfig, StopLossConfig};
 use crate::context::AppContext;
-use crate::database::Database;
+use crate::database::{Database, TradeCorporateActionRecord, TradeReconciliationCandidate};
 use crate::engine::AccountPositionState;
 use crate::models::{Trade, TradeCancellationSource, TradeStatus};
 use anyhow::{Context, Result};
@@ -29,36 +29,34 @@ pub async fn run(app: &AppContext) -> Result<()> {
         .build()
         .context("failed to construct HTTP client")?;
 
-    let mut grouped: HashMap<String, Vec<Trade>> = HashMap::new();
+    let mut grouped: HashMap<String, Vec<TradeReconciliationCandidate>> = HashMap::new();
     for candidate in candidates {
         grouped
-            .entry(candidate.account_id)
+            .entry(candidate.account_id.clone())
             .or_default()
-            .push(candidate.trade);
+            .push(candidate);
     }
 
     let mut reconciled = 0usize;
     let mut skipped = 0usize;
 
-    for (account_id, trades) in grouped {
+    for (account_id, mut account_candidates) in grouped {
+        let trade_count = account_candidates.len();
         let Some(credentials) = db.get_account_credentials(&account_id).await? else {
             warn!(
                 "Skipping {} trade(s) for account {} without credentials",
-                trades.len(),
-                account_id
+                trade_count, account_id
             );
-            skipped += trades.len();
+            skipped += trade_count;
             continue;
         };
 
         if !credentials.provider.eq_ignore_ascii_case("alpaca") {
             warn!(
                 "Skipping {} trade(s) for unsupported provider {} on account {}",
-                trades.len(),
-                credentials.provider,
-                account_id
+                trade_count, credentials.provider, account_id
             );
-            skipped += trades.len();
+            skipped += trade_count;
             continue;
         }
 
@@ -67,11 +65,9 @@ pub async fn run(app: &AppContext) -> Result<()> {
             Err(err) => {
                 warn!(
                     "Skipping {} trade(s) for account {}: Alpaca client init failed: {}",
-                    trades.len(),
-                    account_id,
-                    err
+                    trade_count, account_id, err
                 );
-                skipped += trades.len();
+                skipped += trade_count;
                 continue;
             }
         };
@@ -90,6 +86,10 @@ pub async fn run(app: &AppContext) -> Result<()> {
             .as_ref()
             .map(|state| state.positions.clone())
             .unwrap_or_default();
+        let trades: Vec<Trade> = account_candidates
+            .iter()
+            .map(|candidate| candidate.trade.clone())
+            .collect();
 
         let mut position_prices = match fetch_last_candle_closes(&db, &trades, &positions).await {
             Ok(prices) => prices,
@@ -126,20 +126,27 @@ pub async fn run(app: &AppContext) -> Result<()> {
             }
         };
 
-        for mut trade in trades {
+        let apply_manual_corporate_actions =
+            credentials.environment.trim().eq_ignore_ascii_case("paper");
+
+        for candidate in account_candidates.iter_mut() {
+            let trade = &mut candidate.trade;
             match reconcile_trade(
                 &db,
                 &client,
-                &mut trade,
+                trade,
+                &mut candidate.applied_corporate_actions,
                 &position_prices,
                 &positions,
                 &stop_loss_configs,
+                apply_manual_corporate_actions,
             )
             .await
             {
                 Ok(true) => {
                     db.ensure_ticker_exists(&trade.ticker).await?;
-                    db.persist_trade_reconciliation(&trade).await?;
+                    db.persist_trade_reconciliation(trade, &candidate.applied_corporate_actions)
+                        .await?;
                     reconciled += 1;
                 }
                 Ok(false) => {}
@@ -168,9 +175,11 @@ async fn reconcile_trade(
     db: &Database,
     client: &AlpacaClient<'_>,
     trade: &mut Trade,
+    applied_corporate_actions: &mut Vec<String>,
     position_prices: &HashMap<String, f64>,
     positions: &[AccountPositionState],
     stop_loss_configs: &HashMap<String, Option<StopLossConfig>>,
+    apply_manual_corporate_actions: bool,
 ) -> Result<bool> {
     if !(trade.entry_order_id.is_some()
         || trade.stop_order_id.is_some()
@@ -256,12 +265,7 @@ async fn reconcile_trade(
         }
     }
 
-    if let Some(ticker) = resolve_renamed_ticker_from_corporate_actions(db, trade).await? {
-        trade.set_ticker(ticker, Utc::now());
-        changed = true;
-    }
-
-    let position_match = find_position_match(trade, positions);
+    let initial_position_match = find_position_match(trade, positions);
     if trade.status == TradeStatus::Pending
         && (entry_eval.is_none()
             || entry_eval
@@ -269,7 +273,7 @@ async fn reconcile_trade(
                 .map(|evaluation| matches!(evaluation.state, OrderState::Cancelled))
                 .unwrap_or(false))
     {
-        if let Some(position) = position_match {
+        if let Some(position) = initial_position_match {
             let changed_at = Utc::now();
             trade.set_status(TradeStatus::Active, changed_at);
             if position.avg_entry_price.is_finite()
@@ -291,6 +295,34 @@ async fn reconcile_trade(
             changed = true;
         }
     }
+
+    let symbol_chain = resolve_ticker_chain_from_corporate_actions(db, trade).await?;
+    if let Some(ticker) = symbol_chain
+        .last()
+        .filter(|ticker| **ticker != trade.ticker)
+    {
+        trade.set_ticker(ticker.clone(), Utc::now());
+        changed = true;
+    }
+
+    if apply_manual_corporate_actions && trade.status == TradeStatus::Active {
+        let trade_corporate_actions = db
+            .get_trade_corporate_actions(&symbol_chain, trade.date)
+            .await?;
+        if apply_trade_corporate_actions(trade, applied_corporate_actions, &trade_corporate_actions)
+        {
+            changed = true;
+        }
+        if trade.status == TradeStatus::Closed {
+            return Ok(true);
+        }
+    }
+
+    let position_match = find_position_match(trade, positions);
+    let has_synthetic_position =
+        apply_manual_corporate_actions && !applied_corporate_actions.is_empty();
+    let has_position_match =
+        position_match.is_some() || initial_position_match.is_some() || has_synthetic_position;
 
     if let Some(position) = position_match {
         if trade.status == TradeStatus::Active
@@ -315,7 +347,7 @@ async fn reconcile_trade(
         .map(|evaluation| matches!(evaluation.state, OrderState::Cancelled))
         .unwrap_or(false)
     {
-        if position_match.is_some() && trade.stop_order_id.is_some() {
+        if has_position_match && trade.stop_order_id.is_some() {
             trade.set_stop_order_id(None, Utc::now());
             changed = true;
         }
@@ -342,7 +374,7 @@ async fn reconcile_trade(
         &entry_eval,
         &stop_eval,
         &exit_eval,
-        position_match.is_some(),
+        has_position_match,
     ) {
         apply_cancellation(trade, Utc::now(), TradeCancellationSource::Exchange);
         return Ok(true);
@@ -591,15 +623,16 @@ fn find_position_match<'a>(
         .find(|position| position.quantity == trade.quantity && position.ticker == trade.ticker)
 }
 
-async fn resolve_renamed_ticker_from_corporate_actions(
+async fn resolve_ticker_chain_from_corporate_actions(
     db: &Database,
     trade: &Trade,
-) -> Result<Option<String>> {
+) -> Result<Vec<String>> {
     if trade.status != TradeStatus::Active {
-        return Ok(None);
+        return Ok(vec![trade.ticker.clone()]);
     }
 
     let mut visited = HashSet::new();
+    let mut chain = vec![trade.ticker.clone()];
     let mut current_symbol = trade.ticker.clone();
 
     while visited.insert(current_symbol.clone()) {
@@ -612,13 +645,144 @@ async fn resolve_renamed_ticker_from_corporate_actions(
         if next_symbol == current_symbol {
             break;
         }
+        chain.push(next_symbol.clone());
         current_symbol = next_symbol;
     }
 
-    if current_symbol == trade.ticker {
-        Ok(None)
+    Ok(chain)
+}
+
+fn apply_trade_corporate_actions(
+    trade: &mut Trade,
+    applied_corporate_actions: &mut Vec<String>,
+    actions: &[TradeCorporateActionRecord],
+) -> bool {
+    let mut applied_any = false;
+
+    for action in actions {
+        if applied_corporate_actions
+            .iter()
+            .any(|existing| existing == &action.action_id)
+        {
+            continue;
+        }
+
+        let action_changed = apply_trade_corporate_action(trade, action);
+        applied_corporate_actions.push(action.action_id.clone());
+        applied_any = true;
+        if action_changed {
+            info!(
+                "Applied paper {} corporate action {} to trade {}",
+                action.action_type, action.action_id, trade.id
+            );
+        }
+
+        if trade.status == TradeStatus::Closed {
+            break;
+        }
+    }
+
+    applied_any
+}
+
+fn apply_trade_corporate_action(trade: &mut Trade, action: &TradeCorporateActionRecord) -> bool {
+    let is_quantity_adjustment = matches!(
+        action.action_type.as_str(),
+        "stock_dividend" | "forward_split" | "reverse_split" | "unit_split"
+    );
+    let ratio = if is_quantity_adjustment {
+        if !action.old_rate.is_finite()
+            || !action.new_rate.is_finite()
+            || action.old_rate <= 0.0
+            || action.new_rate <= 0.0
+        {
+            return false;
+        }
+        action.new_rate / action.old_rate
     } else {
-        Ok(Some(current_symbol))
+        1.0
+    };
+    if !ratio.is_finite() || ratio <= 0.0 {
+        return false;
+    }
+
+    let old_abs_quantity = trade.quantity.abs();
+    if old_abs_quantity == 0 {
+        return false;
+    }
+
+    let exact_new_abs_quantity = old_abs_quantity as f64 * ratio;
+    let new_abs_quantity = round_corporate_action_quantity(exact_new_abs_quantity);
+    let cash_per_old_share = if action.cash.is_finite() {
+        action.cash
+    } else {
+        0.0
+    };
+    let changed_at = normalize_trade_date(action.effective_at);
+
+    if new_abs_quantity == 0 {
+        let cash_total = old_abs_quantity as f64 * cash_per_old_share;
+        if !cash_total.is_finite() || cash_total <= 0.0 {
+            return false;
+        }
+        let exit_price = cash_total / old_abs_quantity as f64;
+        trade.set_status(TradeStatus::Closed, changed_at);
+        trade.set_exit_price(Some(exit_price), changed_at);
+        trade.set_exit_date(Some(changed_at), changed_at);
+        trade.set_stop_loss_triggered(Some(false), changed_at);
+        trade.set_pnl(
+            Some((exit_price - trade.price) * trade.quantity as f64),
+            changed_at,
+        );
+        return true;
+    }
+
+    let remaining_basis =
+        (old_abs_quantity as f64 * trade.price) - (old_abs_quantity as f64 * cash_per_old_share);
+    let new_signed_quantity = if trade.quantity < 0 {
+        -new_abs_quantity
+    } else {
+        new_abs_quantity
+    };
+    let mut changed = false;
+
+    if new_signed_quantity != trade.quantity {
+        trade.set_quantity(new_signed_quantity, changed_at);
+        changed = true;
+    }
+
+    let new_price = remaining_basis / new_abs_quantity as f64;
+    if new_price.is_finite() && (trade.price - new_price).abs() > PNL_EPSILON {
+        trade.set_price(new_price, changed_at);
+        changed = true;
+    }
+
+    if is_quantity_adjustment {
+        if let Some(stop_loss) = trade.stop_loss {
+            let new_stop_loss = stop_loss / ratio;
+            if new_stop_loss.is_finite()
+                && new_stop_loss > 0.0
+                && (stop_loss - new_stop_loss).abs() > PNL_EPSILON
+            {
+                trade.set_stop_loss(Some(new_stop_loss), changed_at);
+                changed = true;
+            }
+        }
+    }
+
+    changed
+}
+
+fn round_corporate_action_quantity(quantity: f64) -> i32 {
+    if !quantity.is_finite() || quantity <= 0.0 {
+        return 0;
+    }
+
+    let rounded = quantity.round();
+    if (quantity - rounded).abs() <= PNL_EPSILON {
+        rounded as i32
+    } else {
+        quantity.floor() as i32
     }
 }
 
@@ -809,6 +973,24 @@ mod tests {
         }
     }
 
+    fn sample_corporate_action(
+        action_type: &str,
+        action_id: &str,
+        effective_at: DateTime<Utc>,
+        cash: f64,
+        old_rate: f64,
+        new_rate: f64,
+    ) -> TradeCorporateActionRecord {
+        TradeCorporateActionRecord {
+            action_id: action_id.to_string(),
+            action_type: action_type.to_string(),
+            effective_at,
+            cash,
+            old_rate,
+            new_rate,
+        }
+    }
+
     #[test]
     fn find_position_match_requires_same_ticker() {
         let trade = sample_trade("GPRO", 697, 1.04);
@@ -842,6 +1024,89 @@ mod tests {
 
         let matched = find_position_match(&trade, &positions).expect("expected UPXI match");
         assert_eq!(matched.ticker, "UPXI");
+    }
+
+    #[test]
+    fn apply_trade_corporate_actions_updates_reverse_split_quantity_price_and_stop() {
+        let mut trade = sample_trade("AAA", 25, 10.0);
+        trade.status = TradeStatus::Active;
+        trade.stop_loss = Some(8.0);
+        let mut applied = Vec::new();
+        let actions = vec![sample_corporate_action(
+            "reverse_split",
+            "ca-1",
+            Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            2.0,
+            10.0,
+            1.0,
+        )];
+
+        let changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+
+        assert!(changed);
+        assert_eq!(trade.quantity, 2);
+        assert!((trade.price - 100.0).abs() < 1e-6);
+        assert_eq!(trade.stop_loss, Some(80.0));
+        assert_eq!(applied, vec![String::from("ca-1")]);
+    }
+
+    #[test]
+    fn apply_trade_corporate_actions_adjusts_cash_dividend_only_once() {
+        let mut trade = sample_trade("AAA", 10, 100.0);
+        trade.status = TradeStatus::Active;
+        let mut applied = Vec::new();
+        let actions = vec![sample_corporate_action(
+            "cash_dividend",
+            "cash-1",
+            Utc.with_ymd_and_hms(2024, 2, 5, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            1.0,
+            1.0,
+            1.0,
+        )];
+
+        let first_changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+        let second_changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+
+        assert!(first_changed);
+        assert!(!second_changed);
+        assert!((trade.price - 99.0).abs() < 1e-6);
+        assert_eq!(applied, vec![String::from("cash-1")]);
+    }
+
+    #[test]
+    fn apply_trade_corporate_actions_closes_fully_cashed_out_reverse_split() {
+        let mut trade = sample_trade("AAA", 5, 10.0);
+        trade.status = TradeStatus::Active;
+        let mut applied = Vec::new();
+        let actions = vec![sample_corporate_action(
+            "reverse_split",
+            "cashout-1",
+            Utc.with_ymd_and_hms(2024, 2, 9, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            2.0,
+            10.0,
+            1.0,
+        )];
+
+        let changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+
+        assert!(changed);
+        assert_eq!(trade.status, TradeStatus::Closed);
+        assert_eq!(trade.exit_price, Some(2.0));
+        assert_eq!(
+            trade.exit_date,
+            Some(
+                Utc.with_ymd_and_hms(2024, 2, 9, 0, 0, 0)
+                    .single()
+                    .expect("valid timestamp")
+            )
+        );
+        assert_eq!(applied, vec![String::from("cashout-1")]);
     }
 
     #[test]

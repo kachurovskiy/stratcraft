@@ -22,6 +22,16 @@ const DATABASE_KEY_ENV_VAR: &str = "DATABASE_KEY";
 pub struct TradeReconciliationCandidate {
     pub trade: Trade,
     pub account_id: String,
+    pub applied_corporate_actions: Vec<String>,
+}
+
+pub struct TradeCorporateActionRecord {
+    pub action_id: String,
+    pub action_type: String,
+    pub effective_at: DateTime<Utc>,
+    pub cash: f64,
+    pub old_rate: f64,
+    pub new_rate: f64,
 }
 
 pub struct BacktestCacheEntry {
@@ -1039,7 +1049,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT t.id, t.ticker, t.quantity, t.price, t.date, t.status, t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered, t.changes, t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.cancellation_source, s.account_id, t.strategy_id
+                "SELECT t.id, t.ticker, t.quantity, t.price, t.date, t.status, t.pnl, t.fee, t.exit_price, t.exit_date, t.stop_loss, t.stop_loss_triggered, t.changes, t.entry_order_id, t.entry_cancel_after, t.stop_order_id, t.exit_order_id, t.entry_order_status, t.entry_order_status_updated_at, t.stop_order_status, t.stop_order_status_updated_at, t.exit_order_status, t.exit_order_status_updated_at, t.cancellation_source, t.applied_corporate_actions, s.account_id, t.strategy_id
                  FROM trades t
                  INNER JOIN strategies s ON s.id = t.strategy_id
                  WHERE s.account_id IS NOT NULL
@@ -1052,13 +1062,20 @@ impl Database {
 
         let mut result = Vec::with_capacity(rows.len());
         for row in rows {
-            let account_id: String = row.get(24);
+            let account_id: String = row.get(25);
             if account_id.trim().is_empty() {
                 continue;
             }
-            let strategy_id: String = row.get(25);
+            let strategy_id: String = row.get(26);
             let trade = Self::map_trade_row(&row, &strategy_id)?;
-            result.push(TradeReconciliationCandidate { trade, account_id });
+            let applied_corporate_actions_json: String = row.get(24);
+            let applied_corporate_actions: Vec<String> =
+                serde_json::from_str(&applied_corporate_actions_json).unwrap_or_default();
+            result.push(TradeReconciliationCandidate {
+                trade,
+                account_id,
+                applied_corporate_actions,
+            });
         }
         Ok(result)
     }
@@ -1252,12 +1269,18 @@ impl Database {
         Ok(trades)
     }
 
-    pub async fn persist_trade_reconciliation(&self, trade: &Trade) -> Result<()> {
+    pub async fn persist_trade_reconciliation(
+        &self,
+        trade: &Trade,
+        applied_corporate_actions: &[String],
+    ) -> Result<()> {
         let trade_date = trade.date.date_naive();
         let exit_date = trade.exit_date.map(|date| date.date_naive());
         let stop_loss_triggered = trade.stop_loss_triggered.unwrap_or(false);
         let changes_json = serde_json::to_string(&trade.changes)
             .map_err(|err| anyhow!("Failed to serialize trade changes: {}", err))?;
+        let applied_corporate_actions_json = serde_json::to_string(applied_corporate_actions)
+            .map_err(|err| anyhow!("Failed to serialize applied corporate actions: {}", err))?;
         let fee_value = trade.fee.unwrap_or(0.0);
         let status = trade.status.as_str();
         let cancellation_source = trade
@@ -1273,28 +1296,33 @@ impl Database {
                      fee = $3,
                      exit_price = $4,
                      exit_date = $5,
-                     stop_loss_triggered = $6,
-                     changes = $7,
-                     price = $8,
-                     date = $9,
-                     ticker = $10,
-                     stop_order_id = $11,
-                     entry_order_status = $12,
-                     entry_order_status_updated_at = $13,
-                     stop_order_status = $14,
-                     stop_order_status_updated_at = $15,
-                     exit_order_status = $16,
-                     exit_order_status_updated_at = $17,
-                     cancellation_source = $18
-                 WHERE id = $19",
+                     stop_loss = $6,
+                     stop_loss_triggered = $7,
+                     changes = $8,
+                     quantity = $9,
+                     price = $10,
+                     date = $11,
+                     ticker = $12,
+                     stop_order_id = $13,
+                     entry_order_status = $14,
+                     entry_order_status_updated_at = $15,
+                     stop_order_status = $16,
+                     stop_order_status_updated_at = $17,
+                     exit_order_status = $18,
+                     exit_order_status_updated_at = $19,
+                     cancellation_source = $20,
+                     applied_corporate_actions = $21
+                 WHERE id = $22",
                 &[
                     &status,
                     &trade.pnl,
                     &fee_value,
                     &trade.exit_price,
                     &exit_date,
+                    &trade.stop_loss,
                     &stop_loss_triggered,
                     &changes_json,
+                    &trade.quantity,
                     &trade.price,
                     &trade_date,
                     &trade.ticker,
@@ -1306,6 +1334,7 @@ impl Database {
                     &trade.exit_order_status,
                     &trade.exit_order_status_updated_at,
                     &cancellation_source,
+                    &applied_corporate_actions_json,
                     &trade.id,
                 ],
             )
@@ -1366,6 +1395,88 @@ impl Database {
         }
 
         Ok(None)
+    }
+
+    pub async fn get_trade_corporate_actions(
+        &self,
+        symbols: &[String],
+        opened_at: DateTime<Utc>,
+    ) -> Result<Vec<TradeCorporateActionRecord>> {
+        if symbols.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let opened_date = opened_at.date_naive();
+        let symbol_values: Vec<&str> = symbols.iter().map(String::as_str).collect();
+        let rows = self
+            .client
+            .query(
+                "SELECT DISTINCT ON (COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text))
+                        COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text) AS action_id,
+                        action_type,
+                        COALESCE(
+                            payable_date,
+                            effective_date,
+                            process_date,
+                            ex_date,
+                            record_date
+                        ) AS action_date,
+                        payload
+                 FROM corporate_actions
+                 WHERE action_type IN (
+                        'cash_dividend',
+                        'stock_dividend',
+                        'forward_split',
+                        'reverse_split',
+                        'unit_split'
+                 )
+                   AND COALESCE(
+                        payable_date,
+                        effective_date,
+                        process_date,
+                        ex_date,
+                        record_date
+                   ) >= $2
+                   AND (
+                        primary_symbol = ANY($1::text[])
+                        OR related_symbols && $1::text[]
+                        OR UPPER(COALESCE(payload ->> 'old_symbol', '')) = ANY($1::text[])
+                        OR UPPER(COALESCE(payload ->> 'new_symbol', '')) = ANY($1::text[])
+                   )
+                 ORDER BY COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text),
+                          COALESCE(
+                            payable_date,
+                            effective_date,
+                            process_date,
+                            ex_date,
+                            record_date
+                          ) DESC,
+                          updated_at DESC,
+                          id DESC",
+                &[&symbol_values, &opened_date],
+            )
+            .await?;
+
+        let mut actions = Vec::with_capacity(rows.len());
+        for row in rows {
+            let action_date: NaiveDate = row.get(2);
+            let payload: Value = row.get(3);
+            actions.push(TradeCorporateActionRecord {
+                action_id: row.get(0),
+                action_type: row.get(1),
+                effective_at: naive_date_to_datetime(action_date),
+                cash: parse_corporate_action_numeric(&payload, "cash").unwrap_or(0.0),
+                old_rate: parse_corporate_action_numeric(&payload, "old_rate").unwrap_or(1.0),
+                new_rate: parse_corporate_action_numeric(&payload, "new_rate").unwrap_or(1.0),
+            });
+        }
+
+        actions.sort_by(|left, right| {
+            left.effective_at
+                .cmp(&right.effective_at)
+                .then_with(|| left.action_id.cmp(&right.action_id))
+        });
+        Ok(actions)
     }
 
     pub async fn backtest_cache_entries_for_template(
@@ -1668,6 +1779,15 @@ fn normalize_ticker_symbol(value: &str) -> Option<String> {
         None
     } else {
         Some(normalized)
+    }
+}
+
+fn parse_corporate_action_numeric(payload: &Value, key: &str) -> Option<f64> {
+    let value = payload.get(key)?;
+    match value {
+        Value::Number(number) => number.as_f64(),
+        Value::String(text) => text.trim().parse::<f64>().ok(),
+        _ => None,
     }
 }
 
