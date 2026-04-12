@@ -100,7 +100,7 @@ export class CorporateActionsRepo {
         const params: QueryValue[] = [];
 
         for (const action of chunk) {
-          placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)');
+          placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)');
           params.push(
             action.id,
             action.actionType,
