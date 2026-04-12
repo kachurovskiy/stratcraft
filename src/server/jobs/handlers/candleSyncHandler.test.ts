@@ -6,6 +6,8 @@ type HarnessOptions = {
   hasExistingCandles?: boolean;
   tickers?: Array<{ symbol: string }>;
   tickerUpdates?: Record<string, Candle[]>;
+  abortController?: AbortController;
+  updateTickerDataImpl?: (symbol: string, includeToday?: boolean, abortSignal?: AbortSignal) => Promise<Candle[]>;
 };
 
 function createHarness(options: HarnessOptions = {}) {
@@ -18,7 +20,8 @@ function createHarness(options: HarnessOptions = {}) {
     hasPendingJob: jest.fn().mockReturnValue(false),
     scheduleJob: jest.fn()
   };
-  const abortSignal = new AbortController().signal;
+  const abortController = options.abortController ?? new AbortController();
+  const abortSignal = abortController.signal;
   const assets = [
     {
       symbol: 'AAA',
@@ -29,7 +32,12 @@ function createHarness(options: HarnessOptions = {}) {
     }
   ];
   const candleClient = {
-    updateTickerData: jest.fn(async (symbol: string) => options.tickerUpdates?.[symbol] ?? []),
+    updateTickerData: jest.fn(async (symbol: string, includeToday?: boolean, signal?: AbortSignal) => {
+      if (options.updateTickerDataImpl) {
+        return options.updateTickerDataImpl(symbol, includeToday, signal);
+      }
+      return options.tickerUpdates?.[symbol] ?? [];
+    }),
     drainNoDataTickers: jest.fn(() => []),
     getCandleSourceName: jest.fn(() => 'alpaca')
   };
@@ -112,7 +120,8 @@ function createHarness(options: HarnessOptions = {}) {
     scheduler,
     engineCli,
     candleClient,
-    alpacaAssetService
+    alpacaAssetService,
+    abortController
   };
 }
 
@@ -176,5 +185,91 @@ describe('createCandleSyncHandler', () => {
         errorCount: 0
       }
     });
+  });
+
+  test('waits for in-flight ticker updates to settle before cancellation returns', async () => {
+    const abortController = new AbortController();
+    const spyCandle: Candle = {
+      ticker: 'SPY',
+      date: new Date('2025-01-02T00:00:00.000Z'),
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volumeShares: 1_000
+    };
+    const bbbCandle: Candle = {
+      ticker: 'BBB',
+      date: new Date('2025-01-02T00:00:00.000Z'),
+      open: 20,
+      high: 21,
+      low: 19,
+      close: 20,
+      volumeShares: 750
+    };
+
+    let releaseBbbUpdate!: () => void;
+    let resolveBothWorkersStarted: (() => void) | null = null;
+    const bothWorkersStarted = new Promise<void>(resolve => {
+      resolveBothWorkersStarted = resolve;
+    });
+    const startedWorkers = new Set<string>();
+    const markWorkerStarted = (symbol: string) => {
+      startedWorkers.add(symbol);
+      if (startedWorkers.has('AAA') && startedWorkers.has('BBB')) {
+        resolveBothWorkersStarted?.();
+      }
+    };
+
+    const { ctx, deps, engineCli } = createHarness({
+      abortController,
+      tickers: [{ symbol: 'AAA' }, { symbol: 'BBB' }],
+      updateTickerDataImpl: async (symbol: string, _includeToday, signal) => {
+        if (symbol === 'SPY') {
+          return [spyCandle];
+        }
+
+        if (symbol === 'AAA') {
+          markWorkerStarted(symbol);
+          if (startedWorkers.has('BBB')) {
+            abortController.abort();
+          }
+          return new Promise<Candle[]>((_, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => reject(new Error('Candle synchronization cancelled')),
+              { once: true }
+            );
+          });
+        }
+
+        if (symbol === 'BBB') {
+          markWorkerStarted(symbol);
+          abortController.abort();
+          return new Promise<Candle[]>(resolve => {
+            releaseBbbUpdate = () => resolve([bbbCandle]);
+          });
+        }
+
+        return [];
+      }
+    });
+
+    const handler = createCandleSyncHandler(deps);
+    let settled = false;
+    const handlerPromise = handler(ctx).finally(() => {
+      settled = true;
+    });
+
+    await bothWorkersStarted;
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+    expect(engineCli.run).not.toHaveBeenCalled();
+
+    releaseBbbUpdate();
+
+    await expect(handlerPromise).rejects.toThrow('Candle synchronization cancelled');
+    expect(engineCli.run).not.toHaveBeenCalled();
   });
 });

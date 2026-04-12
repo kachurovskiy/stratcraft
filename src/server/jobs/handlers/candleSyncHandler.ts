@@ -119,7 +119,13 @@ export function createCandleSyncHandler(deps: JobHandlerDependencies): JobHandle
       }
     };
     if (workerCount > 0) {
-      await Promise.all(Array.from({ length: workerCount }, () => processNextTicker()));
+      const workerResults = await Promise.allSettled(Array.from({ length: workerCount }, () => processNextTicker()));
+      const rejectedWorker = workerResults.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (rejectedWorker) {
+        throw rejectedWorker.reason;
+      }
     }
 
     const noDataTickers = deps.candleClient.drainNoDataTickers();
