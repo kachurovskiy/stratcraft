@@ -2644,6 +2644,11 @@ impl Engine {
             if let Some(curr_stop) = trade.stop_loss {
                 if trade.date < current_date {
                     if self.should_repair_missing_stop(account_state, trade) {
+                        let stop_missing_triggered = Self::is_stop_triggered_by_price(
+                            planning_close,
+                            curr_stop,
+                            trade.quantity < 0,
+                        );
                         operations.push(AccountOperationPlan {
                             trade_id: trade.id.clone(),
                             ticker: trade.ticker.clone(),
@@ -2652,13 +2657,32 @@ impl Engine {
                             stop_loss: Some(curr_stop),
                             previous_stop_loss: None,
                             triggered_at: current_date,
-                            operation_type: AccountOperationType::UpdateStopLoss,
-                            reason: Some("stop_missing".to_string()),
-                            order_type: None,
+                            operation_type: if stop_missing_triggered {
+                                AccountOperationType::ClosePosition
+                            } else {
+                                AccountOperationType::UpdateStopLoss
+                            },
+                            reason: Some(
+                                if stop_missing_triggered {
+                                    "stop_missing_triggered"
+                                } else {
+                                    "stop_missing"
+                                }
+                                .to_string(),
+                            ),
+                            order_type: if stop_missing_triggered {
+                                Some("market".to_string())
+                            } else {
+                                None
+                            },
                             discount_applied: None,
                             signal_confidence: None,
                             account_cash_at_plan: None,
-                            days_held: None,
+                            days_held: if stop_missing_triggered {
+                                Some(days_held_i32)
+                            } else {
+                                None
+                            },
                         });
                         continue;
                     }
@@ -2828,6 +2852,22 @@ impl Engine {
             0.0001
         };
         (a - b).abs() <= tolerance
+    }
+
+    fn is_stop_triggered_by_price(price: f64, stop_price: f64, is_short: bool) -> bool {
+        if !price.is_finite() || !stop_price.is_finite() {
+            return false;
+        }
+
+        if Self::are_prices_close(price, stop_price) {
+            return true;
+        }
+
+        if is_short {
+            price > stop_price
+        } else {
+            price < stop_price
+        }
     }
 }
 
@@ -4856,6 +4896,52 @@ mod tests {
             .expect("expected stop repair operation");
         assert_eq!(op.reason.as_deref(), Some("stop_missing"));
         assert_eq!(op.stop_loss, Some(90.0));
+    }
+
+    #[test]
+    fn test_plan_account_operations_closes_when_missing_stop_is_already_triggered() {
+        let engine = Engine::new(test_runtime_settings());
+
+        let (candles, dates) = generate_candles("MISS", vec![100.0, 89.0]);
+        let signals = Vec::<GeneratedSignal>::new();
+        let state = sample_account_state_with_holdings(0.0, &[("MISS", 10, 100.0)], None);
+
+        let existing_trade = sample_active_trade(
+            "missing-stop-triggered",
+            "strategy",
+            "MISS",
+            10,
+            100.0,
+            dates[0],
+            Some(90.0),
+        );
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            dates[1],
+            &state,
+            &HashSet::new(),
+            &[existing_trade],
+            0,
+            &HashMap::new(),
+        );
+
+        let op = plan
+            .operations
+            .iter()
+            .find(|op| op.operation_type == AccountOperationType::ClosePosition)
+            .expect("expected market close when stop is already breached");
+        assert_eq!(op.reason.as_deref(), Some("stop_missing_triggered"));
+        assert_eq!(op.order_type.as_deref(), Some("market"));
+        assert_eq!(op.stop_loss, Some(90.0));
+        assert_eq!(op.days_held, Some(1));
+        assert!(plan
+            .operations
+            .iter()
+            .all(|op| op.operation_type != AccountOperationType::UpdateStopLoss));
     }
 
     #[test]
