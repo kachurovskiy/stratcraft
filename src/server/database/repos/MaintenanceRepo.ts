@@ -19,6 +19,7 @@ export class MaintenanceRepo {
       await this.db.run('DELETE FROM trades');
       await this.db.run('DELETE FROM strategies');
       await this.db.run('DELETE FROM candles');
+      await this.db.run('DELETE FROM corporate_actions');
       await this.db.run('DELETE FROM tickers');
       await this.db.run('DELETE FROM backtest_results');
       await this.db.run('DELETE FROM templates');
@@ -60,6 +61,7 @@ export class MaintenanceRepo {
   async clearAllTrades(): Promise<{ tradesDeleted: number; backtestResultsDeleted: number }> {
     try {
       const tradesResult = await this.db.run('DELETE FROM trades');
+      await this.db.run('DELETE FROM corporate_actions');
 
       const backtestResultsResult = await this.db.run('DELETE FROM backtest_results');
       const backtestResultsDeleted = backtestResultsResult.changes || 0;
@@ -78,6 +80,7 @@ export class MaintenanceRepo {
     try {
       const tradesResult = await this.db.run('DELETE FROM trades');
       const tradesDeleted = tradesResult.changes || 0;
+      await this.db.run('DELETE FROM corporate_actions');
 
       const backtestResultsResult = await this.db.run('DELETE FROM backtest_results');
       const backtestResultsDeleted = backtestResultsResult.changes || 0;
@@ -105,6 +108,7 @@ export class MaintenanceRepo {
     try {
       const tradesResult = await this.db.run('DELETE FROM trades');
       const tradesDeleted = tradesResult.changes || 0;
+      await this.db.run('DELETE FROM corporate_actions');
 
       const backtestResultsResult = await this.db.run('DELETE FROM backtest_results');
       const backtestResultsDeleted = backtestResultsResult.changes || 0;
@@ -143,6 +147,7 @@ export class MaintenanceRepo {
       'backtest_best_params',
       'backtest_results',
       'candles',
+      'corporate_actions',
       'lightgbm_models',
       'remote_optimizer_jobs',
       'signals',

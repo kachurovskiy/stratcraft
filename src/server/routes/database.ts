@@ -496,20 +496,22 @@ router.post('/clear-all-tickers', requireAuth, requireAdmin, async (req: Request
       const reason = 'Ticker deletion requested by admin';
       const cancelled =
         scheduler.cancelJobsByType('ticker-sync', reason) +
+        scheduler.cancelJobsByType('corporate-actions-sync', reason) +
         scheduler.cancelJobsByType('candle-sync', reason);
       if (cancelled > 0) {
-        const [tickerStopped, candleStopped] = await Promise.all([
+        const [tickerStopped, corporateActionsStopped, candleStopped] = await Promise.all([
           waitForJobTermination(scheduler, 'ticker-sync'),
+          waitForJobTermination(scheduler, 'corporate-actions-sync'),
           waitForJobTermination(scheduler, 'candle-sync')
         ]);
-        if (!tickerStopped || !candleStopped) {
+        if (!tickerStopped || !corporateActionsStopped || !candleStopped) {
           return res.redirect('/admin/database?error=Unable to cancel a running sync job. Try again shortly.');
         }
       }
     }
 
     const result = await req.db.tickers.clearAllTickers();
-    const message = `Deleted ${result.tickersDeleted} tickers, ${result.candlesDeleted} candles, ${result.tradesDeleted} trades, and ${result.signalsDeleted} signals`;
+    const message = `Deleted ${result.tickersDeleted} tickers, ${result.candlesDeleted} candles, ${result.tradesDeleted} trades, ${result.signalsDeleted} signals, and ${result.corporateActionsDeleted} corporate actions`;
     res.redirect(`/admin/database?success=${encodeURIComponent(message)}`);
   } catch (error) {
     console.error('Error clearing all tickers:', error);

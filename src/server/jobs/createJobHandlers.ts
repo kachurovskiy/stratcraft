@@ -2,6 +2,7 @@ import { JobHandler, JobType } from './JobScheduler';
 import { JobHandlerDependencies } from './types';
 import { createEngineCompileHandler } from './handlers/engineCompileHandler';
 import { createTickerSyncHandler } from './handlers/tickerSyncHandler';
+import { createCorporateActionSyncHandler } from './handlers/corporateActionSyncHandler';
 import { createCandleSyncHandler } from './handlers/candleSyncHandler';
 import { createMarketDataSnapshotHandler } from './handlers/marketDataSnapshotHandler';
 import { createSignalHandler } from './handlers/signalHandler';
@@ -19,6 +20,7 @@ export function createJobHandlers(deps: JobHandlerDependencies): HandlerMap {
   return {
     'engine-compile': createEngineCompileHandler(deps),
     'ticker-sync': createTickerSyncHandler(deps),
+    'corporate-actions-sync': createCorporateActionSyncHandler(deps),
     'candle-sync': createCandleSyncHandler(deps),
     'export-market-data': createMarketDataSnapshotHandler(deps),
     'generate-signals': createSignalHandler(deps),

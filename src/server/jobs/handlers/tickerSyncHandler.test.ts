@@ -2,7 +2,7 @@ import { createTickerSyncHandler } from './tickerSyncHandler';
 
 type HarnessOptions = {
   autoDailyCandleSyncEnabled?: boolean;
-  candleSyncPending?: boolean;
+  corporateActionsSyncPending?: boolean;
 };
 
 function createHarness(options: HarnessOptions = {}) {
@@ -13,10 +13,10 @@ function createHarness(options: HarnessOptions = {}) {
   };
   const scheduler = {
     hasPendingJob: jest.fn().mockImplementation((predicate: (job: any) => boolean) => {
-      if (options.candleSyncPending) {
+      if (options.corporateActionsSyncPending) {
         return predicate({
-          id: 'candle-job-1',
-          type: 'candle-sync',
+          id: 'corporate-actions-job-1',
+          type: 'corporate-actions-sync',
           status: 'queued',
           scheduledFor: new Date('2025-01-02T14:05:00.000Z'),
           createdAt: new Date('2025-01-02T14:00:00.000Z'),
@@ -94,7 +94,7 @@ function createHarness(options: HarnessOptions = {}) {
 }
 
 describe('createTickerSyncHandler', () => {
-  test('syncs tickers and starts candle sync when finished', async () => {
+  test('syncs tickers and starts corporate actions sync when finished', async () => {
     const { ctx, deps, scheduler } = createHarness();
 
     const handler = createTickerSyncHandler(deps);
@@ -103,7 +103,7 @@ describe('createTickerSyncHandler', () => {
     expect(deps.alpacaAssetService.fetchActiveEquityAssets).toHaveBeenCalledTimes(1);
     expect(deps.db.tickers.syncTickersFromAssets).toHaveBeenCalledTimes(1);
     expect(scheduler.scheduleJob).toHaveBeenCalledTimes(1);
-    expect(scheduler.scheduleJob).toHaveBeenCalledWith('candle-sync', {
+    expect(scheduler.scheduleJob).toHaveBeenCalledWith('corporate-actions-sync', {
       description: 'Triggered by ticker synchronization update'
     });
     expect(result).toEqual({
@@ -112,13 +112,13 @@ describe('createTickerSyncHandler', () => {
         assets: 1,
         upserted: 1,
         disabled: 0,
-        candleSyncScheduled: true
+        corporateActionsSyncScheduled: true
       }
     });
   });
 
-  test('does not queue a duplicate candle sync when one is already pending', async () => {
-    const { ctx, deps, scheduler } = createHarness({ candleSyncPending: true });
+  test('does not queue a duplicate corporate actions sync when one is already pending', async () => {
+    const { ctx, deps, scheduler } = createHarness({ corporateActionsSyncPending: true });
 
     const handler = createTickerSyncHandler(deps);
     const result = await handler(ctx);
@@ -132,7 +132,7 @@ describe('createTickerSyncHandler', () => {
         assets: 1,
         upserted: 1,
         disabled: 0,
-        candleSyncScheduled: false
+        corporateActionsSyncScheduled: false
       }
     });
   });

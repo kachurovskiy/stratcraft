@@ -357,6 +357,10 @@ export class TickersRepo {
       await this.db.run('DELETE FROM candles WHERE ticker = ?', [symbol]);
       await this.db.run('DELETE FROM trades WHERE ticker = ?', [symbol]);
       await this.db.run('DELETE FROM signals WHERE ticker = ?', [symbol]);
+      await this.db.run(
+        'DELETE FROM corporate_actions WHERE primary_symbol = ? OR ? = ANY(related_symbols)',
+        [symbol, symbol]
+      );
       await this.db.run('DELETE FROM tickers WHERE symbol = ?', [symbol]);
       this.invalidateCache();
     } catch (error) {
@@ -482,19 +486,24 @@ export class TickersRepo {
     candlesDeleted: number;
     tradesDeleted: number;
     signalsDeleted: number;
+    corporateActionsDeleted: number;
   }> {
     try {
       return await this.db.withTransaction(async (client) => {
-        await this.db.exec('LOCK TABLE candles, trades, signals, tickers IN ACCESS EXCLUSIVE MODE', client);
+        await this.db.exec('LOCK TABLE candles, trades, signals, corporate_actions, tickers IN ACCESS EXCLUSIVE MODE', client);
 
-        const [tickerCountRow, candleCountRow, tradeCountRow, signalCountRow] = await Promise.all([
+        const [tickerCountRow, candleCountRow, tradeCountRow, signalCountRow, corporateActionCountRow] = await Promise.all([
           this.db.get<CountRow>('SELECT COUNT(*) AS count FROM tickers', [], client),
           this.db.get<CountRow>('SELECT COUNT(*) AS count FROM candles', [], client),
           this.db.get<CountRow>('SELECT COUNT(*) AS count FROM trades', [], client),
-          this.db.get<CountRow>('SELECT COUNT(*) AS count FROM signals', [], client)
+          this.db.get<CountRow>('SELECT COUNT(*) AS count FROM signals', [], client),
+          this.db.get<CountRow>('SELECT COUNT(*) AS count FROM corporate_actions', [], client)
         ]);
 
-        await this.db.exec('TRUNCATE TABLE candles, trades, signals, tickers RESTART IDENTITY CASCADE', client);
+        await this.db.exec(
+          'TRUNCATE TABLE candles, trades, signals, corporate_actions, tickers RESTART IDENTITY CASCADE',
+          client
+        );
 
         this.invalidateCache();
 
@@ -502,7 +511,8 @@ export class TickersRepo {
           tickersDeleted: toInteger(tickerCountRow?.count, 0),
           candlesDeleted: toInteger(candleCountRow?.count, 0),
           tradesDeleted: toInteger(tradeCountRow?.count, 0),
-          signalsDeleted: toInteger(signalCountRow?.count, 0)
+          signalsDeleted: toInteger(signalCountRow?.count, 0),
+          corporateActionsDeleted: toInteger(corporateActionCountRow?.count, 0)
         };
       });
     } catch (error) {

@@ -8,7 +8,7 @@ import type {
 } from '../../types/StrategyTemplate';
 import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
-import { toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
+import { parseDate, toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
 import type { EntryFillGapHistogram, TradeTickerStats, TradeVolumeSegmentStats } from '../types';
 
 type TradeStatus = 'pending' | 'active' | 'closed' | 'cancelled';
@@ -57,6 +57,11 @@ type EntryFillGapBucketRow = QueryResultRow & {
   total_pnl: number | null;
   sum_pnl_percent: number | null;
   pnl_percent_count: number | null;
+};
+
+type AccountTradeCorporateActionScopeRow = QueryResultRow & {
+  first_trade_date: Date | string | null;
+  tickers: string[] | null;
 };
 
 export class TradesRepo {
@@ -458,6 +463,31 @@ export class TradesRepo {
       }
     }
     return { conditions, params };
+  }
+
+  async getAccountTradeCorporateActionScope(): Promise<{ firstTradeDate: Date | null; tickers: string[] }> {
+    const row = await this.db.get<AccountTradeCorporateActionScopeRow>(
+      `
+        SELECT
+          MIN(t.date) AS first_trade_date,
+          ARRAY_AGG(DISTINCT UPPER(t.ticker) ORDER BY UPPER(t.ticker))
+            FILTER (WHERE t.ticker IS NOT NULL AND t.ticker <> '') AS tickers
+        FROM trades t
+        INNER JOIN strategies s ON s.id = t.strategy_id
+        WHERE s.account_id IS NOT NULL
+          AND t.entry_order_id IS NOT NULL
+      `
+    );
+
+    const rawTickers = Array.isArray(row?.tickers) ? row.tickers : [];
+    const tickers = Array.from(
+      new Set(rawTickers.map((value) => normalizeUppercaseString(value)).filter((value) => value.length > 0))
+    ).sort();
+
+    return {
+      firstTradeDate: parseDate(row?.first_trade_date),
+      tickers
+    };
   }
 
   async countLiveTradesForStrategy(

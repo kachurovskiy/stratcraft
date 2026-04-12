@@ -450,6 +450,34 @@ export interface TickerAssetRecord {
   training: boolean;
 }
 
+export type CorporateActionType =
+  | 'reverse_split'
+  | 'forward_split'
+  | 'unit_split'
+  | 'cash_dividend'
+  | 'stock_dividend'
+  | 'spin_off'
+  | 'cash_merger'
+  | 'stock_merger'
+  | 'stock_and_cash_merger'
+  | 'redemption'
+  | 'name_change'
+  | 'worthless_removal'
+  | 'rights_distribution';
+
+export interface CorporateActionRecord {
+  id: string;
+  actionType: CorporateActionType;
+  primarySymbol: string;
+  relatedSymbols: string[];
+  processDate: Date;
+  effectiveDate?: Date | null;
+  exDate?: Date | null;
+  recordDate?: Date | null;
+  payableDate?: Date | null;
+  payload: Record<string, unknown>;
+}
+
 export interface AccountOperationDispatchCandidate {
   operation: AccountOperation;
   account: TradingAccount;

@@ -13,6 +13,7 @@ import { BacktestCacheRepo } from './repos/BacktestCacheRepo';
 import { BacktestBestParamsRepo } from './repos/BacktestBestParamsRepo';
 import { BacktestResultsRepo } from './repos/BacktestResultsRepo';
 import { CandlesRepo } from './repos/CandlesRepo';
+import { CorporateActionsRepo } from './repos/CorporateActionsRepo';
 import { LightgbmModelsRepo } from './repos/LightgbmModelsRepo';
 import { AdminRepo } from './repos/AdminRepo';
 import { MaintenanceRepo } from './repos/MaintenanceRepo';
@@ -33,6 +34,8 @@ export type {
   BacktestDailySnapshot,
   BacktestResultRecord,
   CandleSyncSettingsValue,
+  CorporateActionRecord,
+  CorporateActionType,
   DataProviderSettingsValue,
   EmailSettingsValue,
   EngineSettingsValue,
@@ -81,6 +84,7 @@ export class Database {
   readonly trades: TradesRepo;
   readonly tickers: TickersRepo;
   readonly candles: CandlesRepo;
+  readonly corporateActions: CorporateActionsRepo;
   readonly strategies: StrategiesRepo;
   readonly users: UsersRepo;
   readonly accountOperations: AccountOperationsRepo;
@@ -111,6 +115,7 @@ export class Database {
     this.admin = new AdminRepo(this.core);
     this.maintenance = new MaintenanceRepo(this.core, this.tickers);
     this.candles = new CandlesRepo(this.core);
+    this.corporateActions = new CorporateActionsRepo(this.core);
     this.strategies = new StrategiesRepo(this.core);
     this.accounts = new AccountsRepo(this.core, this.strategies);
     this.users = new UsersRepo(this.core, this.strategies);

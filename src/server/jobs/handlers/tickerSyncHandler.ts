@@ -30,14 +30,14 @@ export function createTickerSyncHandler(deps: JobHandlerDependencies): JobHandle
       throw new Error('Ticker synchronization cancelled');
     }
 
-    const candleSyncScheduled = scheduleCandleSync(ctx, logMetadata);
+    const corporateActionsSyncScheduled = scheduleCorporateActionsSync(ctx, logMetadata);
     scheduleNextDailyTickerSync(ctx, autoDailyCandleSyncEnabled, logMetadata);
 
     return {
       message: 'Ticker sync completed',
       meta: {
         ...(syncSummary ?? {}),
-        candleSyncScheduled
+        corporateActionsSyncScheduled
       }
     };
   };
@@ -112,17 +112,17 @@ async function syncTickersFromAlpaca(
   }
 }
 
-function scheduleCandleSync(
+function scheduleCorporateActionsSync(
   ctx: JobHandlerContext,
   logMetadata: { jobId: string }
 ): boolean {
-  const hasPendingCandleSync = ctx.scheduler.hasPendingJob(job => job.type === 'candle-sync');
-  if (hasPendingCandleSync) {
-    ctx.loggingService.info(TICKER_SOURCE, 'Candle sync already pending; skipping schedule', logMetadata);
+  const hasPendingCorporateActionsSync = ctx.scheduler.hasPendingJob(job => job.type === 'corporate-actions-sync');
+  if (hasPendingCorporateActionsSync) {
+    ctx.loggingService.info(TICKER_SOURCE, 'Corporate actions sync already pending; skipping schedule', logMetadata);
     return false;
   }
 
-  ctx.scheduler.scheduleJob('candle-sync', {
+  ctx.scheduler.scheduleJob('corporate-actions-sync', {
     description: 'Triggered by ticker synchronization update'
   });
   return true;

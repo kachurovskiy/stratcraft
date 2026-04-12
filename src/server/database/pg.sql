@@ -209,6 +209,21 @@ CREATE TABLE IF NOT EXISTS trades (
     FOREIGN KEY (backtest_result_id) REFERENCES backtest_results(id)
 );
 
+CREATE TABLE IF NOT EXISTS corporate_actions (
+    id UUID PRIMARY KEY,
+    action_type TEXT NOT NULL,
+    primary_symbol TEXT NOT NULL,
+    related_symbols TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    process_date DATE NOT NULL,
+    effective_date DATE,
+    ex_date DATE,
+    record_date DATE,
+    payable_date DATE,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 ALTER TABLE trades
     ADD COLUMN IF NOT EXISTS entry_order_status TEXT,
     ADD COLUMN IF NOT EXISTS entry_order_status_updated_at TIMESTAMPTZ,
@@ -488,3 +503,6 @@ CREATE INDEX IF NOT EXISTS idx_signals_user_date_ticker ON signals(user_id, date
 CREATE INDEX IF NOT EXISTS idx_trades_strategy_backtest_date ON trades(strategy_id, backtest_result_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_remote_optimizer_jobs_template_id ON remote_optimizer_jobs(template_id);
 CREATE INDEX IF NOT EXISTS idx_remote_optimizer_jobs_status ON remote_optimizer_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_corporate_actions_primary_symbol_process_date
+    ON corporate_actions(primary_symbol, process_date DESC);
+CREATE INDEX IF NOT EXISTS idx_corporate_actions_process_date ON corporate_actions(process_date DESC);
