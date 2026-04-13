@@ -132,14 +132,16 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
 
       const cacheCounts = await deps.db.backtestCache.getBacktestCacheTemplateCounts();
       const cacheCountsByTemplate = new Map(cacheCounts.map((entry) => [entry.templateId, entry.count]));
-      const exploreTemplateIds = [...templateIds].sort((left, right) => {
-        const leftCount = cacheCountsByTemplate.get(left) ?? 0;
-        const rightCount = cacheCountsByTemplate.get(right) ?? 0;
-        if (leftCount !== rightCount) {
-          return leftCount - rightCount;
-        }
-        return left.localeCompare(right);
-      });
+      const exploreTemplateIds = templateIds
+        .filter((templateId) => templateId !== 'buy_and_hold')
+        .sort((left, right) => {
+          const leftCount = cacheCountsByTemplate.get(left) ?? 0;
+          const rightCount = cacheCountsByTemplate.get(right) ?? 0;
+          if (leftCount !== rightCount) {
+            return leftCount - rightCount;
+          }
+          return left.localeCompare(right);
+        });
 
       exploreAttempted = exploreTemplateIds.length;
       if (exploreAttempted > 0) {
