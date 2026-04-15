@@ -2174,8 +2174,47 @@ impl Engine {
         }
     }
 
-    pub fn effective_buying_power_for_account(&self, account_state: &AccountStateSnapshot) -> f64 {
-        self.resolve_account_buying_power(account_state)
+    fn resolve_strategy_buying_power_with_allocation(
+        &self,
+        account_state: &AccountStateSnapshot,
+        strategy_allocated_cash: Option<f64>,
+        existing_trades: &[Trade],
+    ) -> f64 {
+        let account_buying_power = self.resolve_account_buying_power(account_state);
+        let Some(allocated_cash) =
+            strategy_allocated_cash.filter(|value| value.is_finite() && *value > 0.0)
+        else {
+            return account_buying_power;
+        };
+
+        let leverage = if self.config.max_leverage.is_finite() && self.config.max_leverage >= 1.0 {
+            self.config.max_leverage
+        } else {
+            1.0
+        };
+
+        let pnl_adjustment: f64 = existing_trades
+            .iter()
+            .filter(|trade| matches!(trade.status, TradeStatus::Active | TradeStatus::Closed))
+            .filter_map(|trade| trade.pnl.filter(|value| value.is_finite()))
+            .sum();
+        let live_exposure: f64 = existing_trades
+            .iter()
+            .filter(|trade| matches!(trade.status, TradeStatus::Pending | TradeStatus::Active))
+            .filter_map(|trade| {
+                let entry_value = trade.price * trade.quantity as f64;
+                if !entry_value.is_finite() {
+                    return None;
+                }
+                let pnl = trade.pnl.filter(|value| value.is_finite()).unwrap_or(0.0);
+                let current_value = entry_value + pnl;
+                current_value.is_finite().then_some(current_value.abs())
+            })
+            .sum();
+
+        let adjusted_allocated_cash = (allocated_cash + pnl_adjustment).max(0.0);
+        let allocation_buying_power = (adjusted_allocated_cash * leverage - live_exposure).max(0.0);
+        account_buying_power.min(allocation_buying_power)
     }
 
     pub fn plan_account_operations(
@@ -2186,6 +2225,7 @@ impl Engine {
         candles: &[Candle],
         target_date: DateTime<Utc>,
         account_state: &AccountStateSnapshot,
+        strategy_allocated_cash: Option<f64>,
         excluded_tickers: &HashSet<String>,
         existing_trades: &[Trade],
         existing_buy_operations_today: usize,
@@ -2214,7 +2254,11 @@ impl Engine {
             };
         }
 
-        let starting_buying_power = self.resolve_account_buying_power(account_state);
+        let starting_buying_power = self.resolve_strategy_buying_power_with_allocation(
+            account_state,
+            strategy_allocated_cash,
+            existing_trades,
+        );
         let mut available_cash = starting_buying_power;
         if available_cash <= 0.0 {
             notes.push("account_cash_unavailable".to_string());
@@ -4172,6 +4216,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4211,6 +4256,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4251,6 +4297,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4263,12 +4310,105 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_buying_power_uses_leverage_when_broker_value_missing() {
+    fn test_plan_account_operations_caps_allocated_buying_power() {
         let mut engine = Engine::new(test_runtime_settings());
-        engine.config.max_leverage = 2.0;
+        engine.config.buy_discount_ratio = 0.0;
+        engine.config.trade_size_ratio = 0.5;
+        engine.config.minimum_trade_size = 0.0;
 
-        let buying_power = engine.effective_buying_power_for_account(&sample_account_state(100.0));
-        assert!((buying_power - 200.0).abs() < 1e-9);
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("CAP", vec![100.0, 100.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "CAP".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+        let state = sample_account_state(50_000.0);
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            Some(5_000.0),
+            &HashSet::new(),
+            &[],
+            0,
+            &HashMap::new(),
+        );
+
+        let buy = plan
+            .operations
+            .iter()
+            .find(|op| op.operation_type == AccountOperationType::OpenPosition)
+            .expect("expected capped buy op");
+        assert_eq!(buy.quantity, Some(25));
+    }
+
+    #[test]
+    fn test_plan_account_operations_adjusts_allocation_for_live_pnl_and_exposure() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.buy_discount_ratio = 0.0;
+        engine.config.trade_size_ratio = 0.5;
+        engine.config.minimum_trade_size = 0.0;
+
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("NEW", vec![100.0, 100.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "NEW".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+        let state = sample_account_state(50_000.0);
+
+        let mut open_trade = sample_active_trade(
+            "live-open",
+            "strategy",
+            "OPEN",
+            30,
+            100.0,
+            dates[history_offset],
+            None,
+        );
+        open_trade.pnl = Some(1_000.0);
+        let mut closed_trade = sample_active_trade(
+            "live-closed",
+            "strategy",
+            "CLOSED",
+            30,
+            100.0,
+            dates[history_offset],
+            None,
+        );
+        closed_trade.status = TradeStatus::Closed;
+        closed_trade.pnl = Some(-500.0);
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            Some(5_000.0),
+            &HashSet::new(),
+            &[open_trade, closed_trade],
+            0,
+            &HashMap::new(),
+        );
+
+        let buy = plan
+            .operations
+            .iter()
+            .find(|op| op.operation_type == AccountOperationType::OpenPosition)
+            .expect("expected buy op after applying live pnl and exposure");
+        assert_eq!(buy.quantity, Some(7));
     }
 
     #[test]
@@ -4297,6 +4437,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4344,6 +4485,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4382,6 +4524,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4430,6 +4573,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             0,
@@ -4480,6 +4624,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4531,6 +4676,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4587,6 +4733,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4633,6 +4780,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[],
             1,
@@ -4688,6 +4836,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4739,6 +4888,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4794,6 +4944,7 @@ mod tests {
             &candles,
             signal_date,
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4841,6 +4992,7 @@ mod tests {
             &candles,
             dates[2],
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4883,6 +5035,7 @@ mod tests {
             &candles,
             dates[1],
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4923,6 +5076,7 @@ mod tests {
             &candles,
             dates[1],
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -4969,6 +5123,7 @@ mod tests {
             &candles,
             dates[1],
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade],
             0,
@@ -5029,6 +5184,7 @@ mod tests {
             &candles,
             dates[2],
             &state,
+            None,
             &HashSet::new(),
             &[existing_trade.clone()],
             0,

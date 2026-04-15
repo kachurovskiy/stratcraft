@@ -303,6 +303,7 @@ export type InsertStrategyInput = {
   status?: Strategy['status'];
   userId?: number | null;
   accountId?: string | null;
+  allocatedCash?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
   backtestStartDate?: Date | null;

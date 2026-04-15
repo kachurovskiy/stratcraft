@@ -9,6 +9,7 @@ type StrategyRow = QueryResultRow & {
   name: string;
   user_id: number | null;
   account_id: string | null;
+  allocated_cash: number | null;
   template_id: string;
   parameters: string;
   status: string;
@@ -37,6 +38,7 @@ export class StrategiesRepo {
       userId: toNullableInteger(row.user_id),
       templateId: row.template_id,
       accountId: row.account_id ?? null,
+      allocatedCash: toNullableNumber(row.allocated_cash),
       parameters: JSON.parse(row.parameters) as Strategy['parameters'],
       status: this.toStrategyStatus(row.status),
       createdAt: new Date(row.created_at),
@@ -86,7 +88,7 @@ export class StrategiesRepo {
     const rows = await this.db.all<StrategyRow>(
       `
         SELECT s.id, s.name, s.user_id, s.account_id, s.template_id, s.parameters, s.status, s.created_at, s.updated_at,
-               s.backtest_start_date, s.last_backtest_duration_minutes
+               s.allocated_cash, s.backtest_start_date, s.last_backtest_duration_minutes
         FROM strategies s
         WHERE (s.user_id = ? OR s.user_id IS NULL)
         ORDER BY s.created_at DESC
@@ -101,7 +103,7 @@ export class StrategiesRepo {
     const rows = await this.db.all<StrategyRow>(
       `
         SELECT s.id, s.name, s.user_id, s.account_id, s.template_id, s.parameters, s.status, s.created_at, s.updated_at,
-               s.backtest_start_date, s.last_backtest_duration_minutes
+               s.allocated_cash, s.backtest_start_date, s.last_backtest_duration_minutes
         FROM strategies s
         WHERE s.template_id = ?
           AND (s.user_id = ? OR s.user_id IS NULL)
@@ -117,7 +119,7 @@ export class StrategiesRepo {
     const row = await this.db.get<StrategyRow>(
       `
         SELECT s.id, s.name, s.user_id, s.account_id, s.template_id, s.parameters, s.status, s.created_at, s.updated_at,
-               s.backtest_start_date, s.last_backtest_duration_minutes
+               s.allocated_cash, s.backtest_start_date, s.last_backtest_duration_minutes
         FROM strategies s
         WHERE s.id = ?
           AND (s.user_id = ? OR s.user_id IS NULL)
@@ -139,17 +141,19 @@ export class StrategiesRepo {
     const updatedAt = strategy.updatedAt ?? new Date();
     const backtestStartDate = strategy.backtestStartDate ?? null;
     const accountId = strategy.accountId ?? null;
+    const allocatedCash = strategy.allocatedCash ?? null;
 
     await this.db.run(
       `
-        INSERT INTO strategies (id, name, user_id, account_id, template_id, parameters, backtest_start_date, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO strategies (id, name, user_id, account_id, allocated_cash, template_id, parameters, backtest_start_date, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         strategy.id,
         strategy.name,
         userId,
         accountId,
+        allocatedCash,
         strategy.templateId,
         JSON.stringify(strategy.parameters),
         backtestStartDate ? backtestStartDate.toISOString() : null,
@@ -173,10 +177,26 @@ export class StrategiesRepo {
       status: strategy.status,
       userId: strategy.userId ?? null,
       backtestStartDate: strategy.backtestStartDate ?? null,
-      accountId: strategy.accountId ?? null
+      accountId: strategy.accountId ?? null,
+      allocatedCash: strategy.allocatedCash ?? null
     });
 
     return id;
+  }
+
+  async updateStrategyAllocatedCash(
+    strategyId: string,
+    userId: number,
+    allocatedCash: number | null
+  ): Promise<boolean> {
+    const result = await this.db.run(
+      `UPDATE strategies
+       SET allocated_cash = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+         AND (user_id = ? OR user_id IS NULL)`,
+      [allocatedCash, strategyId, userId]
+    );
+    return (result?.changes ?? 0) > 0;
   }
 
   async deleteStrategyRelatedData(

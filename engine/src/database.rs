@@ -532,6 +532,7 @@ impl Database {
                     s.name,
                     s.template_id,
                     s.account_id,
+                    s.allocated_cash,
                     s.parameters,
                     s.backtest_start_date,
                     COALESCE(a.excluded_tickers, '[]') AS excluded_tickers,
@@ -548,11 +549,11 @@ impl Database {
         let mut strategies = Vec::with_capacity(rows.len());
         for row in rows {
             let id: String = row.get(0);
-            let params_json: String = row.get(4);
+            let params_json: String = row.get(5);
             let parameters = parse_parameter_map_from_json(&params_json)
                 .with_context(|| format!("Failed to parse parameters for strategy {}", id))?;
-            let excluded_tickers_json: String = row.get(6);
-            let excluded_keywords_json: String = row.get(7);
+            let excluded_tickers_json: String = row.get(7);
+            let excluded_keywords_json: String = row.get(8);
             let excluded_tickers = parse_excluded_tickers(&excluded_tickers_json);
             let excluded_keywords = parse_excluded_keywords(&excluded_keywords_json);
 
@@ -561,10 +562,11 @@ impl Database {
                 name: row.get(1),
                 template_id: row.get(2),
                 account_id: row.get(3),
+                allocated_cash: row.get(4),
                 excluded_tickers,
                 excluded_keywords,
                 parameters,
-                backtest_start_date: row.get(5),
+                backtest_start_date: row.get(6),
             });
         }
 
@@ -580,6 +582,7 @@ impl Database {
                     s.name,
                     s.template_id,
                     s.account_id,
+                    s.allocated_cash,
                     s.parameters,
                     s.backtest_start_date
                  FROM strategies s
@@ -592,7 +595,7 @@ impl Database {
             return Ok(None);
         };
 
-        let params_json: String = row.get(4);
+        let params_json: String = row.get(5);
         let parameters = parse_parameter_map_from_json(&params_json)
             .with_context(|| format!("Failed to parse parameters for strategy {}", strategy_id))?;
 
@@ -601,10 +604,11 @@ impl Database {
             name: row.get(1),
             template_id: row.get(2),
             account_id: row.get(3),
+            allocated_cash: row.get(4),
             excluded_tickers: Vec::new(),
             excluded_keywords: Vec::new(),
             parameters,
-            backtest_start_date: row.get(5),
+            backtest_start_date: row.get(6),
         }))
     }
 

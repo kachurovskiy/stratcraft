@@ -1050,7 +1050,6 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
       href: buildTemplateSwitchHref(templateOption.id),
       selected: templateOption.id === safeTemplate.id
     }));
-    const hideInitialCapital = Boolean(selectedAccountId);
 
     res.render('pages/create-strategy', {
       title: 'Create Strategy',
@@ -1066,7 +1065,8 @@ router.get('/strategies/create', requireAuth, async (req: Request, res: Response
       accounts: accountsForSelection,
       hasAccounts: accountsForSelection.length > 0,
       selectedAccountId,
-      hideInitialCapital,
+      selectedAccountCash: selectedAccountForPrefill?.balance ?? null,
+      selectedAccountHasBalance: Boolean(selectedAccountForPrefill?.hasBalance),
       strategyNamePrefill,
       templateOptions
     });
@@ -1144,22 +1144,6 @@ router.post('/strategies/create', requireAuth, async (req: Request, res: Respons
         });
       }
 
-      const snapshotMap = await req.accountDataService.fetchSnapshots([account]);
-      const snapshot = snapshotMap[selectedAccountId];
-      const accountCash = typeof snapshot?.balance === 'number' && Number.isFinite(snapshot.balance)
-        ? snapshot.balance
-        : null;
-
-      if (accountCash === null) {
-        return res.status(400).render('pages/error', {
-          title: 'Error',
-          error: 'Unable to verify the account balance. Please refresh the account connection and try again.'
-        });
-      }
-
-      parameters.initialCapital = accountCash;
-      parsedParameters.initialCapital = accountCash;
-
       if (!backtestStartDate) {
         const latestCandleDate = await req.db.candles.getLatestGlobalCandleDate();
         const fallbackSource = latestCandleDate ?? new Date();
@@ -1173,13 +1157,19 @@ router.post('/strategies/create', requireAuth, async (req: Request, res: Respons
       }
     }
 
+    const allocatedCash =
+      selectedAccountId && typeof parsedParameters.initialCapital === 'number' && Number.isFinite(parsedParameters.initialCapital)
+        ? parsedParameters.initialCapital
+        : null;
+
     const strategyId = await req.strategyRegistry.createStrategy(
       name,
       templateId,
       parameters,
       userId,
       backtestStartDate ?? undefined,
-      selectedAccountId ?? undefined
+      selectedAccountId ?? undefined,
+      allocatedCash
     );
     res.redirect(`/strategies/${strategyId}`);
   } catch (error: any) {
@@ -1269,6 +1259,11 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
     const backtestInitialCapital = req.db.settings.value.engine.backtestInitialCapital;
     const initialCapital = resolveStrategyInitialCapital(strategy, backtestInitialCapital);
     const hasInitialCapital = Number.isFinite(initialCapital) && initialCapital > 0;
+    const strategyCashAllocation =
+      typeof strategy.allocatedCash === 'number' && Number.isFinite(strategy.allocatedCash) && strategy.allocatedCash > 0
+        ? strategy.allocatedCash
+        : null;
+    const hasStrategyCashAllocation = strategyCashAllocation !== null;
 
     const { parameterSummaries, extraParameters } = buildParameterContexts(template, strategy.parameters);
 
@@ -1467,6 +1462,8 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
       latestBacktestRanAt: latestBacktest ? latestBacktest.createdAt : null,
       initialCapital,
       hasInitialCapital,
+      strategyCashAllocation,
+      hasStrategyCashAllocation,
       parameterSummaries,
       parameterSummariesCount: parameterSummaries.length,
       extraParameters,
@@ -2027,6 +2024,45 @@ router.post<StrategyParams>('/strategies/:id/rename', requireAuth, async (req, r
   } catch (error) {
     console.error('Error renaming strategy:', error);
     res.redirect(`/strategies/${req.params.id}?error=Failed to rename strategy`);
+  }
+});
+
+router.post<StrategyParams>('/strategies/:id/allocation', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const strategy = await loadStrategyOrRenderNotFound(req, res, id);
+    if (!strategy) return;
+
+    if (!strategy.accountId) {
+      return res.redirect(`/strategies/${id}?error=${encodeURIComponent('Only account-linked strategies can use a live cash allocation.')}`);
+    }
+
+    const rawAllocatedCash =
+      typeof req.body?.allocatedCash === 'string' ? req.body.allocatedCash.trim() : '';
+    let allocatedCash: number | null = null;
+
+    if (rawAllocatedCash.length > 0) {
+      const parsed = Number(rawAllocatedCash);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return res.redirect(`/strategies/${id}?error=${encodeURIComponent('Cash allocation must be a positive number or blank.')}`);
+      }
+      allocatedCash = parsed;
+    }
+
+    const userId = getReqUserId(req);
+    const updated = await req.db.strategies.updateStrategyAllocatedCash(id, userId, allocatedCash);
+    if (!updated) {
+      return res.redirect(`/strategies/${id}?error=${encodeURIComponent('Failed to update live cash allocation.')}`);
+    }
+
+    const message =
+      allocatedCash === null
+        ? 'Live cash allocation cleared. This strategy will use full account cash again.'
+        : 'Live cash allocation updated. Historical backtests keep their original initial capital.';
+    return res.redirect(`/strategies/${id}?success=${encodeURIComponent(message)}`);
+  } catch (error) {
+    console.error('Error updating strategy allocation:', error);
+    return res.redirect(`/strategies/${req.params.id}?error=${encodeURIComponent('Failed to update live cash allocation.')}`);
   }
 });
 

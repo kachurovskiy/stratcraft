@@ -496,6 +496,37 @@
                                     </td>
                                 </tr>
                                 {{/if}}
+                                {{#if strategyAccount}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Live Cash Allocation</td>
+                                    <td class="text-end">
+                                        {{#if hasStrategyCashAllocation}}
+                                        <div class="fw-bold">{{formatCurrency strategyCashAllocation}}</div>
+                                        {{else}}
+                                        <div class="fw-bold text-muted">Full account cash</div>
+                                        {{/if}}
+                                        <form method="POST" action="/strategies/{{strategy.id}}/allocation" class="mt-2">
+                                            {{> csrf-field}}
+                                            <div class="input-group input-group-sm justify-content-end">
+                                                <input
+                                                    type="number"
+                                                    name="allocatedCash"
+                                                    class="form-control"
+                                                    min="0.01"
+                                                    step="0.01"
+                                                    placeholder="{{#if hasInitialCapital}}{{initialCapital}}{{/if}}"
+                                                    {{#if hasStrategyCashAllocation}}value="{{strategyCashAllocation}}"{{/if}}>
+                                                <button type="submit" class="btn btn-outline-primary">
+                                                    Save
+                                                </button>
+                                            </div>
+                                        </form>
+                                        <div class="text-muted small mt-1">
+                                            Caps live operation planning for this strategy. Leave blank to use full account cash again.
+                                        </div>
+                                    </td>
+                                </tr>
+                                {{/if}}
                                 {{#if strategy.backtestStartDate}}
                                 <tr>
                                     <td class="fw-bold text-muted">Backtest Start</td>

@@ -410,6 +410,7 @@ export class UsersRepo {
         await this.db.run(
           `UPDATE strategies
              SET account_id = NULL,
+                 allocated_cash = NULL,
                  updated_at = CURRENT_TIMESTAMP
            WHERE account_id IN (${accountPlaceholders})`,
           accountIds,

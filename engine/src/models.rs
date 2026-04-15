@@ -388,6 +388,7 @@ pub struct StrategyConfig {
     pub name: String,
     pub template_id: String,
     pub account_id: Option<String>,
+    pub allocated_cash: Option<f64>,
     pub excluded_tickers: Vec<String>,
     pub excluded_keywords: Vec<String>,
     pub parameters: HashMap<String, f64>,

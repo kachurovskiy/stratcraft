@@ -68,6 +68,7 @@ export interface Strategy {
   templateId: string;
   userId: number | null;
   accountId?: string | null;
+  allocatedCash?: number | null;
   backtestStartDate?: Date | null;
   parameters: Record<string, string | number | boolean>;
   status: 'active' | 'inactive' | 'error';

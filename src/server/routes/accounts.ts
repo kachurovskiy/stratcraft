@@ -120,6 +120,8 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
       id: string;
       name: string;
       status: string;
+      allocatedCash: number | null;
+      usesFullAccountCash: boolean;
       detailHref: string;
       operationsTotal: number;
       operationsPending: number;
@@ -134,10 +136,16 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
     const strategiesByAccount: Record<string, AccountStrategySummary[]> = {};
 
     strategies.forEach((strategy: Strategy) => {
+      const allocatedCash =
+        typeof strategy.allocatedCash === 'number' && Number.isFinite(strategy.allocatedCash) && strategy.allocatedCash > 0
+          ? strategy.allocatedCash
+          : null;
       const summary: AccountStrategySummary = {
         id: strategy.id,
         name: strategy.name,
         status: strategy.status,
+        allocatedCash,
+        usesFullAccountCash: Boolean(strategy.accountId) && allocatedCash === null,
         detailHref: `/strategies/${strategy.id}`,
         operationsTotal: 0,
         operationsPending: 0,

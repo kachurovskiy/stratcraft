@@ -104,20 +104,26 @@
             {{#if hasParameters}}
                 <div class="row g-3">
                     {{#each parameters}}
-                        {{#if (and hideInitialCapital (eq name 'initialCapital'))}}
-                        {{else}}
-                            <div class="col-md-6">
-                                <label for="{{name}}" class="form-label">{{label}}</label>
-                                {{#if (eq type 'number')}}
-                                    <input type="number" id="{{name}}" name="{{name}}" value="{{inputValue}}" {{#if required}}required{{/if}} {{#if hasMin}}min="{{min}}"{{/if}} {{#if hasMax}}max="{{max}}"{{/if}} step="0.00001" class="form-control">
-                                {{else}}
-                                    <input type="text" id="{{name}}" name="{{name}}" value="{{inputValue}}" {{#if required}}required{{/if}} class="form-control">
-                                {{/if}}
-                                {{#if description}}
-                                    <div class="form-text">{{description}}</div>
-                                {{/if}}
-                            </div>
-                        {{/if}}
+                        <div class="col-md-6">
+                            <label for="{{name}}" class="form-label">{{label}}</label>
+                            {{#if (eq type 'number')}}
+                                <input type="number" id="{{name}}" name="{{name}}" value="{{inputValue}}" {{#if required}}required{{/if}} {{#if hasMin}}min="{{min}}"{{/if}} {{#if hasMax}}max="{{max}}"{{/if}} step="0.00001" class="form-control">
+                            {{else}}
+                                <input type="text" id="{{name}}" name="{{name}}" value="{{inputValue}}" {{#if required}}required{{/if}} class="form-control">
+                            {{/if}}
+                            {{#if description}}
+                                <div class="form-text">{{description}}</div>
+                            {{/if}}
+                            {{#if (and (eq name 'initialCapital') @root.selectedAccountId)}}
+                                <div class="form-text text-primary">
+                                    For linked accounts this becomes the starting live cash allocation cap for the strategy.
+                                    {{#if @root.selectedAccountHasBalance}}
+                                        Current account cash: {{formatCurrency @root.selectedAccountCash}}.
+                                    {{/if}}
+                                    You can adjust the live cap later from the strategy page without rewriting older backtests.
+                                </div>
+                            {{/if}}
+                        </div>
                     {{/each}}
                 </div>
             {{else}}

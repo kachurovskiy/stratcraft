@@ -387,6 +387,15 @@
                     <div>
                         <a href="{{detailHref}}" class="fw-semibold text-decoration-none">{{name}}</a>
                         <div class="small text-muted text-uppercase">Strategy</div>
+                        <div class="small text-muted mt-1">
+                            {{#if allocatedCash}}
+                            Live allocation: {{formatCurrency allocatedCash}}
+                            {{else if usesFullAccountCash}}
+                            Live allocation: Full account cash
+                            {{else}}
+                            Live allocation: Not set
+                            {{/if}}
+                        </div>
                     </div>
                     <span class="badge bg-secondary text-uppercase">{{status}}</span>
                 </div>

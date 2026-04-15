@@ -413,7 +413,8 @@ export class StrategyRegistry {
     parameters: Record<string, any>,
     userId?: number,
     backtestStartDate?: Date | null,
-    accountId?: string | null
+    accountId?: string | null,
+    allocatedCash?: number | null
   ): Promise<string> {
     // Validate template exists
     if (!this.isTemplateEnabled(templateId)) {
@@ -438,7 +439,8 @@ export class StrategyRegistry {
       parameters: parsedParameters,
       status: 'active',
       backtestStartDate: backtestStartDate ?? null,
-      accountId: accountId ?? null
+      accountId: accountId ?? null,
+      allocatedCash: allocatedCash ?? null
     });
 
     if (!accountId) this.scheduleSignalGenerationJob('Triggered by new strategy creation', { strategyId });

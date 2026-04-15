@@ -137,12 +137,8 @@ pub async fn run(app: &AppContext) -> Result<()> {
             continue;
         };
 
+        let existing_trades = db.get_strategy_live_trades(&strategy.id).await?;
         let engine = Engine::from_parameters(&strategy.parameters, runtime_settings.clone());
-        let effective_buying_power = engine.effective_buying_power_for_account(&account_state);
-        info!(
-            "Strategy {} (account {}) effective buying power for sizing: {:.2}",
-            strategy.name, account_id, effective_buying_power
-        );
 
         let excluded_keywords: Vec<String> = strategy
             .excluded_keywords
@@ -176,7 +172,6 @@ pub async fn run(app: &AppContext) -> Result<()> {
             }
         }
 
-        let existing_trades = db.get_strategy_live_trades(&strategy.id).await?;
         let existing_buy_operations_today = db
             .count_buy_operations_for_day(&strategy.id, target_date)
             .await?
@@ -189,6 +184,7 @@ pub async fn run(app: &AppContext) -> Result<()> {
             &candles,
             target_date,
             &account_state,
+            strategy.allocated_cash,
             &excluded_tickers,
             &existing_trades,
             existing_buy_operations_today,

@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS strategies (
     name TEXT NOT NULL,
     user_id BIGINT,
     account_id TEXT,
+    allocated_cash DOUBLE PRECISION,
     template_id TEXT NOT NULL,
     parameters TEXT NOT NULL,
     backtest_start_date TIMESTAMPTZ,
@@ -155,6 +156,9 @@ CREATE TABLE IF NOT EXISTS strategies (
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (account_id) REFERENCES accounts(id)
 );
+
+ALTER TABLE strategies
+    ADD COLUMN IF NOT EXISTS allocated_cash DOUBLE PRECISION;
 
 CREATE TABLE IF NOT EXISTS backtest_results (
     id TEXT PRIMARY KEY,
