@@ -513,8 +513,8 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.TRAINING_ALLOCATION_RATIO,
     group: 'ticker-rules',
     label: 'Training Allocation Ratio',
-    description: 'Fraction of tickers assigned to training (e.g. 0.7 = 70%).',
-    placeholder: '0.7',
+    description: 'Fraction of tickers assigned to training (e.g. 0.65 = 65%).',
+    placeholder: String(DEFAULT_SETTINGS.tickerRules.trainingAllocationRatio),
     inputType: 'number',
     min: '0'
   },

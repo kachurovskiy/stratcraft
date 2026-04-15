@@ -59,7 +59,7 @@ function createHarness(options: HarnessOptions = {}) {
           },
           tickerRules: {
             alwaysValidationTickers: [],
-            trainingAllocationRatio: 0.7
+            trainingAllocationRatio: 0.65
           }
         }
       },

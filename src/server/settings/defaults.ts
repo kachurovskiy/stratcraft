@@ -69,7 +69,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
   tickerRules: {
     ignoredTickers: [],
     alwaysValidationTickers: ['SPY', 'QQQ'],
-    trainingAllocationRatio: 0.7
+    trainingAllocationRatio: 0.65
   },
   optimizer: {
     autoOptimizationEnabled: true,
