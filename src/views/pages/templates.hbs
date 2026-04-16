@@ -235,10 +235,13 @@
 </div>
 
 {{#if hasTemplates}}
+  <div class="text-muted small mt-4 mb-2">
+    Drag on a chart to zoom in. Use the mouse wheel or trackpad pinch to zoom in or out. Double-click to reset the view.
+  </div>
   <div class="card mt-4">
     <div class="card-header">
       <div class="fw-semibold">Performance Cloud</div>
-      <div class="text-muted small">Calmar vs Sharpe, Sharpe vs CAGR, and verification/backtest comparisons. Cache entries per template (ranked by Sharpe).</div>
+      <div class="text-muted small">Calmar vs Sharpe, Sharpe vs CAGR, max drawdown vs CAGR, and CAGR vs trades. Cache entries per template (ranked by Sharpe).</div>
     </div>
     <div class="card-body">
       <div class="template-performance-cloud-grid">
@@ -246,6 +249,16 @@
         <div id="templatePerformanceCloudSharpeCagr" class="template-performance-cloud" aria-label="Sharpe vs CAGR scatter chart"></div>
         <div id="templatePerformanceCloudDrawdownCagr" class="template-performance-cloud" aria-label="Max drawdown vs CAGR scatter chart"></div>
         <div id="templatePerformanceCloudCagrTrades" class="template-performance-cloud" aria-label="CAGR vs trades scatter chart"></div>
+      </div>
+    </div>
+  </div>
+  <div class="card mt-4">
+    <div class="card-header">
+      <div class="fw-semibold">Verification vs Backtest</div>
+      <div class="text-muted small">Verification-to-backtest comparisons by template with matched axes.</div>
+    </div>
+    <div class="card-body">
+      <div class="template-performance-cloud-grid">
         <div id="templatePerformanceCloudCagrVerifyCagr" class="template-performance-cloud" aria-label="Verification CAGR vs backtest CAGR scatter chart"></div>
         <div id="templatePerformanceCloudSharpeVerifySharpe" class="template-performance-cloud" aria-label="Verification Sharpe vs backtest Sharpe scatter chart"></div>
         <div id="templatePerformanceCloudCalmarVerifyCalmar" class="template-performance-cloud" aria-label="Verification Calmar vs backtest Calmar scatter chart"></div>
@@ -313,7 +326,7 @@ const defaultPlotlyLayout = {
   plot_bgcolor: 'rgba(0,0,0,0)',
   font: { size: 12 }
 };
-const defaultPlotlyConfig = { displayModeBar: false, responsive: true };
+const chartPlotlyConfig = { displayModeBar: false, responsive: true, scrollZoom: true };
 
 function toFiniteNumber(value) {
   const numeric = Number(value);
@@ -355,6 +368,64 @@ function formatCount(value) {
     return 'N/A';
   }
   return Math.round(value).toLocaleString();
+}
+
+function computeExpandedRange(minValue, maxValue, paddingRatio = 0.08, minPadding = 0.01) {
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return null;
+  }
+
+  let rangeMin = minValue;
+  let rangeMax = maxValue;
+
+  if (rangeMin === rangeMax) {
+    const bump = Math.max(Math.abs(rangeMin) * 0.05, minPadding);
+    rangeMin -= bump;
+    rangeMax += bump;
+    return [rangeMin, rangeMax];
+  }
+
+  const padding = Math.max((rangeMax - rangeMin) * paddingRatio, minPadding);
+  return [rangeMin - padding, rangeMax + padding];
+}
+
+function computeQuantile(sortedValues, quantile) {
+  if (!sortedValues.length) {
+    return null;
+  }
+  if (sortedValues.length === 1) {
+    return sortedValues[0];
+  }
+
+  const clampedQuantile = Math.min(Math.max(quantile, 0), 1);
+  const position = (sortedValues.length - 1) * clampedQuantile;
+  const lowerIndex = Math.floor(position);
+  const upperIndex = Math.ceil(position);
+
+  if (lowerIndex === upperIndex) {
+    return sortedValues[lowerIndex];
+  }
+
+  const weight = position - lowerIndex;
+  return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * weight;
+}
+
+function computeFocusedRange(values) {
+  const sortedValues = values
+    .filter(value => Number.isFinite(value))
+    .sort((left, right) => left - right);
+
+  if (!sortedValues.length) {
+    return null;
+  }
+
+  if (sortedValues.length < 8) {
+    return computeExpandedRange(sortedValues[0], sortedValues[sortedValues.length - 1]);
+  }
+
+  const lowerQuantile = computeQuantile(sortedValues, 0.05);
+  const upperQuantile = computeQuantile(sortedValues, 0.95);
+  return computeExpandedRange(lowerQuantile, upperQuantile);
 }
 
 function hashString(value) {
@@ -455,21 +526,6 @@ function getPerformanceCloudPoints() {
   }).filter(point => point !== null);
 }
 
-function computeRange(values) {
-  const numericValues = values.filter(value => Number.isFinite(value));
-  if (!numericValues.length) {
-    return null;
-  }
-  let min = Math.min(...numericValues);
-  let max = Math.max(...numericValues);
-  if (min === max) {
-    const bump = Math.max(Math.abs(min) * 0.05, 0.01);
-    min -= bump;
-    max += bump;
-  }
-  return { min, max };
-}
-
 function getBalanceComparisonPoints() {
   if (!Array.isArray(performanceCloudPoints)) {
     return [];
@@ -537,28 +593,207 @@ function buildBalanceHoverText(point, chart) {
   ].join('<br>');
 }
 
+function groupPointsByTemplate(points) {
+  const groupedPoints = new Map();
+
+  points.forEach(point => {
+    const existing = groupedPoints.get(point.templateId);
+    if (existing) {
+      existing.points.push(point);
+      return;
+    }
+
+    groupedPoints.set(point.templateId, {
+      templateId: point.templateId,
+      templateName: point.templateName,
+      points: [point]
+    });
+  });
+
+  return Array.from(groupedPoints.values());
+}
+
+function getPlotlyTraceData(element) {
+  if (Array.isArray(element?._fullData)) {
+    return element._fullData;
+  }
+  if (Array.isArray(element?.data)) {
+    return element.data;
+  }
+  return [];
+}
+
+function getTraceTemplateId(trace) {
+  const templateId = trace?.meta?.templateId;
+  return templateId === null || templateId === undefined ? null : String(templateId);
+}
+
+function getTraceByCurveIndex(element, eventData, index) {
+  if (eventData?.fullData?.[index]) {
+    return eventData.fullData[index];
+  }
+  if (eventData?.data?.[index]) {
+    return eventData.data[index];
+  }
+  return getPlotlyTraceData(element)[index] ?? null;
+}
+
+function getTraceIndicesForTemplate(element, templateId) {
+  const resolvedTemplateId = String(templateId);
+
+  return getPlotlyTraceData(element).reduce((indices, trace, index) => {
+    if (getTraceTemplateId(trace) === resolvedTemplateId) {
+      indices.push(index);
+    }
+    return indices;
+  }, []);
+}
+
+function applyTemplateVisibility(chartElements, templateId, visibility) {
+  chartElements.forEach(element => {
+    const indices = getTraceIndicesForTemplate(element, templateId);
+    if (!indices.length) {
+      return;
+    }
+
+    Plotly.restyle(element, { visible: new Array(indices.length).fill(visibility) }, indices);
+  });
+}
+
+function applyTemplateVisibilityMap(chartElements, visibilityByTemplateId) {
+  chartElements.forEach(element => {
+    const traces = getPlotlyTraceData(element);
+    const indices = [];
+    const visibilities = [];
+
+    traces.forEach((trace, index) => {
+      const templateId = getTraceTemplateId(trace);
+      if (templateId === null || !(templateId in visibilityByTemplateId)) {
+        return;
+      }
+
+      indices.push(index);
+      visibilities.push(visibilityByTemplateId[templateId]);
+    });
+
+    if (!indices.length) {
+      return;
+    }
+
+    Plotly.restyle(element, { visible: visibilities }, indices);
+  });
+}
+
+function bindTemplateLegendSync(legendElement, chartElements, templateGroups) {
+  if (!legendElement || !chartElements.length || !templateGroups.length) {
+    return;
+  }
+  if (legendElement.__templateLegendBound) {
+    return;
+  }
+
+  legendElement.__templateLegendBound = true;
+  const legendTemplateIds = templateGroups.map(group => String(group.templateId));
+  const allTemplateIds = Array.from(new Set(
+    chartElements.flatMap(element => getPlotlyTraceData(element)
+      .map(trace => getTraceTemplateId(trace))
+      .filter(templateId => templateId !== null))
+  ));
+
+  const getTemplateVisibilityMap = activeTemplateId => {
+    const visibilityByTemplateId = {};
+
+    allTemplateIds.forEach(templateId => {
+      visibilityByTemplateId[templateId] = templateId === activeTemplateId
+        ? true
+        : 'legendonly';
+    });
+
+    return visibilityByTemplateId;
+  };
+
+  legendElement.on('plotly_legendclick', eventData => {
+    const curveIndex = eventData.curveNumber;
+    const trace = getTraceByCurveIndex(legendElement, eventData, curveIndex);
+    const templateId = getTraceTemplateId(trace);
+    if (templateId === null) {
+      return false;
+    }
+
+    const isHidden = trace.visible === 'legendonly' || trace.visible === false;
+    const nextVisibility = isHidden ? true : 'legendonly';
+
+    applyTemplateVisibility(chartElements, templateId, nextVisibility);
+    return false;
+  });
+
+  legendElement.on('plotly_legenddoubleclick', eventData => {
+    const curveIndex = eventData.curveNumber;
+    const trace = getTraceByCurveIndex(legendElement, eventData, curveIndex);
+    const templateId = getTraceTemplateId(trace);
+    if (templateId === null) {
+      return false;
+    }
+
+    const traces = getPlotlyTraceData(legendElement);
+    const visibleCount = legendTemplateIds.reduce((count, legendTemplateId) => {
+      const groupTrace = traces.find(candidate => getTraceTemplateId(candidate) === legendTemplateId);
+      if (!groupTrace) {
+        return count;
+      }
+
+      const isVisible = groupTrace.visible !== 'legendonly' && groupTrace.visible !== false;
+      return count + (isVisible ? 1 : 0);
+    }, 0);
+
+    if (visibleCount === 1) {
+      applyTemplateVisibilityMap(
+        chartElements,
+        allTemplateIds.reduce((visibilityByTemplateId, templateId) => {
+          visibilityByTemplateId[templateId] = true;
+          return visibilityByTemplateId;
+        }, {})
+      );
+    } else {
+      applyTemplateVisibilityMap(chartElements, getTemplateVisibilityMap(templateId));
+    }
+
+    return false;
+  });
+}
+
 function renderBalanceComparisonClouds() {
   const targets = Object.values(balanceCloudTargetIds)
     .map(targetId => document.getElementById(targetId))
     .filter(Boolean);
   if (!targets.length) {
-    return;
+    return {
+      chartElements: [],
+      plotPromise: Promise.resolve()
+    };
   }
   if (typeof Plotly === 'undefined') {
     targets.forEach(target => showChartEmptyState(target.id, 'Plotly is not available to render this chart.'));
-    return;
+    return {
+      chartElements: targets,
+      plotPromise: Promise.resolve()
+    };
   }
 
   const points = getBalanceComparisonPoints();
   if (!points.length) {
     targets.forEach(target => showChartEmptyState(target.id, balanceCloudEmptyMessage));
-    return;
+    return {
+      chartElements: targets,
+      plotPromise: Promise.resolve()
+    };
   }
 
   const chartUtils = window.ChartUtils;
   const colorForId = chartUtils && typeof chartUtils.colorForId === 'function'
     ? chartUtils.colorForId
     : null;
+  const templateGroups = groupPointsByTemplate(points);
 
   const charts = [
     {
@@ -603,30 +838,60 @@ function renderBalanceComparisonClouds() {
     }
   ];
 
-  charts.forEach(chart => {
+  const chartElements = charts
+    .map(chart => ({ chart, element: document.getElementById(chart.targetId) }))
+    .filter(item => item.element);
+
+  const plotPromises = chartElements.map(({ chart, element }) => {
     const target = document.getElementById(chart.targetId);
     if (!target) {
-      return;
+      return Promise.resolve();
     }
-    const chartPoints = points.map(point => {
-      const x = chart.xValue(point);
-      const y = chart.yValue(point);
-      if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
-        return null;
-      }
-      const markerColor = colorForId ? colorForId(String(point.templateId)) : '#0d6efd';
+
+    const templateTraces = templateGroups.map((group, index) => {
+      const chartPoints = group.points.map(point => {
+        const x = chart.xValue(point);
+        const y = chart.yValue(point);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
+          return null;
+        }
+
+        return {
+          ...point,
+          x,
+          y
+        };
+      }).filter(point => point !== null);
+
+      const markerColor = colorForId ? colorForId(String(group.templateId)) : '#0d6efd';
+
       return {
-        ...point,
-        x,
-        y,
-        markerColor,
-        markerSymbol: getTemplateSymbol(point.templateId, 0)
+        type: 'scatter',
+        mode: 'markers',
+        name: group.templateName || `Template ${group.templateId}`,
+        meta: { templateId: group.templateId },
+        showlegend: false,
+        x: chartPoints.map(point => point.x),
+        y: chartPoints.map(point => point.y),
+        text: chartPoints.map(point => buildBalanceHoverText(point, chart)),
+        hovertemplate: '%{text}<extra></extra>',
+        marker: {
+          size: 6,
+          color: markerColor,
+          symbol: getTemplateSymbol(group.templateId, index),
+          opacity: 0.65
+        }
       };
-    }).filter(point => point !== null);
+    });
+
+    const chartPoints = templateTraces.flatMap(trace => trace.x.map((x, pointIndex) => ({
+      x,
+      y: trace.y[pointIndex]
+    })));
 
     if (!chartPoints.length) {
       showChartEmptyState(target.id, balanceCloudEmptyMessage);
-      return;
+      return Promise.resolve();
     }
 
     const rangeValues = chartPoints.reduce((values, point) => {
@@ -651,21 +916,6 @@ function renderBalanceComparisonClouds() {
       }
     };
 
-    const trace = {
-      type: 'scatter',
-      mode: 'markers',
-      x: chartPoints.map(point => point.x),
-      y: chartPoints.map(point => point.y),
-      text: chartPoints.map(point => buildBalanceHoverText(point, chart)),
-      hovertemplate: '%{text}<extra></extra>',
-      marker: {
-        size: 6,
-        color: chartPoints.map(point => point.markerColor),
-        symbol: chartPoints.map(point => point.markerSymbol),
-        opacity: 0.65
-      }
-    };
-
     const layout = {
       ...defaultPlotlyLayout,
       xaxis: {
@@ -684,8 +934,13 @@ function renderBalanceComparisonClouds() {
       }
     };
 
-    Plotly.react(target, [diagonalTrace, trace], layout, defaultPlotlyConfig);
+    return Promise.resolve(Plotly.react(target, [diagonalTrace, ...templateTraces], layout, chartPlotlyConfig));
   });
+
+  return {
+    chartElements: chartElements.map(item => item.element),
+    plotPromise: Promise.all(plotPromises)
+  };
 }
 
 function renderTemplatePerformanceClouds() {
@@ -693,37 +948,42 @@ function renderTemplatePerformanceClouds() {
     .map(targetId => document.getElementById(targetId))
     .filter(Boolean);
   if (!targets.length) {
-    return;
+    return {
+      chartElements: [],
+      legendElement: null,
+      showLegend: false,
+      templateGroups: [],
+      plotPromise: Promise.resolve()
+    };
   }
   if (typeof Plotly === 'undefined') {
     targets.forEach(target => showChartEmptyState(target.id, 'Plotly is not available to render this chart.'));
-    return;
+    return {
+      chartElements: targets,
+      legendElement: null,
+      showLegend: false,
+      templateGroups: [],
+      plotPromise: Promise.resolve()
+    };
   }
 
   const points = getPerformanceCloudPoints();
   if (!points.length) {
     targets.forEach(target => showChartEmptyState(target.id, templateCloudEmptyMessage));
-    return;
+    return {
+      chartElements: targets,
+      legendElement: null,
+      showLegend: false,
+      templateGroups: [],
+      plotPromise: Promise.resolve()
+    };
   }
-
-  const groupedPoints = new Map();
-  points.forEach(point => {
-    const existing = groupedPoints.get(point.templateId);
-    if (existing) {
-      existing.points.push(point);
-    } else {
-      groupedPoints.set(point.templateId, {
-        templateName: point.templateName,
-        points: [point]
-      });
-    }
-  });
 
   const chartUtils = window.ChartUtils;
   const colorForId = chartUtils && typeof chartUtils.colorForId === 'function'
     ? chartUtils.colorForId
     : null;
-  const templateGroups = Array.from(groupedPoints.entries());
+  const templateGroups = groupPointsByTemplate(points);
   const showLegend = templateGroups.length <= 12;
 
   const charts = [
@@ -765,42 +1025,50 @@ function renderTemplatePerformanceClouds() {
     },
     {
       targetId: templateCloudTargetIds.cagrVerifyCagr,
-      xLabel: 'Backtest CAGR',
-      yLabel: 'Verification CAGR',
-      xValue: point => normalizeRate(point.cagr) ?? 0,
-      yValue: point => normalizeRate(point.verifyCagr) ?? 0,
+      xLabel: 'Verification CAGR',
+      yLabel: 'Backtest CAGR',
+      xValue: point => normalizeRate(point.verifyCagr) ?? 0,
+      yValue: point => normalizeRate(point.cagr) ?? 0,
       xTickFormat: '.0%',
       yTickFormat: '.0%',
       filter: point => point.cagr !== null && point.verifyCagr !== null,
+      matchAxisScale: true,
+      focusBulkOnLoad: true,
       showLegend: false
     },
     {
       targetId: templateCloudTargetIds.sharpeVerifySharpe,
-      xLabel: 'Backtest Sharpe',
-      yLabel: 'Verification Sharpe',
-      xValue: point => point.sharpeRatio ?? 0,
-      yValue: point => point.verifySharpeRatio ?? 0,
+      xLabel: 'Verification Sharpe',
+      yLabel: 'Backtest Sharpe',
+      xValue: point => point.verifySharpeRatio ?? 0,
+      yValue: point => point.sharpeRatio ?? 0,
       filter: point => point.sharpeRatio !== null && point.verifySharpeRatio !== null,
+      matchAxisScale: true,
+      focusBulkOnLoad: true,
       showLegend: false
     },
     {
       targetId: templateCloudTargetIds.calmarVerifyCalmar,
-      xLabel: 'Backtest Calmar',
-      yLabel: 'Verification Calmar',
-      xValue: point => point.calmarRatio ?? 0,
-      yValue: point => point.verifyCalmarRatio ?? 0,
+      xLabel: 'Verification Calmar',
+      yLabel: 'Backtest Calmar',
+      xValue: point => point.verifyCalmarRatio ?? 0,
+      yValue: point => point.calmarRatio ?? 0,
       filter: point => point.calmarRatio !== null && point.verifyCalmarRatio !== null,
+      matchAxisScale: true,
+      focusBulkOnLoad: true,
       showLegend: false
     },
     {
       targetId: templateCloudTargetIds.drawdownVerifyDrawdown,
-      xLabel: 'Backtest Max Drawdown',
-      yLabel: 'Verification Max Drawdown',
-      xValue: point => normalizeRate(point.maxDrawdownRatio) ?? 0,
-      yValue: point => normalizeRate(point.verifyMaxDrawdownRatio) ?? 0,
+      xLabel: 'Verification Max Drawdown',
+      yLabel: 'Backtest Max Drawdown',
+      xValue: point => normalizeRate(point.verifyMaxDrawdownRatio) ?? 0,
+      yValue: point => normalizeRate(point.maxDrawdownRatio) ?? 0,
       xTickFormat: '.0%',
       yTickFormat: '.0%',
       filter: point => point.maxDrawdownRatio !== null && point.verifyMaxDrawdownRatio !== null,
+      matchAxisScale: true,
+      focusBulkOnLoad: true,
       showLegend: false
     }
   ];
@@ -810,10 +1078,10 @@ function renderTemplatePerformanceClouds() {
     .filter(item => item.element);
 
   const plotPromises = chartElements.map(({ chart, element }) => {
-    const traces = templateGroups.map(([templateId, group], index) => {
+    const traces = templateGroups.map((group, index) => {
       const groupPoints = group.points;
-      const templateName = group.templateName || `Template ${templateId}`;
-      const markerColor = colorForId ? colorForId(String(templateId)) : '#0d6efd';
+      const templateName = group.templateName || `Template ${group.templateId}`;
+      const markerColor = colorForId ? colorForId(String(group.templateId)) : '#0d6efd';
       const chartPoints = chart.filter ? groupPoints.filter(point => chart.filter(point)) : groupPoints;
       const hoverText = chartPoints.map(point => buildHoverText(point, templateName));
 
@@ -821,6 +1089,7 @@ function renderTemplatePerformanceClouds() {
         type: 'scatter',
         mode: 'markers',
         name: templateName,
+        meta: { templateId: group.templateId },
         x: chartPoints.map(point => chart.xValue(point)),
         y: chartPoints.map(point => chart.yValue(point)),
         text: hoverText,
@@ -828,11 +1097,36 @@ function renderTemplatePerformanceClouds() {
         marker: {
           size: 6,
           color: markerColor,
-          symbol: getTemplateSymbol(templateId, index),
+          symbol: getTemplateSymbol(group.templateId, index),
           opacity: 0.65
         }
       };
     });
+
+    const comparisonValues = traces
+      .flatMap(trace => [...trace.x, ...trace.y])
+      .filter(value => Number.isFinite(value));
+    const needsMatchedAxis = chart.matchAxisScale && comparisonValues.length > 0;
+    const matchedAxisRange = needsMatchedAxis
+      ? computeExpandedRange(Math.min(...comparisonValues), Math.max(...comparisonValues))
+      : null;
+    const initialMatchedAxisRange = needsMatchedAxis && chart.focusBulkOnLoad
+      ? computeFocusedRange(comparisonValues) ?? matchedAxisRange
+      : null;
+    const diagonalTrace = matchedAxisRange
+      ? {
+          type: 'scatter',
+          mode: 'lines',
+          x: initialMatchedAxisRange ?? matchedAxisRange,
+          y: initialMatchedAxisRange ?? matchedAxisRange,
+          hoverinfo: 'skip',
+          showlegend: false,
+          line: {
+            color: 'rgba(108,117,125,0.35)',
+            width: 2
+          }
+        }
+      : null;
 
     const layout = {
       ...defaultPlotlyLayout,
@@ -844,84 +1138,52 @@ function renderTemplatePerformanceClouds() {
         xanchor: 'left',
         x: 0
       },
-      xaxis: { title: chart.xLabel, tickformat: chart.xTickFormat, automargin: true },
-      yaxis: { title: chart.yLabel, tickformat: chart.yTickFormat, automargin: true }
+      xaxis: {
+        title: chart.xLabel,
+        tickformat: chart.xTickFormat,
+        automargin: true,
+        range: initialMatchedAxisRange ?? matchedAxisRange ?? undefined
+      },
+      yaxis: {
+        title: chart.yLabel,
+        tickformat: chart.yTickFormat,
+        automargin: true,
+        range: initialMatchedAxisRange ?? matchedAxisRange ?? undefined,
+        scaleanchor: needsMatchedAxis ? 'x' : undefined,
+        scaleratio: needsMatchedAxis ? 1 : undefined
+      }
     };
 
-    return Promise.resolve(Plotly.react(element, traces, layout, defaultPlotlyConfig));
+    return Promise.resolve(Plotly.react(
+      element,
+      diagonalTrace ? [diagonalTrace, ...traces] : traces,
+      layout,
+      chartPlotlyConfig
+    ));
   });
 
   const legendElement = chartElements.find(item => item.chart.showLegend)?.element;
-  if (!legendElement || !showLegend) {
-    return;
-  }
 
-  Promise.all(plotPromises).then(() => {
-    if (legendElement.__templateLegendBound) {
-      return;
-    }
-    legendElement.__templateLegendBound = true;
-
-    const getTrace = (eventData, index) => {
-      if (eventData?.fullData?.[index]) {
-        return eventData.fullData[index];
-      }
-      if (eventData?.data?.[index]) {
-        return eventData.data[index];
-      }
-      if (legendElement._fullData?.[index]) {
-        return legendElement._fullData[index];
-      }
-      if (legendElement.data?.[index]) {
-        return legendElement.data[index];
-      }
-      return null;
-    };
-
-    const applyVisibility = (visibility, indices = null) => {
-      chartElements.forEach(({ element }) => {
-        if (indices) {
-          Plotly.restyle(element, { visible: visibility }, indices);
-        } else {
-          Plotly.restyle(element, { visible: visibility });
-        }
-      });
-    };
-
-    legendElement.on('plotly_legendclick', eventData => {
-      const curveIndex = eventData.curveNumber;
-      const trace = getTrace(eventData, curveIndex);
-      const isHidden = trace && (trace.visible === 'legendonly' || trace.visible === false);
-      const nextVisibility = isHidden ? true : 'legendonly';
-
-      applyVisibility(nextVisibility, [curveIndex]);
-      return false;
-    });
-
-    legendElement.on('plotly_legenddoubleclick', eventData => {
-      const curveIndex = eventData.curveNumber;
-      const traces = templateGroups.map((_, index) => getTrace(eventData, index));
-      const visibleCount = traces.reduce((count, trace) => {
-        if (!trace) {
-          return count;
-        }
-        const isVisible = trace.visible !== 'legendonly' && trace.visible !== false;
-        return count + (isVisible ? 1 : 0);
-      }, 0);
-
-      if (visibleCount === 1 && traces[curveIndex]) {
-        applyVisibility(templateGroups.map(() => true));
-      } else {
-        applyVisibility(templateGroups.map((_, index) => (index === curveIndex ? true : 'legendonly')));
-      }
-      return false;
-    });
-  });
+  return {
+    chartElements: chartElements.map(item => item.element),
+    legendElement: showLegend ? legendElement : null,
+    showLegend,
+    templateGroups,
+    plotPromise: Promise.all(plotPromises)
+  };
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  renderTemplatePerformanceClouds();
-  renderBalanceComparisonClouds();
+  const performanceCloud = renderTemplatePerformanceClouds();
+  const balanceCloud = renderBalanceComparisonClouds();
+
+  Promise.all([performanceCloud.plotPromise, balanceCloud.plotPromise]).then(() => {
+    bindTemplateLegendSync(
+      performanceCloud.legendElement,
+      [...performanceCloud.chartElements, ...balanceCloud.chartElements],
+      performanceCloud.templateGroups
+    );
+  });
 
   if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
     document.querySelectorAll('[data-template-score-popover]').forEach(element => {
