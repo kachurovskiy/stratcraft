@@ -178,6 +178,12 @@
                         <i class="fas fa-balance-scale me-2"></i>
                         Live vs Engine Backtest
                     </h5>
+                    {{#if (and backtestComparison.hasEngine backtestComparison.hasLive)}}
+                    <a href="/strategies/{{strategy.id}}/backtests/compare" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-columns me-1"></i>
+                        Side By Side
+                    </a>
+                    {{/if}}
                 </div>
                 <div class="card-body p-0">
                     {{#if (and backtestComparison.hasEngine backtestComparison.hasLive)}}

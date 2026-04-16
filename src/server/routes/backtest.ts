@@ -1,9 +1,10 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { BacktestParams } from '../types/Express';
+import { BacktestParams, StrategyIdParams } from '../types/Express';
 import { Trade } from '../types/StrategyTemplate';
 import type {
   BacktestDailySnapshot,
   EntryFillGapHistogram,
+  BacktestResultRecord,
   TickerAssetRecord,
   TradeTickerStats
 } from '../database/types';
@@ -15,7 +16,7 @@ import {
   buildPortfolioValueDataFromSnapshots,
   type PortfolioValuePoint
 } from '../utils/backtestCharts';
-import { BACKTEST_SCOPE_META, normalizeBacktestScope } from '../scoring/backtestComparison';
+import { BACKTEST_SCOPE_META, normalizeBacktestScope, pickLatestBacktest } from '../scoring/backtestComparison';
 import { buildParameterContexts } from '../utils/parameters';
 import { normalizeUppercaseString } from '../utils/stringNormalization';
 import { getReqUserId } from './utils';
@@ -484,151 +485,237 @@ function buildPortfolioDayMovers(
   return { best: bestDays, worst: worstDays };
 }
 
+class BacktestPageLoadError extends Error {
+  constructor(
+    readonly statusCode: number,
+    readonly pageTitle: string,
+    readonly pageError: string
+  ) {
+    super(pageError);
+  }
+}
+
+const loadBacktestPageView = async (
+  req: Request,
+  backtestId: string,
+  userId: number
+) => {
+  const targetBacktest = await req.db.backtestResults.getBacktestResultById(backtestId, userId);
+
+  if (!targetBacktest) {
+    throw new BacktestPageLoadError(404, 'Backtest Not Found', `Backtest ${backtestId} not found`);
+  }
+
+  const strategy = await req.db.strategies.getStrategy(targetBacktest.strategyId, userId);
+
+  if (!strategy) {
+    throw new BacktestPageLoadError(404, 'Strategy Not Found', `Strategy ${targetBacktest.strategyId} not found`);
+  }
+
+  const template = req.strategyRegistry.getTemplate(strategy.templateId);
+  const { parameterSummaries, extraParameters } = buildParameterContexts(template, strategy.parameters);
+
+  const bestTrades = await req.db.trades.getBestTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
+  const worstTrades = await req.db.trades.getWorstTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
+
+  const entryFillGapHistogram = await req.db.trades.getEntryFillGapHistogramForBacktest(
+    targetBacktest.id,
+    userId
+  );
+  const entryFillGapChartData = buildEntryFillGapChartData(entryFillGapHistogram);
+  const entryFillGapPnlChartData = buildEntryFillGapPnlChartData(entryFillGapHistogram);
+
+  const tradeTickerStatsAll: TradeTickerStats[] = await req.db.trades.getTickerTradeStatsForBacktest(
+    targetBacktest.id,
+    userId
+  );
+  const tradeVolumeSegments = await req.db.trades.getTradeVolumeSegmentStatsForBacktest(targetBacktest.id, userId);
+  const volumeSegmentStats = tradeVolumeSegments
+    .map((segment) => {
+      const totalBuyCost = Math.abs(segment.totalBuyCost);
+      const avgReturnPercent = totalBuyCost > 0 ? (segment.totalPnl / totalBuyCost) * 100 : 0;
+      return {
+        bucketLabel: segment.bucketLabel,
+        bucketOrder: segment.bucketOrder,
+        minVolumeUsd: segment.minVolumeUsd,
+        maxVolumeUsd: segment.maxVolumeUsd,
+        tradeCount: segment.tradeCount,
+        totalPnl: segment.totalPnl,
+        totalBuyCost,
+        avgReturnPercent
+      };
+    })
+    .filter((segment) => Number.isFinite(segment.minVolumeUsd) && Number.isFinite(segment.bucketOrder))
+    .sort((a, b) => a.bucketOrder - b.bucketOrder);
+  const tradesPageUrl = `/backtests/${targetBacktest.id}/trades`;
+  const tradeDateInsightsUrl = `/backtests/${targetBacktest.id}/trades/date-insights`;
+
+  const tickerScope = normalizeBacktestScope(targetBacktest.tickerScope);
+  const scopeMeta = BACKTEST_SCOPE_META[tickerScope];
+  const periodMonthsValue = Number(targetBacktest.periodMonths);
+  const periodMonths = Number.isFinite(periodMonthsValue) ? periodMonthsValue : null;
+
+  const basePerformance = await req.db.backtestResults.getStoredStrategyPerformance(strategy.id, {
+    periodMonths: periodMonths ?? undefined,
+    tickerScope
+  });
+  const performance = {
+    ...basePerformance,
+    ...(targetBacktest.performance ?? {})
+  };
+  performance.backtestStartDate = targetBacktest.startDate ?? performance.backtestStartDate;
+  performance.backtestEndDate = targetBacktest.endDate ?? performance.backtestEndDate;
+  performance.lastUpdated = targetBacktest.createdAt ?? performance.lastUpdated;
+  performance.tickerScope = tickerScope;
+  performance.backtestId = targetBacktest.id ?? performance.backtestId;
+
+  const dailySnapshots = Array.isArray(targetBacktest.dailySnapshots) ? targetBacktest.dailySnapshots : [];
+  const backtestInitialCapital = Number(targetBacktest.initialCapital);
+  const portfolioValueData = buildPortfolioValueDataFromSnapshots(dailySnapshots);
+  const { best: bestPortfolioDays, worst: worstPortfolioDays } = buildPortfolioDayMovers(
+    portfolioValueData,
+    10
+  );
+  const benchmarkData = await buildBenchmarkDataFromSnapshots(
+    req.db,
+    dailySnapshots,
+    backtestInitialCapital
+  );
+  const drawdownData = buildDrawdownDataFromPortfolio(portfolioValueData);
+  const dailyReturnDistributionData = buildDailyReturnDistribution(portfolioValueData);
+  const cashPercentageData = buildCashPercentageDataFromSnapshots(dailySnapshots);
+  const activeTrades = await req.db.trades.getTrades(
+    strategy.id,
+    undefined,
+    undefined,
+    undefined,
+    'active',
+    targetBacktest.id,
+    userId
+  );
+  const exposureSummary = await buildExposureSummary({
+    activeTrades,
+    dailySnapshots,
+    backtestEndDate: targetBacktest.endDate ?? null,
+    db: req.db
+  });
+
+  return {
+    strategy: {
+      ...strategy,
+      performance
+    },
+    template,
+    bestTrades,
+    worstTrades,
+    entryFillGapChartData,
+    entryFillGapPnlChartData,
+    portfolioValueData,
+    bestPortfolioDays,
+    worstPortfolioDays,
+    benchmarkData,
+    drawdownData,
+    dailyReturnDistributionData,
+    tradeTickerStats: tradeTickerStatsAll,
+    volumeSegmentStats,
+    tradesPageUrl,
+    tradeDateInsightsUrl,
+    cashPercentageData,
+    exposureSummary,
+    backtestInitialCapital,
+    parameterSummaries,
+    parameterSummariesCount: parameterSummaries.length,
+    extraParameters,
+    extraParameterCount: extraParameters.length,
+    selectedBacktestScopeLabel: scopeMeta.label,
+    selectedBacktestScopeBadgeVariant: scopeMeta.badge,
+    backtestDetailUrl: `/backtests/${targetBacktest.id}`
+  };
+};
+
+const renderBacktestLoadError = (res: Response, error: unknown): boolean => {
+  if (!(error instanceof BacktestPageLoadError)) {
+    return false;
+  }
+
+  res.status(error.statusCode).render('pages/error', {
+    title: error.pageTitle,
+    error: error.pageError
+  });
+  return true;
+};
+
+router.get<StrategyIdParams>('/strategies/:strategyId/backtests/compare', requireAuth, async (req, res) => {
+  try {
+    const { strategyId } = req.params;
+    const userId = getReqUserId(req);
+    const strategy = await req.db.strategies.getStrategy(strategyId, userId);
+
+    if (!strategy) {
+      return res.status(404).render('pages/error', {
+        title: 'Strategy Not Found',
+        error: `Strategy ${strategyId} not found`
+      });
+    }
+
+    const backtests: BacktestResultRecord[] = await req.db.backtestResults.getBacktestResults(strategyId, 'all');
+    const engineBacktest = pickLatestBacktest(backtests, ['training', 'validation', 'all']);
+    const liveBacktest = pickLatestBacktest(backtests, ['live']);
+
+    if (!engineBacktest || !liveBacktest) {
+      return res.redirect(
+        `/strategies/${strategyId}?error=${encodeURIComponent('Need both engine and live backtests to compare')}`
+      );
+    }
+
+    const [engineBacktestPage, liveBacktestPage] = await Promise.all([
+      loadBacktestPageView(req, engineBacktest.id, userId),
+      loadBacktestPageView(req, liveBacktest.id, userId)
+    ]);
+    const template = req.strategyRegistry.getTemplate(strategy.templateId);
+
+    res.render('pages/backtest-compare', {
+      title: `${strategy.name} - Backtest Compare`,
+      page: 'dashboard',
+      user: req.user,
+      strategy,
+      template,
+      engineBacktestPage,
+      liveBacktestPage
+    });
+  } catch (error) {
+    if (renderBacktestLoadError(res, error)) {
+      return;
+    }
+
+    console.error('Error rendering side-by-side backtest comparison page:', error);
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: 'Failed to load side-by-side backtest comparison'
+    });
+  }
+});
+
 // Backtest page for a specific backtest result
 router.get<BacktestParams>('/backtests/:backtestId', requireAuth, async (req, res) => {
   try {
     const { backtestId } = req.params;
     const userId = getReqUserId(req);
-    const targetBacktest = await req.db.backtestResults.getBacktestResultById(backtestId, userId);
-
-    if (!targetBacktest) {
-      return res.status(404).render('pages/error', {
-        title: 'Backtest Not Found',
-        error: `Backtest ${backtestId} not found`
-      });
-    }
-
-    const strategy = await req.db.strategies.getStrategy(targetBacktest.strategyId, userId);
-
-    if (!strategy) {
-      return res.status(404).render('pages/error', {
-        title: 'Strategy Not Found',
-        error: `Strategy ${targetBacktest.strategyId} not found`
-      });
-    }
-
-    const template = req.strategyRegistry.getTemplate(strategy.templateId);
-    const { parameterSummaries, extraParameters } = buildParameterContexts(template, strategy.parameters);
-
-    const bestTrades = await req.db.trades.getBestTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
-    const worstTrades = await req.db.trades.getWorstTradesByPnlPercent(strategy.id, userId, 20, targetBacktest.id);
-
-    const entryFillGapHistogram = await req.db.trades.getEntryFillGapHistogramForBacktest(
-      targetBacktest.id,
-      userId
-    );
-    const entryFillGapChartData = buildEntryFillGapChartData(entryFillGapHistogram);
-    const entryFillGapPnlChartData = buildEntryFillGapPnlChartData(entryFillGapHistogram);
-
-    const tradeTickerStatsAll: TradeTickerStats[] = await req.db.trades.getTickerTradeStatsForBacktest(targetBacktest.id, userId);
-    const tradeVolumeSegments = await req.db.trades.getTradeVolumeSegmentStatsForBacktest(targetBacktest.id, userId);
-    const volumeSegmentStats = tradeVolumeSegments
-      .map((segment) => {
-        const totalBuyCost = Math.abs(segment.totalBuyCost);
-        const avgReturnPercent = totalBuyCost > 0 ? (segment.totalPnl / totalBuyCost) * 100 : 0;
-        return {
-          bucketLabel: segment.bucketLabel,
-          bucketOrder: segment.bucketOrder,
-          minVolumeUsd: segment.minVolumeUsd,
-          maxVolumeUsd: segment.maxVolumeUsd,
-          tradeCount: segment.tradeCount,
-          totalPnl: segment.totalPnl,
-          totalBuyCost,
-          avgReturnPercent
-        };
-      })
-      .filter((segment) => Number.isFinite(segment.minVolumeUsd) && Number.isFinite(segment.bucketOrder))
-      .sort((a, b) => a.bucketOrder - b.bucketOrder);
-    const tradesPageUrl = `/backtests/${targetBacktest.id}/trades`;
-    const tradeDateInsightsUrl = `/backtests/${targetBacktest.id}/trades/date-insights`;
-
-    const tickerScope = normalizeBacktestScope(targetBacktest.tickerScope);
-    const scopeMeta = BACKTEST_SCOPE_META[tickerScope];
-    const periodMonthsValue = Number(targetBacktest.periodMonths);
-    const periodMonths = Number.isFinite(periodMonthsValue) ? periodMonthsValue : null;
-
-    const basePerformance = await req.db.backtestResults.getStoredStrategyPerformance(strategy.id, {
-      periodMonths: periodMonths ?? undefined,
-      tickerScope
-    });
-    const performance = {
-      ...basePerformance,
-      ...(targetBacktest.performance ?? {})
-    };
-    performance.backtestStartDate = targetBacktest.startDate ?? performance.backtestStartDate;
-    performance.backtestEndDate = targetBacktest.endDate ?? performance.backtestEndDate;
-    performance.lastUpdated = targetBacktest.createdAt ?? performance.lastUpdated;
-    performance.tickerScope = tickerScope;
-    performance.backtestId = targetBacktest.id ?? performance.backtestId;
-
-    const dailySnapshots = Array.isArray(targetBacktest.dailySnapshots) ? targetBacktest.dailySnapshots : [];
-    const backtestInitialCapital = Number(targetBacktest.initialCapital);
-    const portfolioValueData = buildPortfolioValueDataFromSnapshots(dailySnapshots);
-    const { best: bestPortfolioDays, worst: worstPortfolioDays } = buildPortfolioDayMovers(
-      portfolioValueData,
-      10
-    );
-    const benchmarkData = await buildBenchmarkDataFromSnapshots(
-      req.db,
-      dailySnapshots,
-      backtestInitialCapital
-    );
-    const drawdownData = buildDrawdownDataFromPortfolio(portfolioValueData);
-    const dailyReturnDistributionData = buildDailyReturnDistribution(portfolioValueData);
-    const cashPercentageData = buildCashPercentageDataFromSnapshots(dailySnapshots);
-    const activeTrades = await req.db.trades.getTrades(
-      strategy.id,
-      undefined,
-      undefined,
-      undefined,
-      'active',
-      targetBacktest.id,
-      userId
-    );
-    const exposureSummary = await buildExposureSummary({
-      activeTrades,
-      dailySnapshots,
-      backtestEndDate: targetBacktest.endDate ?? null,
-      db: req.db
-    });
-
+    const view = await loadBacktestPageView(req, backtestId, userId);
     const { success, error } = req.query;
     res.render('pages/backtest', {
-      title: `${strategy.name} - Strategy Details`,
+      title: `${view.strategy.name} - Strategy Details`,
       page: 'dashboard',
       user: req.user,
-      strategy: {
-        ...strategy,
-        performance
-      },
-      template,
-      bestTrades,
-      worstTrades,
-      entryFillGapChartData,
-      entryFillGapPnlChartData,
-      portfolioValueData,
-      bestPortfolioDays,
-      worstPortfolioDays,
-      benchmarkData,
-      drawdownData,
-      dailyReturnDistributionData,
-      tradeTickerStats: tradeTickerStatsAll,
-      volumeSegmentStats,
-      tradesPageUrl,
-      tradeDateInsightsUrl,
-      cashPercentageData,
-      exposureSummary,
-      backtestInitialCapital,
-      parameterSummaries,
-      parameterSummariesCount: parameterSummaries.length,
-      extraParameters,
-      extraParameterCount: extraParameters.length,
+      ...view,
       success,
-      error,
-      selectedBacktestScopeLabel: scopeMeta.label,
-      selectedBacktestScopeBadgeVariant: scopeMeta.badge
+      error
     });
   } catch (error) {
+    if (renderBacktestLoadError(res, error)) {
+      return;
+    }
+
     console.error('Error rendering strategy detail for specific backtest period:', error);
     res.status(500).render('pages/error', {
       title: 'Error',

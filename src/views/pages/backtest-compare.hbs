@@ -1,0 +1,78 @@
+<div class="container-fluid">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+        <div>
+            <h2 class="mb-0">{{strategy.name}}</h2>
+            <p class="text-muted mt-1 mb-0">Latest engine and live backtests on one page for side-by-side review.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="/strategies/{{strategy.id}}" class="btn btn-primary btn-sm">
+                <i class="fas fa-arrow-left me-1"></i>
+                Back To Strategy
+            </a>
+            {{#if template}}
+            <a href="/templates/{{template.id}}" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-link me-1"></i>
+                Template
+            </a>
+            {{/if}}
+        </div>
+    </div>
+
+    <div class="row g-4 align-items-start">
+        <div class="col-12 col-xl-6">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                    <h3 class="h5 mb-1">Engine Backtest</h3>
+                    <div class="text-muted small">
+                        {{formatDate engineBacktestPage.strategy.performance.backtestStartDate}} &ndash;
+                        {{formatDate engineBacktestPage.strategy.performance.backtestEndDate}}
+                    </div>
+                </div>
+                <div class="d-flex flex-column align-items-end gap-2">
+                    <span class="badge {{engineBacktestPage.selectedBacktestScopeBadgeVariant}}">
+                        {{engineBacktestPage.selectedBacktestScopeLabel}}
+                    </span>
+                    <a href="{{engineBacktestPage.backtestDetailUrl}}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-external-link-alt me-1"></i>
+                        Open Single Page
+                    </a>
+                </div>
+            </div>
+            {{#with engineBacktestPage}}
+            {{> backtest-detail
+              backtestRootClass='px-0'
+              backtestViewIdPrefix='engine'
+              showBacktestPageHeader=false
+            }}
+            {{/with}}
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                <div>
+                    <h3 class="h5 mb-1">Live Backtest</h3>
+                    <div class="text-muted small">
+                        {{formatDate liveBacktestPage.strategy.performance.backtestStartDate}} &ndash;
+                        {{formatDate liveBacktestPage.strategy.performance.backtestEndDate}}
+                    </div>
+                </div>
+                <div class="d-flex flex-column align-items-end gap-2">
+                    <span class="badge {{liveBacktestPage.selectedBacktestScopeBadgeVariant}}">
+                        {{liveBacktestPage.selectedBacktestScopeLabel}}
+                    </span>
+                    <a href="{{liveBacktestPage.backtestDetailUrl}}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-external-link-alt me-1"></i>
+                        Open Single Page
+                    </a>
+                </div>
+            </div>
+            {{#with liveBacktestPage}}
+            {{> backtest-detail
+              backtestRootClass='px-0'
+              backtestViewIdPrefix='live'
+              showBacktestPageHeader=false
+            }}
+            {{/with}}
+        </div>
+    </div>
+</div>

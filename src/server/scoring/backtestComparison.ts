@@ -1023,7 +1023,7 @@ const loadExpenseRatioMap = async (db: Database, tickers: string[]): Promise<Map
   return expenseMap;
 };
 
-const pickLatestBacktest = (
+export const pickLatestBacktest = (
   backtests: BacktestResultRecord[],
   scopes: BacktestScope[]
 ): BacktestResultRecord | null => {
