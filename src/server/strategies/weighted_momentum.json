@@ -56,7 +56,7 @@
       "label": "Max Unadjusted Price",
       "description": "Maximum unadjusted price allowed for trade entry.",
       "required": true,
-      "default": 1000,
+      "default": 10,
       "min": 1,
       "max": 1000,
       "step": 100
@@ -111,7 +111,7 @@
       "label": "Maximum Holding Days",
       "description": "Maximum number of days to hold a trade before forced closure",
       "required": true,
-      "default": 120,
+      "default": 150,
       "min": 120,
       "max": 720,
       "step": 30

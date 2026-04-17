@@ -34,7 +34,7 @@
       "label": "Minimum Trade Size ($)",
       "description": "Minimum dollar value per trade. Orders smaller than this threshold are rounded up or skipped.",
       "required": true,
-      "default": 430,
+      "default": 560,
       "min": 10,
       "max": 1000,
       "step": 10
@@ -56,10 +56,10 @@
       "label": "Max Unadjusted Price",
       "description": "Maximum unadjusted price allowed for trade entry.",
       "required": true,
-      "default": 1000,
+      "default": 10,
       "min": 1,
       "max": 1000,
-      "step": 100
+      "step": 1
     },
     {
       "name": "sellFraction",
@@ -188,7 +188,7 @@
       "label": "Period",
       "description": "Period for Williams %R calculation",
       "required": true,
-      "default": 21,
+      "default": 26,
       "min": 5,
       "max": 50,
       "step": 1

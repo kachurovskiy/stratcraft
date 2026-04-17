@@ -45,7 +45,7 @@
       "label": "Minimum Trade Size ($)",
       "description": "Minimum dollar value per trade. Orders smaller than this threshold are rounded up or skipped.",
       "required": true,
-      "default": 570,
+      "default": 610,
       "min": 10,
       "max": 1000,
       "step": 10
@@ -67,10 +67,10 @@
       "label": "Max Unadjusted Price",
       "description": "Maximum unadjusted price allowed for trade entry.",
       "required": true,
-      "default": 1000,
+      "default": 3,
       "min": 1,
       "max": 1000,
-      "step": 100
+      "step": 1
     },
     {
       "name": "sellFraction",
@@ -111,7 +111,7 @@
       "label": "Buy Discount %",
       "description": "Buy only when price is below a certain discount from a baseline (e.g., 0.05 = 5% discount)",
       "required": true,
-      "default": 0.03,
+      "default": 0.01,
       "min": 0,
       "max": 0.1,
       "step": 0.01
@@ -122,7 +122,7 @@
       "label": "Maximum Holding Days",
       "description": "Maximum number of days to hold a trade before forced closure",
       "required": true,
-      "default": 60,
+      "default": 120,
       "min": 30,
       "max": 720,
       "step": 30
@@ -155,7 +155,7 @@
       "label": "Volatility Lookback (days)",
       "description": "Lookback window for realized volatility estimate",
       "required": true,
-      "default": 40,
+      "default": 75,
       "min": 10,
       "max": 120,
       "step": 5

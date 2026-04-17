@@ -23,7 +23,7 @@
       "label": "Trade Size Ratio",
       "description": "Percentage of portfolio to use for each trade (e.g., 0.002 = 0.2%)",
       "required": true,
-      "default": 0.001,
+      "default": 0.0015,
       "min": 0.001,
       "max": 0.01,
       "step": 0.0005
@@ -34,7 +34,7 @@
       "label": "Minimum Trade Size ($)",
       "description": "Minimum dollar value per trade. Orders smaller than this threshold are rounded up or skipped.",
       "required": true,
-      "default": 440,
+      "default": 420,
       "min": 10,
       "max": 1000,
       "step": 10
@@ -56,7 +56,7 @@
       "label": "Max Unadjusted Price",
       "description": "Maximum unadjusted price allowed for trade entry.",
       "required": true,
-      "default": 1000,
+      "default": 700,
       "min": 1,
       "max": 1000,
       "step": 100
@@ -111,7 +111,7 @@
       "label": "Maximum Holding Days",
       "description": "Maximum number of days to hold a trade before forced closure",
       "required": true,
-      "default": 600,
+      "default": 630,
       "min": 120,
       "max": 720,
       "step": 30
