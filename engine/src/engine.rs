@@ -1870,6 +1870,7 @@ impl Engine {
 
     fn entry_price_supported(&self, price: f64) -> bool {
         price.is_finite()
+            && price >= self.config.min_unadjusted_price
             && price <= self.config.max_unadjusted_price
             && price >= self.runtime_settings.trade_entry_price_min
             && price <= self.runtime_settings.trade_entry_price_max
@@ -3878,6 +3879,40 @@ mod tests {
         let (mut candles, _, history_offset) =
             generate_candles_with_history(&ticker, vec![100.0, 100.0]);
         candles[history_offset].unadjusted_close = Some(5_000.0);
+
+        let refs: Vec<&Candle> = candles.iter().collect();
+        let mut cash = engine.config.initial_capital;
+        let mut active_trades = Vec::new();
+        let skipped = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            refs[history_offset],
+            refs.get(history_offset + 1).copied(),
+            &refs,
+            history_offset,
+            1.0,
+        );
+
+        assert!(matches!(
+            skipped,
+            EntrySignalOutcome::Skipped {
+                reason: "price_out_of_range",
+                ..
+            }
+        ));
+        assert!(active_trades.is_empty());
+    }
+
+    #[test]
+    fn test_execute_buy_signal_respects_min_unadjusted_price() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.min_unadjusted_price = 5.0;
+        let ticker = "LMIN".to_string();
+
+        let (mut candles, _, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 100.0]);
+        candles[history_offset].unadjusted_close = Some(4.0);
 
         let refs: Vec<&Candle> = candles.iter().collect();
         let mut cash = engine.config.initial_capital;

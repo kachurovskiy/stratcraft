@@ -222,6 +222,7 @@ pub struct EngineConfig {
     pub sell_fraction: f64,
     pub minimum_trade_size: f64,
     pub minimum_size_as_allocation: f64,
+    pub min_unadjusted_price: f64,
     pub max_unadjusted_price: f64,
     pub min_volume_usd: f64,
     pub max_volume_usd: f64,
@@ -249,6 +250,7 @@ impl Default for EngineConfig {
             sell_fraction: 1.0,
             minimum_trade_size: 50.0,
             minimum_size_as_allocation: 0.0,
+            min_unadjusted_price: 0.1,
             max_unadjusted_price: 1000.0,
             min_volume_usd: DEFAULT_MIN_VOLUME_USD,
             max_volume_usd: DEFAULT_MAX_VOLUME_USD,
@@ -274,13 +276,21 @@ impl EngineConfig {
         } else {
             1.0
         };
-        let max_unadjusted_price_raw = get_param(parameters, "maxUnadjustedPrice", 1000.0);
-        let max_unadjusted_price =
-            if max_unadjusted_price_raw.is_finite() && max_unadjusted_price_raw >= 1.0 {
-                max_unadjusted_price_raw
+        let min_unadjusted_price_raw = get_param(parameters, "minUnadjustedPrice", 0.1);
+        let min_unadjusted_price =
+            if min_unadjusted_price_raw.is_finite() && min_unadjusted_price_raw >= 0.1 {
+                min_unadjusted_price_raw
             } else {
-                1000.0
+                0.1
             };
+        let max_unadjusted_price_raw = get_param(parameters, "maxUnadjustedPrice", 1000.0);
+        let max_unadjusted_price = if max_unadjusted_price_raw.is_finite()
+            && max_unadjusted_price_raw >= min_unadjusted_price
+        {
+            max_unadjusted_price_raw
+        } else {
+            1000.0f64.max(min_unadjusted_price)
+        };
         let min_volume_usd_raw = get_param(parameters, "minVolumeUsd", DEFAULT_MIN_VOLUME_USD);
         let min_volume_usd = if min_volume_usd_raw.is_finite() && min_volume_usd_raw >= 0.0 {
             min_volume_usd_raw
@@ -306,6 +316,7 @@ impl EngineConfig {
                 0.0,
                 1.0,
             ),
+            min_unadjusted_price,
             max_unadjusted_price,
             min_volume_usd,
             max_volume_usd,

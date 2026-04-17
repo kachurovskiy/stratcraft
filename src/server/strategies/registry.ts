@@ -605,5 +605,15 @@ export class StrategyRegistry {
         }
       }
     }
+
+    const minUnadjustedPrice = parameters.minUnadjustedPrice;
+    const maxUnadjustedPrice = parameters.maxUnadjustedPrice;
+    if (
+      typeof minUnadjustedPrice === 'number' &&
+      typeof maxUnadjustedPrice === 'number' &&
+      minUnadjustedPrice > maxUnadjustedPrice
+    ) {
+      throw new Error('Parameter minUnadjustedPrice must be <= maxUnadjustedPrice');
+    }
   }
 }
