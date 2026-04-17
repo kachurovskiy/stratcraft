@@ -6,6 +6,8 @@ const BACKTEST_INITIAL_CAPITAL_SETTING: &str = "BACKTEST_INITIAL_CAPITAL";
 const DEFAULT_BACKTEST_INITIAL_CAPITAL: f64 = 100000.0;
 const DEFAULT_MARKET_ORDER_PRICE_CAP_RATIO: f64 = 0.08;
 const DEFAULT_LIMIT_BUY_PENETRATION_RATIO: f64 = 0.005;
+const DEFAULT_MIN_VOLUME_USD: f64 = 150_000.0;
+const DEFAULT_MAX_VOLUME_USD: f64 = 51_000_000_000.0;
 const DEFAULT_LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES: [f64; 6] =
     [3.0, 5.0, 7.0, 10.0, 15.0, 20.0];
 
@@ -221,6 +223,8 @@ pub struct EngineConfig {
     pub minimum_trade_size: f64,
     pub minimum_size_as_allocation: f64,
     pub max_unadjusted_price: f64,
+    pub min_volume_usd: f64,
+    pub max_volume_usd: f64,
     pub max_leverage: f64,
     pub allow_short_selling: bool,
     // Buy parameters
@@ -246,6 +250,8 @@ impl Default for EngineConfig {
             minimum_trade_size: 50.0,
             minimum_size_as_allocation: 0.0,
             max_unadjusted_price: 1000.0,
+            min_volume_usd: DEFAULT_MIN_VOLUME_USD,
+            max_volume_usd: DEFAULT_MAX_VOLUME_USD,
             max_leverage: 1.0,
             allow_short_selling: false,
             buy_discount_ratio: 0.0,
@@ -275,6 +281,19 @@ impl EngineConfig {
             } else {
                 1000.0
             };
+        let min_volume_usd_raw = get_param(parameters, "minVolumeUsd", DEFAULT_MIN_VOLUME_USD);
+        let min_volume_usd = if min_volume_usd_raw.is_finite() && min_volume_usd_raw >= 0.0 {
+            min_volume_usd_raw
+        } else {
+            DEFAULT_MIN_VOLUME_USD
+        };
+        let max_volume_usd_raw = get_param(parameters, "maxVolumeUsd", DEFAULT_MAX_VOLUME_USD);
+        let max_volume_usd =
+            if max_volume_usd_raw.is_finite() && max_volume_usd_raw >= min_volume_usd {
+                max_volume_usd_raw
+            } else {
+                DEFAULT_MAX_VOLUME_USD.max(min_volume_usd)
+            };
 
         Self {
             initial_capital: get_param(parameters, "initialCapital", 100000.0),
@@ -288,6 +307,8 @@ impl EngineConfig {
                 1.0,
             ),
             max_unadjusted_price,
+            min_volume_usd,
+            max_volume_usd,
             max_leverage,
             allow_short_selling: get_param(parameters, "allowShortSelling", 0.0) >= 0.5,
             buy_discount_ratio: get_param(parameters, "buyDiscountRatio", 0.0),

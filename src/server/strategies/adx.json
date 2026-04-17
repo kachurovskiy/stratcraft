@@ -73,6 +73,28 @@
       "step": 1
     },
     {
+      "name": "minVolumeUsd",
+      "type": "number",
+      "label": "Min Volume (USD)",
+      "description": "Minimum signal-candle dollar volume required before trade entry.",
+      "required": true,
+      "default": 150000,
+      "min": 150000,
+      "max": 51000000000,
+      "step": 150000
+    },
+    {
+      "name": "maxVolumeUsd",
+      "type": "number",
+      "label": "Max Volume (USD)",
+      "description": "Maximum signal-candle dollar volume allowed before trade entry.",
+      "required": true,
+      "default": 51000000000,
+      "min": 150000,
+      "max": 51000000000,
+      "step": 10000000000
+    },
+    {
       "name": "sellFraction",
       "type": "number",
       "label": "Sell Fraction",

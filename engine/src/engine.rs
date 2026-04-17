@@ -986,6 +986,12 @@ impl Engine {
                 details: None,
             };
         }
+        if let Some(details) = self.signal_candle_volume_violation_details(candle) {
+            return EntrySignalOutcome::Skipped {
+                reason: "signal_excluded",
+                details: Some(details),
+            };
+        }
         let planning_close = Self::sizing_price_from_candle(candle).unwrap_or(guard_price);
         let mut price = next_candle.open;
         let mut is_limit_entry = false;
@@ -1199,6 +1205,12 @@ impl Engine {
             return EntrySignalOutcome::Skipped {
                 reason: "insufficient_volume",
                 details: None,
+            };
+        }
+        if let Some(details) = self.signal_candle_volume_violation_details(candle) {
+            return EntrySignalOutcome::Skipped {
+                reason: "signal_excluded",
+                details: Some(details),
             };
         }
         let planning_close = Self::sizing_price_from_candle(candle).unwrap_or(guard_price);
@@ -1863,6 +1875,26 @@ impl Engine {
             && price <= self.runtime_settings.trade_entry_price_max
     }
 
+    fn signal_candle_volume_violation_details(&self, candle: &Candle) -> Option<String> {
+        let dollar_volume = candle.high * candle.volume_shares as f64;
+        if !dollar_volume.is_finite() || dollar_volume < 0.0 {
+            return Some("Signal candle dollar volume unavailable.".to_string());
+        }
+        if dollar_volume + PRICE_EPSILON < self.config.min_volume_usd {
+            return Some(format!(
+                "Signal candle volume {:.0} below minimum {:.0}.",
+                dollar_volume, self.config.min_volume_usd
+            ));
+        }
+        if dollar_volume > self.config.max_volume_usd + PRICE_EPSILON {
+            return Some(format!(
+                "Signal candle volume {:.0} above maximum {:.0}.",
+                dollar_volume, self.config.max_volume_usd
+            ));
+        }
+        None
+    }
+
     fn guard_price_from_candle(candle: &Candle) -> Option<f64> {
         if let Some(unadjusted) = candle.unadjusted_close {
             if unadjusted.is_finite() && unadjusted > 0.0 {
@@ -2401,6 +2433,11 @@ impl Engine {
                 ) {
                     notes.push(format!("signal_{}_insufficient_volume", ticker));
                     record_skip(&ticker, SignalAction::Buy, "insufficient_volume", None);
+                    continue;
+                }
+                if let Some(details) = self.signal_candle_volume_violation_details(current_candle) {
+                    notes.push(format!("signal_{}_volume_excluded", ticker));
+                    record_skip(&ticker, SignalAction::Buy, "signal_excluded", Some(details));
                     continue;
                 }
 
@@ -3660,6 +3697,105 @@ mod tests {
         );
         assert!(matches!(executed, EntrySignalOutcome::Executed));
         assert_eq!(active_trades_liquid.len(), 1);
+    }
+
+    #[test]
+    fn test_execute_buy_signal_enforces_strategy_volume_bounds() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.min_volume_usd = 200_000.0;
+        engine.config.max_volume_usd = 300_000.0;
+
+        let ticker = "RANGE".to_string();
+        let lookback = engine
+            .runtime_settings
+            .minimum_dollar_volume_lookback
+            .max(1);
+        let total_candles = lookback + 1;
+        let signal_index = lookback - 1;
+        let entry_index = signal_index + 1;
+
+        let make_candles = |signal_volume: i64| -> Vec<Candle> {
+            (0..total_candles)
+                .map(|i| Candle {
+                    ticker: ticker.clone(),
+                    date: create_date(i as i64),
+                    open: 10.0,
+                    high: 10.0,
+                    low: 10.0,
+                    close: 10.0,
+                    unadjusted_close: Some(10.0),
+                    volume_shares: if i == signal_index {
+                        signal_volume
+                    } else {
+                        25_000
+                    },
+                    disabled: None,
+                })
+                .collect()
+        };
+
+        let low_volume = make_candles(15_000);
+        let low_refs: Vec<&Candle> = low_volume.iter().collect();
+        let mut cash = engine.config.initial_capital;
+        let mut active_trades = Vec::new();
+        let skipped_low = engine.execute_buy_signal(
+            &mut active_trades,
+            &mut cash,
+            &ticker,
+            low_refs[signal_index],
+            low_refs.get(entry_index).copied(),
+            &low_refs,
+            signal_index,
+            1.0,
+        );
+        assert!(matches!(
+            skipped_low,
+            EntrySignalOutcome::Skipped {
+                reason: "signal_excluded",
+                ..
+            }
+        ));
+        assert!(active_trades.is_empty());
+
+        let high_volume = make_candles(35_000);
+        let high_refs: Vec<&Candle> = high_volume.iter().collect();
+        let mut cash_high = engine.config.initial_capital;
+        let mut active_trades_high = Vec::new();
+        let skipped_high = engine.execute_buy_signal(
+            &mut active_trades_high,
+            &mut cash_high,
+            &ticker,
+            high_refs[signal_index],
+            high_refs.get(entry_index).copied(),
+            &high_refs,
+            signal_index,
+            1.0,
+        );
+        assert!(matches!(
+            skipped_high,
+            EntrySignalOutcome::Skipped {
+                reason: "signal_excluded",
+                ..
+            }
+        ));
+        assert!(active_trades_high.is_empty());
+
+        let in_range = make_candles(25_000);
+        let in_range_refs: Vec<&Candle> = in_range.iter().collect();
+        let mut cash_in_range = engine.config.initial_capital;
+        let mut active_trades_in_range = Vec::new();
+        let executed = engine.execute_buy_signal(
+            &mut active_trades_in_range,
+            &mut cash_in_range,
+            &ticker,
+            in_range_refs[signal_index],
+            in_range_refs.get(entry_index).copied(),
+            &in_range_refs,
+            signal_index,
+            1.0,
+        );
+        assert!(matches!(executed, EntrySignalOutcome::Executed));
+        assert_eq!(active_trades_in_range.len(), 1);
     }
 
     #[test]
