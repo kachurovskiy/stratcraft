@@ -172,9 +172,7 @@ This repository redistributes prebuilt LightGBM binaries for Windows under `engi
 
 ## License
 
-StratCraft is available for free personal use under the terms in [LICENSE](LICENSE).
-Commercial use requires a separate commercial license; see [STRATCRAFT-COMMERCIAL.txt](STRATCRAFT-COMMERCIAL.txt).
-Third-party notices for vendored assets are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+StratCraft is licensed under the MIT License. See [LICENSE](LICENSE). Third-party notices for vendored assets are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Architecture Diagram
 
