@@ -1,4 +1,4 @@
-⚠️ **Warning: we're currently in a bear market, all default strategies here are long biased and are likely to lose money in the coming months.**
+⚠️ **Warning: the default strategies here are biased to move in the same direction as the broader market and can lose money when the market goes down.**
 
 # StratCraft
 
