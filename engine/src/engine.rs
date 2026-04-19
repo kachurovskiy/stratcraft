@@ -98,6 +98,7 @@ pub struct AccountStopOrderState {
     pub quantity: i32,
     pub stop_price: f64,
     pub side: String,
+    pub status: Option<String>,
 }
 
 pub struct Engine {
@@ -2725,6 +2726,11 @@ impl Engine {
 
             if let Some(curr_stop) = trade.stop_loss {
                 if trade.date < current_date {
+                    if self.has_pending_stop_replacement(account_state, trade) {
+                        notes.push(format!("trade_{}_pending_stop_replacement", trade.id));
+                        continue;
+                    }
+
                     if self.should_repair_missing_stop(account_state, trade) {
                         let stop_missing_triggered = Self::is_stop_triggered_by_price(
                             planning_close,
@@ -2899,6 +2905,26 @@ impl Engine {
         };
 
         !has_side_order
+    }
+
+    fn has_pending_stop_replacement(
+        &self,
+        account_state: &AccountStateSnapshot,
+        trade: &Trade,
+    ) -> bool {
+        let desired_side = if trade.quantity < 0 { "buy" } else { "sell" };
+        let desired_qty = trade.quantity.abs();
+        account_state
+            .stop_orders
+            .get(&trade.ticker)
+            .map(|orders| {
+                orders.iter().any(|order| {
+                    order.quantity.abs() == desired_qty
+                        && order.side.eq_ignore_ascii_case(desired_side)
+                        && matches!(order.status.as_deref(), Some("pending_replace"))
+                })
+            })
+            .unwrap_or(false)
     }
 
     fn find_matching_stop_price(
@@ -4311,6 +4337,7 @@ mod tests {
                         } else {
                             "buy".to_string()
                         },
+                        status: None,
                     });
             }
         }
@@ -5309,6 +5336,56 @@ mod tests {
         assert_eq!(op.reason.as_deref(), Some("stop_mismatch"));
         assert_eq!(op.stop_loss, Some(90.0));
         assert_eq!(op.previous_stop_loss, Some(80.0));
+    }
+
+    #[test]
+    fn test_plan_account_operations_skips_stop_update_when_replacement_pending() {
+        let engine = Engine::new(test_runtime_settings());
+
+        let (candles, dates) = generate_candles("DIFF", vec![100.0, 101.0]);
+        let signals = Vec::<GeneratedSignal>::new();
+        let mut state = sample_account_state_with_holdings(0.0, &[("DIFF", 10, 100.0)], Some(80.0));
+        state
+            .stop_orders
+            .get_mut("DIFF")
+            .expect("expected DIFF stop orders")[0]
+            .status = Some("pending_replace".to_string());
+
+        let mut existing_trade = sample_active_trade(
+            "pending-replace",
+            "strategy",
+            "DIFF",
+            10,
+            100.0,
+            dates[0],
+            Some(90.0),
+        );
+        existing_trade.stop_order_id = Some("alpaca-stop".to_string());
+
+        let plan = engine.plan_account_operations(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            dates[1],
+            &state,
+            None,
+            &HashSet::new(),
+            &[existing_trade],
+            0,
+            &HashMap::new(),
+        );
+
+        assert!(
+            plan.operations
+                .iter()
+                .all(|op| op.operation_type != AccountOperationType::UpdateStopLoss),
+            "expected stop update to be skipped while Alpaca replacement is pending"
+        );
+        assert!(plan
+            .notes
+            .iter()
+            .any(|note| note == "trade_pending-replace_pending_stop_replacement"));
     }
 
     #[test]

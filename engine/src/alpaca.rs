@@ -113,6 +113,11 @@ impl<'a> AlpacaClient<'a> {
                                 quantity: qty,
                                 stop_price,
                                 side: order_side.clone().unwrap_or_default(),
+                                status: entry
+                                    .status
+                                    .as_deref()
+                                    .map(|value| value.trim().to_lowercase())
+                                    .filter(|value| !value.is_empty()),
                             });
                     }
                 }
