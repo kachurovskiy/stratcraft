@@ -137,6 +137,7 @@ export interface OptimizerSettingsValue {
   localOptimizationVersion: number;
   localOptimizationMultiStartSeeds: number;
   optimizationObjective: SettingsOptimizationObjective;
+  optimizationObjective2: SettingsOptimizationObjective;
   hetznerApiToken: string;
   hetznerServerType: string;
   hetznerServerLocation: string;

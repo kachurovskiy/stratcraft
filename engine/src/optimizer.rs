@@ -166,8 +166,10 @@ impl<'a> OptimizationEngine<'a> {
         let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
         let local_optimization_version = runtime_settings.local_optimization_version;
         let max_drawdown_ratio = runtime_settings.max_allowed_drawdown_ratio;
-        let objective = runtime_settings.local_optimization_objective;
-        let objective_label = objective.label();
+        let primary_objective = runtime_settings.local_optimization_objective;
+        let primary_objective_label = primary_objective.label();
+        let secondary_objective = runtime_settings.local_optimization_objective_2;
+        let secondary_objective_label = secondary_objective.label();
         let step_multipliers = runtime_settings
             .local_optimization_step_multipliers
             .as_slice();
@@ -211,14 +213,14 @@ impl<'a> OptimizationEngine<'a> {
         }
 
         let best_seed = seed_results.iter().cloned().max_by(|a, b| {
-            Self::objective_score(a, objective)
-                .partial_cmp(&Self::objective_score(b, objective))
+            Self::objective_score(a, primary_objective)
+                .partial_cmp(&Self::objective_score(b, primary_objective))
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         let mut refinement_starts = Self::select_refinement_starts(
             seed_results,
             max_drawdown_ratio,
-            objective,
+            primary_objective,
             parameters_to_optimize.len(),
         );
         if refinement_starts.is_empty() {
@@ -239,23 +241,34 @@ impl<'a> OptimizationEngine<'a> {
             template_id
         );
         let refinement_total = refinement_starts.len();
+        let has_secondary_phase = secondary_objective != primary_objective;
+        let final_objective = if has_secondary_phase {
+            secondary_objective
+        } else {
+            primary_objective
+        };
+        let final_objective_label = if has_secondary_phase {
+            secondary_objective_label
+        } else {
+            primary_objective_label
+        };
 
         let mut best_result: Option<OptimizationResult> = None;
         let mut best_score = f64::NEG_INFINITY;
 
         for (seed_index, seed_result) in refinement_starts.into_iter().enumerate() {
-            let seed_score = Self::objective_score(&seed_result, objective);
+            let seed_score = Self::objective_score(&seed_result, primary_objective);
             info!(
                 "Refining seed {}/{} from {} {:.4} (CAGR {:.2}%, max drawdown {:.2}%).",
                 seed_index + 1,
                 refinement_total,
-                objective_label,
+                primary_objective_label,
                 seed_score,
                 seed_result.cagr * 100.0,
                 seed_result.max_drawdown_ratio * 100.0
             );
 
-            let refined_result = self
+            let mut refined_result = self
                 .refine_local_search_from_start(
                     template_id,
                     seed_result,
@@ -264,15 +277,38 @@ impl<'a> OptimizationEngine<'a> {
                     step_multipliers,
                     max_unadjusted_price_values,
                     max_drawdown_ratio,
-                    objective,
+                    primary_objective,
                 )
                 .await?;
-            let refined_score = Self::objective_score(&refined_result, objective);
+            if has_secondary_phase {
+                let primary_score = Self::objective_score(&refined_result, primary_objective);
+                info!(
+                    "Seed {}/{} reached {} {:.4}; switching to {}.",
+                    seed_index + 1,
+                    refinement_total,
+                    primary_objective_label,
+                    primary_score,
+                    secondary_objective_label
+                );
+                refined_result = self
+                    .refine_local_search_from_start(
+                        template_id,
+                        refined_result,
+                        parameters_to_optimize,
+                        parameter_ranges,
+                        step_multipliers,
+                        max_unadjusted_price_values,
+                        max_drawdown_ratio,
+                        secondary_objective,
+                    )
+                    .await?;
+            }
+            let refined_score = Self::objective_score(&refined_result, final_objective);
 
             if best_result.is_none() {
                 info!(
                     "Initial refined candidate: {} {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
-                    objective_label,
+                    final_objective_label,
                     refined_score,
                     refined_result.cagr * 100.0,
                     refined_result.max_drawdown_ratio * 100.0
@@ -285,7 +321,7 @@ impl<'a> OptimizationEngine<'a> {
             if refined_score > best_score {
                 info!(
                     "New best {} after seed refinement: {:.4} (previous: {:.4}), CAGR {:.2}%, max drawdown {:.2}%.",
-                    objective_label,
+                    final_objective_label,
                     refined_score,
                     best_score,
                     refined_result.cagr * 100.0,
@@ -301,10 +337,10 @@ impl<'a> OptimizationEngine<'a> {
             return Ok(());
         };
 
-        let final_score = Self::objective_score(&best_result, objective);
+        let final_score = Self::objective_score(&best_result, final_objective);
         info!(
             "Multi-start local search finished. Best {}: {:.4} (CAGR {:.2}%) with max drawdown {:.2}%.",
-            objective_label,
+            final_objective_label,
             final_score,
             best_result.cagr * 100.0,
             best_result.max_drawdown_ratio * 100.0

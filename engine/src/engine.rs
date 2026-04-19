@@ -3006,6 +3006,7 @@ mod tests {
             ],
             local_optimization_max_unadjusted_price_values: vec![3.0, 5.0, 7.0, 10.0, 15.0, 20.0],
             local_optimization_objective: LocalOptimizationObjective::Cagr,
+            local_optimization_objective_2: LocalOptimizationObjective::Cagr,
             max_allowed_drawdown_ratio: 0.40,
         }
     }

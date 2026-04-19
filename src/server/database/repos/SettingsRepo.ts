@@ -8,7 +8,8 @@ import {
 import {
   createDefaultSettingsValue,
   DEFAULT_CANDLE_DATA_PROVIDER,
-  DEFAULT_OPTIMIZATION_OBJECTIVE
+  DEFAULT_OPTIMIZATION_OBJECTIVE,
+  DEFAULT_OPTIMIZATION_OBJECTIVE_2
 } from '../../settings/defaults';
 import { normalizeDomain } from '../../utils/domain';
 import { decryptValue, encryptValue } from '../../utils/encryption';
@@ -402,7 +403,12 @@ export class SettingsRepo {
         { min: 0, integer: true, clamp: true }
       ),
       optimizationObjective: this.parseOptimizationObjective(
-        this.rawSettings[SETTING_KEYS.OPTIMIZATION_OBJECTIVE]
+        this.rawSettings[SETTING_KEYS.OPTIMIZATION_OBJECTIVE],
+        DEFAULT_OPTIMIZATION_OBJECTIVE
+      ),
+      optimizationObjective2: this.parseOptimizationObjective(
+        this.rawSettings[SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2],
+        DEFAULT_OPTIMIZATION_OBJECTIVE_2
       ),
       hetznerApiToken: this.parseString(
         this.rawSettings[SETTING_KEYS.HETZNER_API_TOKEN],
@@ -784,12 +790,15 @@ export class SettingsRepo {
     return DEFAULT_CANDLE_DATA_PROVIDER;
   }
 
-  private parseOptimizationObjective(rawValue: string | null | undefined): SettingsOptimizationObjective {
+  private parseOptimizationObjective(
+    rawValue: string | null | undefined,
+    fallback: SettingsOptimizationObjective
+  ): SettingsOptimizationObjective {
     const normalized = normalizeUppercaseString(rawValue);
     if (normalized === 'CAGR' || normalized === 'SHARPE') {
       return normalized;
     }
-    return DEFAULT_OPTIMIZATION_OBJECTIVE;
+    return fallback;
   }
 
   async getSettingsByKeys(settingKeys: SettingKey[]): Promise<Record<string, string | null>> {

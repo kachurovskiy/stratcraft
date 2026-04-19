@@ -635,6 +635,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'text'
   },
   {
+    key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2,
+    group: 'optimizer',
+    label: 'Secondary Optimization Objective',
+    description: 'Becomes the main local-search objective after the primary objective finishes (CAGR or SHARPE).',
+    placeholder: DEFAULT_SETTINGS.optimizer.optimizationObjective2,
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.HETZNER_API_TOKEN,
     group: 'optimizer',
     label: 'Hetzner API Token',

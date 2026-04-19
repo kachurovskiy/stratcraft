@@ -3,6 +3,7 @@ import { DEFAULT_FOOTER_DISCLAIMER_HTML } from '../utils/footerDisclaimer';
 
 export const DEFAULT_CANDLE_DATA_PROVIDER: SettingsCandleDataProvider = 'TIINGO';
 export const DEFAULT_OPTIMIZATION_OBJECTIVE: SettingsOptimizationObjective = 'SHARPE';
+export const DEFAULT_OPTIMIZATION_OBJECTIVE_2: SettingsOptimizationObjective = 'CAGR';
 
 export const createDefaultSettingsValue = (): SettingsValue => ({
   app: {
@@ -86,6 +87,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     localOptimizationVersion: 9,
     localOptimizationMultiStartSeeds: 0,
     optimizationObjective: DEFAULT_OPTIMIZATION_OBJECTIVE,
+    optimizationObjective2: DEFAULT_OPTIMIZATION_OBJECTIVE_2,
     hetznerApiToken: '',
     hetznerServerType: 'cpx62',
     hetznerServerLocation: 'hel1',

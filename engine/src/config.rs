@@ -67,12 +67,13 @@ pub enum LocalOptimizationObjective {
 }
 
 impl LocalOptimizationObjective {
-    pub fn parse(raw: &str) -> Result<Self> {
+    pub fn parse(raw: &str, setting_key: &str) -> Result<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
             "cagr" => Ok(Self::Cagr),
             "sharpe" | "sharpe_ratio" => Ok(Self::Sharpe),
             other => Err(anyhow!(
-                "OPTIMIZATION_OBJECTIVE must be CAGR or SHARPE (value: {})",
+                "{} must be CAGR or SHARPE (value: {})",
+                setting_key,
                 other
             )),
         }
@@ -102,6 +103,7 @@ pub struct EngineRuntimeSettings {
     pub local_optimization_step_multipliers: Vec<f64>,
     pub local_optimization_max_unadjusted_price_values: Vec<f64>,
     pub local_optimization_objective: LocalOptimizationObjective,
+    pub local_optimization_objective_2: LocalOptimizationObjective,
     pub max_allowed_drawdown_ratio: f64,
 }
 
@@ -180,8 +182,19 @@ impl EngineRuntimeSettings {
             .map(|value| value.trim())
             .filter(|value| !value.is_empty())
             .unwrap_or("cagr");
-        let local_optimization_objective =
-            LocalOptimizationObjective::parse(raw_local_optimization_objective)?;
+        let local_optimization_objective = LocalOptimizationObjective::parse(
+            raw_local_optimization_objective,
+            "OPTIMIZATION_OBJECTIVE",
+        )?;
+        let raw_local_optimization_objective_2 = settings
+            .get("OPTIMIZATION_OBJECTIVE_2")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("cagr");
+        let local_optimization_objective_2 = LocalOptimizationObjective::parse(
+            raw_local_optimization_objective_2,
+            "OPTIMIZATION_OBJECTIVE_2",
+        )?;
         let max_allowed_drawdown_ratio =
             require_setting_f64(settings, "MAX_ALLOWED_DRAWDOWN_RATIO", Some(0.0), Some(1.0))?;
 
@@ -208,6 +221,7 @@ impl EngineRuntimeSettings {
             local_optimization_step_multipliers,
             local_optimization_max_unadjusted_price_values,
             local_optimization_objective,
+            local_optimization_objective_2,
             max_allowed_drawdown_ratio,
         })
     }
@@ -477,4 +491,65 @@ fn parse_f64_list(raw: &str, key: &str, allow_empty: bool) -> Result<Vec<f64>> {
     }
 
     Ok(values)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn required_settings() -> HashMap<String, String> {
+        HashMap::from([
+            ("TRADE_CLOSE_FEE_RATE".to_string(), "0.0005".to_string()),
+            ("TRADE_SLIPPAGE_RATE".to_string(), "0.02".to_string()),
+            (
+                "SHORT_BORROW_FEE_ANNUAL_RATE".to_string(),
+                "0.003".to_string(),
+            ),
+            ("TRADE_ENTRY_PRICE_MIN".to_string(), "0.1".to_string()),
+            ("TRADE_ENTRY_PRICE_MAX".to_string(), "1000".to_string()),
+            (
+                "MINIMUM_DOLLAR_VOLUME_FOR_ENTRY".to_string(),
+                "150000".to_string(),
+            ),
+            (
+                "MINIMUM_DOLLAR_VOLUME_LOOKBACK".to_string(),
+                "5".to_string(),
+            ),
+            ("LOCAL_OPTIMIZATION_VERSION".to_string(), "9".to_string()),
+            (
+                "LOCAL_OPTIMIZATION_STEP_MULTIPLIERS".to_string(),
+                "-1,1".to_string(),
+            ),
+            ("MAX_ALLOWED_DRAWDOWN_RATIO".to_string(), "0.3".to_string()),
+        ])
+    }
+
+    #[test]
+    fn runtime_settings_default_secondary_objective_is_cagr() {
+        let mut settings = required_settings();
+        settings.insert("OPTIMIZATION_OBJECTIVE".to_string(), "SHARPE".to_string());
+
+        let runtime_settings = EngineRuntimeSettings::from_settings_map(&settings).unwrap();
+
+        assert_eq!(
+            runtime_settings.local_optimization_objective,
+            LocalOptimizationObjective::Sharpe
+        );
+        assert_eq!(
+            runtime_settings.local_optimization_objective_2,
+            LocalOptimizationObjective::Cagr
+        );
+    }
+
+    #[test]
+    fn runtime_settings_reports_invalid_secondary_objective_key() {
+        let mut settings = required_settings();
+        settings.insert("OPTIMIZATION_OBJECTIVE_2".to_string(), "NOPE".to_string());
+
+        let error = EngineRuntimeSettings::from_settings_map(&settings).unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("OPTIMIZATION_OBJECTIVE_2 must be CAGR or SHARPE"));
+    }
 }

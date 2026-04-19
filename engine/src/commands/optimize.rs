@@ -36,10 +36,12 @@ pub async fn run(app: &AppContext, template_id: &str, market_data_file: &Path) -
         training_end.format("%Y-%m-%d")
     );
     let runtime_settings = EngineRuntimeSettings::from_settings_map(&settings)?;
-    let objective_label = runtime_settings.local_optimization_objective.label();
+    let primary_objective_label = runtime_settings.local_optimization_objective.label();
+    let secondary_objective_label = runtime_settings.local_optimization_objective_2.label();
     info!(
-        "Objective: maximize {} while keeping max drawdown at or below {:.0}%.",
-        objective_label,
+        "Objectives: maximize {} first, then maximize {} while keeping max drawdown at or below {:.0}%.",
+        primary_objective_label,
+        secondary_objective_label,
         runtime_settings.max_allowed_drawdown_ratio * 100.0
     );
     let mut context = app

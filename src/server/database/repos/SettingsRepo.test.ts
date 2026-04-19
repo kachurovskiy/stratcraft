@@ -14,6 +14,7 @@ describe('SettingsRepo', () => {
         { setting_key: SETTING_KEYS.BACKTEST_ACTIVE_MONTHS, value: '[1, 6, 12]' },
         { setting_key: SETTING_KEYS.PARAM_SCORE_STABILITY_GAMMA, value: '3' },
         { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE, value: 'cagr' },
+        { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2, value: 'sharpe' },
         { setting_key: SETTING_KEYS.LOCAL_OPTIMIZATION_STEP_MULTIPLIERS, value: '-2,-1,1,2' },
         { setting_key: SETTING_KEYS.HETZNER_SSH_KEY_NAME, value: '  hetzner-node  ' }
       ]),
@@ -34,6 +35,7 @@ describe('SettingsRepo', () => {
     expect(repo.value.engine.backtestActiveMonths).toEqual([1, 6, 12]);
     expect(repo.value.paramScoring.stabilityGamma).toBe(3);
     expect(repo.value.optimizer.optimizationObjective).toBe('CAGR');
+    expect(repo.value.optimizer.optimizationObjective2).toBe('SHARPE');
     expect(repo.value.optimizer.localOptimizationStepMultipliers).toEqual([-2, -1, 1, 2]);
     expect(repo.value.optimizer.hetznerSshKeyName).toBe('hetzner-node');
     expect(repo.value.userAccess.sessionCookieValidDays).toBe(30);
@@ -85,6 +87,7 @@ describe('SettingsRepo', () => {
         { setting_key: SETTING_KEYS.TRAINING_ALLOCATION_RATIO, value: '1.8' },
         { setting_key: SETTING_KEYS.CANDLE_SYNC_MATCHING_RATIO_THRESHOLD, value: '-4' },
         { setting_key: SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE, value: '2024-99-99' },
+        { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2, value: 'not-valid' },
         { setting_key: SETTING_KEYS.HETZNER_SERVER_TYPE, value: '   ' },
         { setting_key: SETTING_KEYS.INVITE_LINK_VALID_DAYS, value: '0' },
         { setting_key: SETTING_KEYS.SESSION_COOKIE_VALID_DAYS, value: '3.9' },
@@ -110,6 +113,7 @@ describe('SettingsRepo', () => {
     expect(repo.value.tickerRules.trainingAllocationRatio).toBe(1);
     expect(repo.value.candleSync.matchingRatioThreshold).toBe(0);
     expect(repo.value.optimizer.lightgbmTrainingStartDate).toBe('2021-01-01');
+    expect(repo.value.optimizer.optimizationObjective2).toBe('CAGR');
     expect(repo.value.optimizer.hetznerServerType).toBe('cpx62');
     expect(repo.value.userAccess.inviteLinkValidDays).toBe(7);
     expect(repo.value.userAccess.sessionCookieValidDays).toBe(3);
