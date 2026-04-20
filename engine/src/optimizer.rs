@@ -732,12 +732,77 @@ impl<'a> OptimizationEngine<'a> {
         let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
         info!("Running {} backtests...", variation_count);
 
-        let num_workers = std::cmp::min(variation_count, std::cmp::max(1, num_cpus::get()));
+        let template_id_owned = template_id.to_string();
+        let (queued_tasks, mut results) = if use_cache {
+            let cache_manager = self.cache_manager.clone();
+            let preflight = thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        let mut queued_tasks = Vec::with_capacity(variation_count);
+                        let mut cached_results = Vec::new();
+                        for (i, parameters) in variations.iter().enumerate() {
+                            let mut parameters = parameters.clone();
+                            parameters
+                                .insert("initialCapital".to_string(), backtest_initial_capital);
+                            let task = BacktestTask {
+                                id: format!("{}_{}", template_id_owned, i),
+                                template_id: template_id_owned.clone(),
+                                parameters,
+                            };
+
+                            if let Some(cached_result) =
+                                cache_manager.check_cache(&task.template_id, &task.parameters)
+                            {
+                                cached_results.push(cached_result);
+                            } else {
+                                queued_tasks.push(task);
+                            }
+                        }
+                        (queued_tasks, cached_results)
+                    })
+                    .join()
+            });
+
+            match preflight {
+                Ok(result) => result,
+                Err(join_err) => {
+                    return Err(anyhow!(
+                        "Cache preflight worker panicked for {}: {:?}",
+                        template_id,
+                        join_err
+                    ));
+                }
+            }
+        } else {
+            let mut queued_tasks = Vec::with_capacity(variation_count);
+            for (i, parameters) in variations.iter().enumerate() {
+                let mut parameters = parameters.clone();
+                parameters.insert("initialCapital".to_string(), backtest_initial_capital);
+                queued_tasks.push(BacktestTask {
+                    id: format!("{}_{}", template_id_owned, i),
+                    template_id: template_id_owned.clone(),
+                    parameters,
+                });
+            }
+            (queued_tasks, Vec::new())
+        };
+
+        let cached_result_count = results.len();
+        if cached_result_count > 0 {
+            info!(
+                "Resolved {} backtest(s) from cache before scheduling workers.",
+                cached_result_count
+            );
+        }
+
+        let queued_task_count = queued_tasks.len();
+        let num_workers = std::cmp::min(queued_task_count, std::cmp::max(1, num_cpus::get()));
         info!("Using {} worker threads", num_workers);
 
-        let (tx, rx): (Sender<BacktestTask>, Receiver<BacktestTask>) = bounded(variation_count);
+        let channel_capacity = queued_task_count.max(1);
+        let (tx, rx): (Sender<BacktestTask>, Receiver<BacktestTask>) = bounded(channel_capacity);
         let (result_tx, result_rx): (Sender<BacktestTaskResult>, Receiver<BacktestTaskResult>) =
-            bounded(variation_count);
+            bounded(channel_capacity);
 
         let mut handles = Vec::new();
         for _worker_id in 0..num_workers {
@@ -812,21 +877,13 @@ impl<'a> OptimizationEngine<'a> {
         }
         drop(result_tx);
 
-        for (i, parameters) in variations.iter().enumerate() {
-            let mut parameters = parameters.clone();
-            parameters.insert("initialCapital".to_string(), backtest_initial_capital);
-            let task = BacktestTask {
-                id: format!("{}_{}", template_id, i),
-                template_id: template_id.to_string(),
-                parameters,
-            };
+        for task in queued_tasks {
             tx.send(task)?;
         }
 
         drop(tx);
 
-        let mut results = Vec::new();
-        let mut completed = 0;
+        let mut completed = cached_result_count;
         let mut failed_workers = 0;
         let mut missing_results = 0;
         let pb = ProgressBar::new(variation_count as u64);
@@ -838,6 +895,7 @@ impl<'a> OptimizationEngine<'a> {
                 .unwrap()
                 .progress_chars("#>-"),
         );
+        pb.set_position(completed as u64);
 
         while completed < variation_count {
             match result_rx.recv_timeout(std::time::Duration::from_millis(200)) {
