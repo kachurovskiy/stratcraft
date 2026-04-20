@@ -146,6 +146,7 @@ export interface OptimizerSettingsValue {
   hetznerPrivateKey: string;
   localOptimizationStepMultipliers: number[];
   localOptimizationMaxUnadjustedPriceValues: number[];
+  localOptimizationMaxVolumeUsdValues: number[];
   maxAllowedDrawdownRatio: number;
   backtestApiSecret: string;
 }

@@ -96,6 +96,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     hetznerPrivateKey: '',
     localOptimizationStepMultipliers: [-4, -3, -2, -1, 1, 2, 3, 4],
     localOptimizationMaxUnadjustedPriceValues: [3, 5, 7, 10, 15, 20],
+    localOptimizationMaxVolumeUsdValues: [1_000_000, 10_000_000, 100_000_000],
     maxAllowedDrawdownRatio: 0.3,
     backtestApiSecret: ''
   },

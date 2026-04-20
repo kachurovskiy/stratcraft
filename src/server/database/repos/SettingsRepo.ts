@@ -444,6 +444,11 @@ export class SettingsRepo {
         defaults.optimizer.localOptimizationMaxUnadjustedPriceValues,
         { integer: true, min: 1, fallbackOnEmpty: true }
       ),
+      localOptimizationMaxVolumeUsdValues: this.parseNumberArray(
+        this.rawSettings[SETTING_KEYS.LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES],
+        defaults.optimizer.localOptimizationMaxVolumeUsdValues,
+        { integer: true, min: 1, fallbackOnEmpty: true }
+      ),
       maxAllowedDrawdownRatio: this.parseNumber(
         this.rawSettings[SETTING_KEYS.MAX_ALLOWED_DRAWDOWN_RATIO],
         defaults.optimizer.maxAllowedDrawdownRatio,

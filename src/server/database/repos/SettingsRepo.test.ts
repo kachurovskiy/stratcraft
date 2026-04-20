@@ -16,6 +16,7 @@ describe('SettingsRepo', () => {
         { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE, value: 'cagr' },
         { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2, value: 'sharpe' },
         { setting_key: SETTING_KEYS.LOCAL_OPTIMIZATION_STEP_MULTIPLIERS, value: '-2,-1,1,2' },
+        { setting_key: SETTING_KEYS.LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES, value: '1000000,10000000,100000000' },
         { setting_key: SETTING_KEYS.HETZNER_SSH_KEY_NAME, value: '  hetzner-node  ' }
       ]),
       get: jest.fn(),
@@ -37,6 +38,9 @@ describe('SettingsRepo', () => {
     expect(repo.value.optimizer.optimizationObjective).toBe('CAGR');
     expect(repo.value.optimizer.optimizationObjective2).toBe('SHARPE');
     expect(repo.value.optimizer.localOptimizationStepMultipliers).toEqual([-2, -1, 1, 2]);
+    expect(repo.value.optimizer.localOptimizationMaxVolumeUsdValues).toEqual([
+      1000000, 10000000, 100000000
+    ]);
     expect(repo.value.optimizer.hetznerSshKeyName).toBe('hetzner-node');
     expect(repo.value.userAccess.sessionCookieValidDays).toBe(30);
   });

@@ -710,6 +710,14 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'text'
   },
   {
+    key: SETTING_KEYS.LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES,
+    group: 'optimizer',
+    label: 'Max Volume USD Candidates',
+    description: 'Comma-separated list of maxVolumeUsd values to try during local optimization.',
+    placeholder: DEFAULT_SETTINGS.optimizer.localOptimizationMaxVolumeUsdValues.join(','),
+    inputType: 'text'
+  },
+  {
     key: SETTING_KEYS.MAX_ALLOWED_DRAWDOWN_RATIO,
     group: 'optimizer',
     label: 'Max Allowed Drawdown Ratio',
