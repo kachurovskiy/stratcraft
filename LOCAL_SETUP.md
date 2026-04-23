@@ -1,8 +1,10 @@
-# Local setup
+# Advanced local setup
+
+Use this only if you specifically want `localhost` for evaluation or development. The recommended main deployment path in this repo is [scripts/DEPLOYMENT.md](scripts/DEPLOYMENT.md).
 
 Prereqs: Node.js + npm, Rust toolchain (for `engine`), and a Postgres instance.
 
-From-zero (localhost):
+From-zero (`localhost`, advanced path):
 
 1. Copy `.env.example` to `.env` and set at least `DATABASE_URL` and `DATABASE_KEY`.
 2. Ensure Postgres is running and the role in `DATABASE_URL` exists. StratCraft will attempt to create the database named in `DATABASE_URL` on startup (requires DB create privileges); otherwise create the database manually.
@@ -22,3 +24,5 @@ npm start
 7. For email delivery, get a [Resend](https://resend.com/) API key, save it in `Admin -> Settings -> Email`, and add the 3 TXT DNS records for your sending domain exactly as instructed by Resend.
 
 Server initializes the Postgres schema from `src/server/database/pg.sql` and builds the Rust engine from source on each start.
+
+If you want regular remote access from multiple devices, use the Hetzner deployment guide instead of keeping localhost as your primary install.

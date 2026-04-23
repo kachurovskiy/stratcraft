@@ -1,5 +1,9 @@
 # Advanced topics
 
+## Local setup
+
+If you specifically want to run StratCraft on `localhost` for evaluation or development, use [LOCAL_SETUP.md](LOCAL_SETUP.md). The recommended main deployment path remains [scripts/DEPLOYMENT.md](scripts/DEPLOYMENT.md).
+
 ## Rust engine
 
 NodeJS app compiles and calls engine automatically. See [engine/README.md](engine/README.md) for more info.

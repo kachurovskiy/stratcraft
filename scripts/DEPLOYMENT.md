@@ -1,6 +1,6 @@
 # StratCraft Deployment Guide (Hetzner Cloud / Ubuntu)
 
-Quick deployment guide for StratCraft on a Hetzner Cloud Ubuntu server with HTTPS and manual updates.
+Recommended main deployment guide for StratCraft on a Hetzner Cloud Ubuntu server with HTTPS and manual updates.
 
 ## Hetzner Cloud prerequisites
 
