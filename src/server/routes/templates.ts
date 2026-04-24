@@ -67,14 +67,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     const [
       bestParamsByTemplate,
       localOptimizationVersions,
-      performanceCloudEntries,
       backtestResultsByTemplate
     ] = await Promise.all([
       req.db.backtestCache.getBestParamsByTemplateIds(templateIds),
       req.db.templates.getTemplateLocalOptimizationVersions(),
-      templateIds.length
-        ? req.db.backtestCache.getTopBacktestCacheEntriesByTemplate(templateIds)
-        : Promise.resolve([]),
       templateIds.length
         ? Promise.all(
             templateIds.map(templateId => req.db.backtestResults.getBacktestResultsForTemplate(templateId, userId))
@@ -112,33 +108,6 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         });
       });
     });
-
-    const templateNameById = new Map(
-      templates.map((template: StrategyTemplate) => [template.id, template.name] as const)
-    );
-    const performanceCloudPoints = (performanceCloudEntries as BacktestCachePerformancePoint[]).map(entry => ({
-      templateId: entry.templateId,
-      templateName: templateNameById.get(entry.templateId) ?? entry.templateId,
-      calmarRatio: entry.calmarRatio,
-      sharpeRatio: entry.sharpeRatio,
-      verifyCalmarRatio: entry.verifyCalmarRatio,
-      verifySharpeRatio: entry.verifySharpeRatio,
-      cagr: entry.cagr,
-      verifyCagr: entry.verifyCagr,
-      maxDrawdownRatio: entry.maxDrawdownRatio,
-      verifyMaxDrawdownRatio: entry.verifyMaxDrawdownRatio,
-      balanceTrainingSharpeRatio: entry.balanceTrainingSharpeRatio,
-      balanceTrainingCalmarRatio: entry.balanceTrainingCalmarRatio,
-      balanceTrainingCagr: entry.balanceTrainingCagr,
-      balanceTrainingMaxDrawdownRatio: entry.balanceTrainingMaxDrawdownRatio,
-      balanceValidationSharpeRatio: entry.balanceValidationSharpeRatio,
-      balanceValidationCalmarRatio: entry.balanceValidationCalmarRatio,
-      balanceValidationCagr: entry.balanceValidationCagr,
-      balanceValidationMaxDrawdownRatio: entry.balanceValidationMaxDrawdownRatio,
-      totalTrades: entry.totalTrades,
-      tickerCount: entry.tickerCount,
-      createdAt: entry.createdAt
-    }));
 
     const verificationByTemplate = new Map<string, TemplateVerificationMetrics>();
     Object.entries(bestParamsByTemplate).forEach(([templateId, bestParams]) => {
@@ -269,7 +238,6 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       user: req.user,
       templates: templateViews,
       hasTemplates,
-      performanceCloudPoints,
       currentUrl: getCurrentUrl(req),
       isAdmin,
       success: req.query.success as string,
@@ -280,6 +248,60 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     res.status(500).render('pages/error', {
       title: 'Error',
       error: 'Failed to load templates'
+    });
+  }
+});
+
+router.get('/charts', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const isAdmin = req.user?.role === 'admin';
+    const templates = req.strategyRegistry.getTemplates({ includeDisabled: isAdmin });
+    const templateIds = templates.map((template: StrategyTemplate) => template.id);
+    const performanceCloudEntries = templateIds.length
+      ? await req.db.backtestCache.getTopBacktestCacheEntriesByTemplate(templateIds)
+      : [];
+    const templateNameById = new Map(
+      templates.map((template: StrategyTemplate) => [template.id, template.name] as const)
+    );
+    const performanceCloudPoints = (performanceCloudEntries as BacktestCachePerformancePoint[]).map(entry => ({
+      templateId: entry.templateId,
+      templateName: templateNameById.get(entry.templateId) ?? entry.templateId,
+      calmarRatio: entry.calmarRatio,
+      sharpeRatio: entry.sharpeRatio,
+      verifyCalmarRatio: entry.verifyCalmarRatio,
+      verifySharpeRatio: entry.verifySharpeRatio,
+      cagr: entry.cagr,
+      verifyCagr: entry.verifyCagr,
+      maxDrawdownRatio: entry.maxDrawdownRatio,
+      verifyMaxDrawdownRatio: entry.verifyMaxDrawdownRatio,
+      balanceTrainingSharpeRatio: entry.balanceTrainingSharpeRatio,
+      balanceTrainingCalmarRatio: entry.balanceTrainingCalmarRatio,
+      balanceTrainingCagr: entry.balanceTrainingCagr,
+      balanceTrainingMaxDrawdownRatio: entry.balanceTrainingMaxDrawdownRatio,
+      balanceValidationSharpeRatio: entry.balanceValidationSharpeRatio,
+      balanceValidationCalmarRatio: entry.balanceValidationCalmarRatio,
+      balanceValidationCagr: entry.balanceValidationCagr,
+      balanceValidationMaxDrawdownRatio: entry.balanceValidationMaxDrawdownRatio,
+      totalTrades: entry.totalTrades,
+      tickerCount: entry.tickerCount,
+      createdAt: entry.createdAt
+    }));
+
+    res.render('pages/templates-charts', {
+      title: 'Template Charts',
+      page: 'templates',
+      user: req.user,
+      hasTemplates: templates.length > 0,
+      performanceCloudPoints,
+      currentUrl: getCurrentUrl(req),
+      success: req.query.success as string,
+      error: req.query.error as string
+    });
+  } catch (error) {
+    console.error('Error rendering template charts page:', error);
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: 'Failed to load template charts'
     });
   }
 });
