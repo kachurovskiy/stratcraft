@@ -44,7 +44,6 @@ const REMOTE_API_MTLS_CLIENT_KEY_PATH = `${REMOTE_API_MTLS_DIR}/client.key`;
 const REMOTE_COMMAND_OUTPUT_LIMIT = 4000;
 const REMOTE_JOB_LOG_LIMIT = 400;
 const REMOTE_SCRIPT_LOG_TAIL_LINES = 400;
-const REMOTE_SCRIPT_LOG_MAX_BYTES = 256_000;
 const REMOTE_JOB_PERSIST_DEBOUNCE_MS = 1000;
 const REMOTE_JOB_RECONCILE_INTERVAL_MS = 60_000;
 const REMOTE_JOB_RUNNING_STALE_AFTER_MS = 15 * 60 * 1000;
@@ -196,21 +195,30 @@ export class RemoteOptimizationService {
     let log = '';
     let logHeader = '';
     try {
-      const fileResult = await this.readRemoteFileTail(job, REMOTE_SCRIPT_LOG_PATH, REMOTE_SCRIPT_LOG_MAX_BYTES);
-      if (fileResult) {
-        const sizeLabel = `${fileResult.size} bytes`;
-        const truncatedLabel = fileResult.truncated ? ', truncated' : '';
-        logHeader = `Log file: ${REMOTE_SCRIPT_LOG_PATH} (${sizeLabel}${truncatedLabel})`;
-        log = normalizeLogTail(fileResult.content);
-        if (!log && fileResult.size > 0) {
-          const fallback = await this.execRemoteCommand(
-            job,
-            `tail -n ${REMOTE_SCRIPT_LOG_TAIL_LINES} ${REMOTE_SCRIPT_LOG_PATH} || true`
-          );
-          log = normalizeLogTail([fallback.stdout, fallback.stderr].filter(Boolean).join('\n'));
-        }
-      } else {
+      const remoteLogResult = await this.execRemoteCommand(
+        job,
+        `
+if [ -f ${REMOTE_SCRIPT_LOG_PATH} ]; then
+  printf '__STRATCRAFT_REMOTE_LOG_SIZE__%s\\n' "$(wc -c < ${REMOTE_SCRIPT_LOG_PATH})"
+  tail -n ${REMOTE_SCRIPT_LOG_TAIL_LINES} ${REMOTE_SCRIPT_LOG_PATH} || true
+else
+  printf '__STRATCRAFT_REMOTE_LOG_MISSING__\\n'
+fi
+        `.trim()
+      );
+      const normalizedOutput = remoteLogResult.stdout.replace(/\r\n/g, '\n');
+      const outputLines = normalizedOutput.split('\n');
+      const metadataLine = outputLines.shift()?.trim() ?? '';
+      if (metadataLine === '__STRATCRAFT_REMOTE_LOG_MISSING__') {
         logHeader = `Log file not found at ${REMOTE_SCRIPT_LOG_PATH}.`;
+      } else {
+        const sizeMatch = /^__STRATCRAFT_REMOTE_LOG_SIZE__(\d+)$/.exec(metadataLine);
+        if (!sizeMatch) {
+          throw new Error(`Unexpected remote log metadata: ${metadataLine || 'missing'}`);
+        }
+        const size = Number.parseInt(sizeMatch[1], 10);
+        logHeader = `Log file: ${REMOTE_SCRIPT_LOG_PATH} (${size} bytes)`;
+        log = normalizeLogTail([outputLines.join('\n'), remoteLogResult.stderr].filter(Boolean).join('\n'));
       }
     } catch (error) {
       logHeader = 'Failed to read remote log file.';
@@ -655,71 +663,6 @@ export class RemoteOptimizationService {
             } else {
               resolve();
             }
-          });
-        });
-      });
-      conn.on('error', fail);
-      conn.connect(config);
-    });
-  }
-
-  private async readRemoteFileTail(
-    job: RemoteOptimizationJobRecord,
-    remotePath: string,
-    maxBytes: number
-  ): Promise<{ content: string; size: number; truncated: boolean } | null> {
-    const config = this.getSshConfig(job);
-    return new Promise((resolve, reject) => {
-      const conn = new SSHClient();
-      const fail = (err: unknown): void => {
-        conn.end();
-        reject(new Error(`Failed to read ${remotePath}: ${this.describeError(err)}`));
-      };
-      this.registerKeyboardInteractiveHandler(conn);
-      conn.on('ready', () => {
-        conn.sftp((err, sftp) => {
-          if (err || !sftp) {
-            fail(err ?? new Error('Failed to establish SFTP session'));
-            return;
-          }
-          sftp.stat(remotePath, (statErr, stats) => {
-            if (statErr || !stats) {
-              conn.end();
-              if (this.isRemoteFileMissing(statErr)) {
-                resolve(null);
-                return;
-              }
-              reject(new Error(`Failed to stat ${remotePath}: ${this.describeError(statErr)}`));
-              return;
-            }
-            const size = Number(stats.size ?? 0);
-            if (!Number.isFinite(size) || size <= 0) {
-              conn.end();
-              resolve({ content: '', size: 0, truncated: false });
-              return;
-            }
-            const safeMaxBytes = Math.max(1, Math.trunc(maxBytes));
-            const start = Math.max(0, size - safeMaxBytes);
-            const length = size - start;
-            sftp.open(remotePath, 'r', (openErr, handle) => {
-              if (openErr || !handle) {
-                conn.end();
-                fail(openErr ?? new Error('Failed to open remote log file'));
-                return;
-              }
-              const buffer = Buffer.alloc(length);
-              sftp.read(handle, buffer, 0, length, start, (readErr, bytesRead) => {
-                sftp.close(handle, () => {
-                  conn.end();
-                  if (readErr) {
-                    reject(new Error(`Failed to read ${remotePath}: ${this.describeError(readErr)}`));
-                    return;
-                  }
-                  const content = buffer.slice(0, bytesRead).toString('utf8');
-                  resolve({ content, size, truncated: start > 0 });
-                });
-              });
-            });
           });
         });
       });
@@ -1855,18 +1798,6 @@ exit 0
       return error.message;
     }
     return String(error);
-  }
-
-  private isRemoteFileMissing(error: unknown): boolean {
-    if (!error || typeof error !== 'object') {
-      return false;
-    }
-    const code = (error as { code?: string | number }).code;
-    if (code === 2 || code === 'ENOENT') {
-      return true;
-    }
-    const message = (error as { message?: string }).message;
-    return typeof message === 'string' && message.toLowerCase().includes('no such file');
   }
 
   private delay(ms: number): Promise<void> {
