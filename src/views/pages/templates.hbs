@@ -162,7 +162,7 @@
                           </button>
                         </form>
                       {{else}}
-                        {{#if enabled}}
+                        {{#if (and enabled remoteOptimization.canTrigger)}}
                           <form
                             method="POST"
                             action="/templates/{{id}}/remote-optimize"

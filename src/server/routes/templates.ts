@@ -25,6 +25,7 @@ import {
 
 const router = express.Router();
 const ACTIVE_REMOTE_JOB_STATUSES: RemoteOptimizationStatus[] = ['queued', 'running', 'handoff'];
+const REMOTE_OPTIMIZATION_UNSUPPORTED_TEMPLATE_IDS = new Set(['buy_and_hold']);
 const REMOTE_STATUS_LABELS: Record<RemoteOptimizationStatus, string> = {
   queued: 'Queued',
   running: 'Provisioning',
@@ -32,6 +33,9 @@ const REMOTE_STATUS_LABELS: Record<RemoteOptimizationStatus, string> = {
   succeeded: 'Succeeded',
   failed: 'Failed'
 };
+
+const canTriggerRemoteOptimization = (templateId: string): boolean =>
+  !REMOTE_OPTIMIZATION_UNSUPPORTED_TEMPLATE_IDS.has(templateId);
 
 // Authentication middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -165,12 +169,14 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       const templateJobs = remoteOptimizationJobsByTemplate.get(template.id) ?? [];
       const activeJob = templateJobs.find(job => ACTIVE_REMOTE_JOB_STATUSES.includes(job.status));
       const activeStatusLabel = activeJob ? REMOTE_STATUS_LABELS[activeJob.status] ?? activeJob.status : null;
+      const canTrigger = canTriggerRemoteOptimization(template.id);
       const tooltip = activeJob
         ? `Remote optimizer job ${activeJob.id} (${activeJob.hetznerServerId ? `Hetzner #${activeJob.hetznerServerId}` : 'awaiting server'}) is ${(
             activeStatusLabel ?? activeJob.status
           ).toLowerCase()}.`
         : null;
       const remoteOptimization: TemplateRemoteOptimizationState = {
+        canTrigger,
         hasRemoteOptimizer: Boolean(remoteOptimizerService),
         isActive: Boolean(activeJob),
         activeJobId: activeJob?.id ?? null,
@@ -322,6 +328,7 @@ type TemplateBacktestCacheRow = BacktestCacheRow & {
 };
 
 type TemplateRemoteOptimizationState = {
+  canTrigger: boolean;
   hasRemoteOptimizer: boolean;
   isActive: boolean;
   activeJobId: string | null;
@@ -877,6 +884,10 @@ router.post<TemplateParams>('/:templateId/remote-optimize', requireAuth, require
 
     if (!template) {
       return respondError(404, `Template ${templateId} not found`);
+    }
+
+    if (!canTriggerRemoteOptimization(template.id)) {
+      return respondError(400, `Remote optimization is not available for template ${template.name}.`);
     }
 
     if (!req.remoteOptimizerService) {
