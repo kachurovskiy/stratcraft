@@ -1256,7 +1256,7 @@ handle_error() {
 trap handle_error ERR
 
 set_stage "initializing"
-exec > >(tee -a "$LOG_FILE") 2>&1
+exec >> "$LOG_FILE" 2>&1
 echo "Starting remote optimization for $TEMPLATE_ID at $(date -Iseconds)"
 
 export DEBIAN_FRONTEND=noninteractive
