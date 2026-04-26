@@ -189,7 +189,7 @@
               <h5 class="mb-0">Cache Performance Overview</h5>
               <small class="text-muted">Sharpe, balance (validation/training CAGR), and total return plotted together.</small>
             </div>
-            <span class="badge bg-light text-dark">{{performanceChartPoints.length}} plotted</span>
+            <span class="badge bg-light text-dark" id="cache-performance-chart-count">{{performanceChartPoints.length}} plotted</span>
           </div>
           <div class="card-body">
             <div class="chart-container w-100 position-relative" style="height: 600px; min-height: 320px;">
@@ -213,7 +213,7 @@
                 <h5 class="mb-0">CAGR vs Verify CAGR</h5>
                 <small class="text-muted">Drawdown-colored points to spot stability.</small>
               </div>
-              <span class="badge bg-light text-dark">{{cagrComparisonPointCount}} plotted</span>
+              <span class="badge bg-light text-dark" id="cagr-comparison-chart-count">{{cagrComparisonPointCount}} plotted</span>
             </div>
             <div class="card-body">
               <div class="chart-container w-100 position-relative" style="height: 600px; min-height: 320px;">
@@ -240,9 +240,17 @@
       <h5 class="mb-0">Backtest Cache Entries</h5>
       <small class="text-muted">Locally cached parameter sweeps for this template.</small>
     </div>
-    <span class="badge bg-light text-dark">{{templateSummary.cacheEntryCount}} cached sets</span>
+    <span class="badge bg-light text-dark" id="backtest-cache-count-badge">{{templateSummary.cacheEntryCount}} cached sets</span>
   </div>
   {{#if hasBacktestCache}}
+    <div class="d-none border-bottom bg-light px-3 py-2" id="backtest-cache-filter-bar">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <span class="small text-muted" id="backtest-cache-filter-summary"></span>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="backtest-cache-clear-filter">
+          Clear filter
+        </button>
+      </div>
+    </div>
     <div class="table-responsive backtest-cache-scroll" id="backtest-cache-scroll">
       <table id="backtest-cache-table" class="table table-sm align-middle mb-0">
         <thead class="table-light">
@@ -286,6 +294,7 @@
               id="cache-entry-{{id}}"
               {{#each parameterCells}}
                 data-param-{{@index}}="{{value}}"
+                data-param-{{@index}}-comparable="{{comparableValue}}"
               {{/each}}
               data-sharpe="{{sharpeRatio}}"
               data-calmar="{{calmarRatio}}"
@@ -304,7 +313,14 @@
             >
               {{#each parameterCells}}
                 <td class="small text-nowrap{{#if isDifferent}} table-warning fw-semibold{{/if}}" style="min-width: 50px; width: 50px;">
-                  {{value}}
+                  <button
+                    type="button"
+                    class="btn btn-link btn-sm p-0 align-baseline text-body text-decoration-none cache-param-filter"
+                    data-param-filter-index="{{@index}}"
+                    data-param-filter-label="{{label}}"
+                  >
+                    {{value}}
+                  </button>
                 </td>
               {{/each}}
               <td>
@@ -411,6 +427,10 @@
     const bestCacheEntryId = {{{json bestCacheEntryId}}};
     const bestCacheEntryKey = bestCacheEntryId ? String(bestCacheEntryId) : null;
     const hasPerformanceChart = Array.isArray(performanceChartPointsRaw) && performanceChartPointsRaw.length > 0;
+    window.__backtestCacheFilterState = window.__backtestCacheFilterState || {
+      visibleEntryIds: null,
+      isFiltered: false
+    };
 
     if (!hasPerformanceChart) {
       return;
@@ -503,29 +523,60 @@
       };
     };
 
+    const emptyChartController = () => ({
+      highlight: () => {},
+      setVisibleEntryIds: () => {}
+    });
+
+    const filterChartPoints = (points, visibleEntryIds) => {
+      if (!Array.isArray(visibleEntryIds)) {
+        return points;
+      }
+      const visibleSet = new Set(visibleEntryIds.map(entryId => String(entryId)));
+      return points.filter(point => {
+        const entryId = point?.cacheEntryId ?? point?.id;
+        return entryId !== undefined && entryId !== null && visibleSet.has(String(entryId));
+      });
+    };
+
+    const updatePlottedCount = (badgeId, count) => {
+      const badge = document.getElementById(badgeId);
+      if (badge) {
+        badge.textContent = `${count} plotted`;
+      }
+    };
+
+    const updateScaleBounds = (scale, bounds) => {
+      if (!scale) {
+        return;
+      }
+      if (bounds) {
+        scale.min = bounds.min;
+        scale.max = bounds.max;
+        return;
+      }
+      delete scale.min;
+      delete scale.max;
+    };
+
     const buildChartPointHighlighter = (chart) => {
       if (!chart || !chart.data || !Array.isArray(chart.data.datasets)) {
         return () => {};
       }
       const datasetIndex = 0;
-      const dataset = chart.data.datasets[datasetIndex]?.data || [];
-      const indexById = new Map();
-      dataset.forEach((point, index) => {
-        const id = point?.cacheEntryId ?? point?.id;
-        if (id !== undefined && id !== null) {
-          indexById.set(String(id), index);
-        }
-      });
-
       return (entryId) => {
         if (!entryId) {
           return;
         }
         const key = String(entryId);
-        if (!indexById.has(key)) {
+        const dataset = chart.data.datasets[datasetIndex]?.data || [];
+        const index = dataset.findIndex(point => {
+          const id = point?.cacheEntryId ?? point?.id;
+          return id !== undefined && id !== null && String(id) === key;
+        });
+        if (index < 0) {
           return;
         }
-        const index = indexById.get(key);
         const activeElements = [{ datasetIndex, index }];
         if (typeof chart.setActiveElements === 'function') {
           chart.setActiveElements(activeElements);
@@ -551,13 +602,35 @@
       }
       const rows = document.querySelectorAll('.backtest-cache-row[data-cache-entry-id]');
       rows.forEach(row => {
-        row.addEventListener('click', () => {
+        row.addEventListener('click', (event) => {
+          if (event.target?.closest?.('a, button, input, select, textarea')) {
+            return;
+          }
           const entryId = row.getAttribute('data-cache-entry-id');
           if (entryId) {
             callbacks.forEach(cb => cb(entryId));
           }
         });
       });
+    };
+
+    const wireChartFilterUpdates = (controllers) => {
+      const updateCallbacks = Array.isArray(controllers)
+        ? controllers
+            .map(controller => controller?.setVisibleEntryIds)
+            .filter(cb => typeof cb === 'function')
+        : [];
+      if (!updateCallbacks.length) {
+        return;
+      }
+      const applyState = (state) => {
+        const visibleEntryIds = Array.isArray(state?.visibleEntryIds)
+          ? state.visibleEntryIds
+          : null;
+        updateCallbacks.forEach(cb => cb(visibleEntryIds));
+      };
+      window.addEventListener('backtestCacheFilterChanged', event => applyState(event.detail));
+      applyState(window.__backtestCacheFilterState);
     };
 
     const buildReturnPalette = (points) => {
@@ -696,11 +769,11 @@
     const renderPerformanceChart = (highlightRow, highlightPeerPoint) => {
       const canvas = document.getElementById('cachePerformanceBubbleChart');
       if (!canvas) {
-        return () => {};
+        return emptyChartController();
       }
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        return () => {};
+        return emptyChartController();
       }
       const notifyPeer = typeof highlightPeerPoint === 'function' ? highlightPeerPoint : () => {};
 
@@ -737,13 +810,11 @@
       }).filter(Boolean);
 
       if (!dataset.length) {
-        return () => {};
+        return emptyChartController();
       }
 
       const palette = buildReturnPalette(dataset);
 
-      const xBounds = computeBounds(dataset.map(point => point.x), 0.03);
-      const yBounds = computeBounds(dataset.map(point => point.y), 0.05);
       const maxAbsReturn = dataset.reduce((max, point) => {
         const value = typeof point.totalReturn === 'number' ? Math.abs(point.totalReturn) : null;
         return value !== null && value > max ? value : max;
@@ -766,29 +837,32 @@
         return 0.25 + normalized * 0.55;
       };
 
-      const borderColors = dataset.map((point, index) => (
-        isBestCacheEntry(point)
+      const pointData = dataset.map((point, index) => ({
+        ...point,
+        r: bubbleRadius(point.totalReturn),
+        _backgroundColor: withAlpha(palette[index], bubbleOpacity(point.totalReturn)),
+        _borderColor: isBestCacheEntry(point)
           ? '#000'
-          : withAlpha(palette[index], Math.min(1, bubbleOpacity(point.totalReturn) + 0.2))
-      ));
-      const borderWidths = dataset.map(point => (isBestCacheEntry(point) ? 2 : 1));
+          : withAlpha(palette[index], Math.min(1, bubbleOpacity(point.totalReturn) + 0.2)),
+        _borderWidth: isBestCacheEntry(point) ? 2 : 1
+      }));
+      const initialData = filterChartPoints(
+        pointData,
+        window.__backtestCacheFilterState?.visibleEntryIds
+      );
+      const xBounds = computeBounds(initialData.map(point => point.x), 0.03);
+      const yBounds = computeBounds(initialData.map(point => point.y), 0.05);
 
       const chart = new Chart(ctx, {
         type: 'bubble',
         data: {
           datasets: [{
             label: 'Cache Entries',
-            data: dataset.map((point, index) => ({
-              ...point,
-              r: bubbleRadius(point.totalReturn)
-            })),
+            data: initialData,
             parsing: false,
-            backgroundColor: dataset.map((point, index) => withAlpha(
-              palette[index],
-              bubbleOpacity(point.totalReturn)
-            )),
-            borderColor: borderColors,
-            borderWidth: borderWidths,
+            backgroundColor: initialData.map(point => point._backgroundColor),
+            borderColor: initialData.map(point => point._borderColor),
+            borderWidth: initialData.map(point => point._borderWidth),
             hoverBorderWidth: 2
           }]
         },
@@ -868,13 +942,31 @@
         }
       });
 
-      return buildChartPointHighlighter(chart);
+      const applyVisibleEntryIds = (visibleEntryIds) => {
+        const filteredData = filterChartPoints(pointData, visibleEntryIds);
+        const chartDataset = chart.data.datasets[0];
+        chartDataset.data = filteredData;
+        chartDataset.backgroundColor = filteredData.map(point => point._backgroundColor);
+        chartDataset.borderColor = filteredData.map(point => point._borderColor);
+        chartDataset.borderWidth = filteredData.map(point => point._borderWidth);
+        updateScaleBounds(chart.options.scales.x, computeBounds(filteredData.map(point => point.x), 0.03));
+        updateScaleBounds(chart.options.scales.y, computeBounds(filteredData.map(point => point.y), 0.05));
+        updatePlottedCount('cache-performance-chart-count', filteredData.length);
+        chart.update();
+      };
+
+      updatePlottedCount('cache-performance-chart-count', initialData.length);
+
+      return {
+        highlight: buildChartPointHighlighter(chart),
+        setVisibleEntryIds: applyVisibleEntryIds
+      };
     };
 
     const renderCagrComparisonChart = (highlightRow, highlightPeerPoint) => {
       const canvas = document.getElementById('cagrComparisonScatterChart');
       if (!canvas) {
-        return () => {};
+        return emptyChartController();
       }
       const notifyPeer = typeof highlightPeerPoint === 'function' ? highlightPeerPoint : () => {};
 
@@ -886,12 +978,12 @@
       );
 
       if (!points.length) {
-        return () => {};
+        return emptyChartController();
       }
 
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        return () => {};
+        return emptyChartController();
       }
 
       const palette = buildDrawdownPalette(points);
@@ -918,8 +1010,6 @@
         };
       });
 
-      const xBounds = computeBounds(dataset.map(point => point.x), 0.05);
-      const yBounds = computeBounds(dataset.map(point => point.y), 0.05);
       const percentTickFormatter = (value) => {
         const numeric = typeof value === 'number' ? value : Number(value);
         if (!Number.isFinite(numeric)) {
@@ -929,23 +1019,31 @@
         return `${(numeric * 100).toFixed(digits)}%`;
       };
 
-      const borderColors = dataset.map((point, index) => (
-        isBestCacheEntry(point)
+      const pointData = dataset.map((point, index) => ({
+        ...point,
+        _backgroundColor: withAlpha(palette[index], 0.65),
+        _borderColor: isBestCacheEntry(point)
           ? '#000'
-          : withAlpha(palette[index], 0.9)
-      ));
-      const borderWidths = dataset.map(point => (isBestCacheEntry(point) ? 2 : 1.5));
+          : withAlpha(palette[index], 0.9),
+        _borderWidth: isBestCacheEntry(point) ? 2 : 1.5
+      }));
+      const initialData = filterChartPoints(
+        pointData,
+        window.__backtestCacheFilterState?.visibleEntryIds
+      );
+      const xBounds = computeBounds(initialData.map(point => point.x), 0.05);
+      const yBounds = computeBounds(initialData.map(point => point.y), 0.05);
 
       const chart = new Chart(ctx, {
         type: 'scatter',
         data: {
           datasets: [{
             label: 'Cache Entries',
-            data: dataset,
+            data: initialData,
             parsing: false,
-            backgroundColor: dataset.map((point, index) => withAlpha(palette[index], 0.65)),
-            borderColor: borderColors,
-            borderWidth: borderWidths,
+            backgroundColor: initialData.map(point => point._backgroundColor),
+            borderColor: initialData.map(point => point._borderColor),
+            borderWidth: initialData.map(point => point._borderWidth),
             pointRadius: 4,
             pointHoverRadius: 6,
             pointHitRadius: 10
@@ -1023,22 +1121,43 @@
         }
       });
 
-      return buildChartPointHighlighter(chart);
+      const applyVisibleEntryIds = (visibleEntryIds) => {
+        const filteredData = filterChartPoints(pointData, visibleEntryIds);
+        const chartDataset = chart.data.datasets[0];
+        chartDataset.data = filteredData;
+        chartDataset.backgroundColor = filteredData.map(point => point._backgroundColor);
+        chartDataset.borderColor = filteredData.map(point => point._borderColor);
+        chartDataset.borderWidth = filteredData.map(point => point._borderWidth);
+        updateScaleBounds(chart.options.scales.x, computeBounds(filteredData.map(point => point.x), 0.05));
+        updateScaleBounds(chart.options.scales.y, computeBounds(filteredData.map(point => point.y), 0.05));
+        updatePlottedCount('cagr-comparison-chart-count', filteredData.length);
+        chart.update();
+      };
+
+      updatePlottedCount('cagr-comparison-chart-count', initialData.length);
+
+      return {
+        highlight: buildChartPointHighlighter(chart),
+        setVisibleEntryIds: applyVisibleEntryIds
+      };
     };
 
     const initCharts = () => {
       const highlightRow = buildRowHighlighter();
       let highlightPerformancePoint = () => {};
       let highlightCagrPoint = () => {};
-      highlightPerformancePoint = renderPerformanceChart(
+      const performanceController = renderPerformanceChart(
         highlightRow,
         (entryId) => highlightCagrPoint(entryId)
       );
-      highlightCagrPoint = renderCagrComparisonChart(
+      highlightPerformancePoint = performanceController.highlight;
+      const cagrController = renderCagrComparisonChart(
         highlightRow,
         (entryId) => highlightPerformancePoint(entryId)
       );
+      highlightCagrPoint = cagrController.highlight;
       wireCacheRowClicks([highlightPerformancePoint, highlightCagrPoint]);
+      wireChartFilterUpdates([performanceController, cagrController]);
     };
 
     whenReady(() => waitForChartJs(initCharts));
@@ -1065,6 +1184,17 @@
     cursor: pointer;
     user-select: none;
   }
+
+  #backtest-cache-table .cache-param-filter {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  #backtest-cache-table .cache-param-filter:hover,
+  #backtest-cache-table .cache-param-filter.active {
+    color: var(--bs-primary) !important;
+    text-decoration: underline !important;
+  }
 </style>
 <script>
   (() => {
@@ -1082,7 +1212,7 @@
         return;
       }
       const header = container.querySelector('thead');
-      const bodyRow = container.querySelector('tbody tr');
+      const bodyRow = container.querySelector('tbody tr:not(.d-none)') || container.querySelector('tbody tr');
       if (!header || !bodyRow) {
         return;
       }
@@ -1104,7 +1234,7 @@
         return;
       }
       const header = container.querySelector('thead');
-      const bodyRow = container.querySelector('tbody tr');
+      const bodyRow = container.querySelector('tbody tr:not(.d-none)') || container.querySelector('tbody tr');
       if (!header || !bodyRow) {
         return;
       }
@@ -1112,6 +1242,134 @@
       observer.observe(header);
       observer.observe(bodyRow);
       container.__cacheHeightObserver = observer;
+    };
+
+    const initCacheParamFiltering = () => {
+      const table = document.getElementById('backtest-cache-table');
+      if (!table) {
+        return;
+      }
+      const rows = Array.from(table.querySelectorAll('.backtest-cache-row[data-cache-entry-id]'));
+      const buttons = Array.from(table.querySelectorAll('.cache-param-filter[data-param-filter-index]'));
+      if (!rows.length || !buttons.length) {
+        return;
+      }
+
+      const filterBar = document.getElementById('backtest-cache-filter-bar');
+      const filterSummary = document.getElementById('backtest-cache-filter-summary');
+      const clearButton = document.getElementById('backtest-cache-clear-filter');
+      const countBadge = document.getElementById('backtest-cache-count-badge');
+      const paramIndexes = Array.from(new Set(
+        buttons
+          .map(button => Number(button.dataset.paramFilterIndex))
+          .filter(index => Number.isInteger(index))
+      )).sort((a, b) => a - b);
+
+      if (!paramIndexes.length) {
+        return;
+      }
+
+      const countLabel = (count) => `${count} cached ${count === 1 ? 'set' : 'sets'}`;
+      const getParamValue = (row, paramIndex) => row.getAttribute(`data-param-${paramIndex}-comparable`) ?? '';
+      const getVisibleRows = () => rows.filter(row => !row.classList.contains('d-none'));
+      const getVisibleEntryIds = () => getVisibleRows()
+        .map(row => row.getAttribute('data-cache-entry-id'))
+        .filter(entryId => entryId);
+      const setButtonActive = (button, active) => {
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      };
+      const clearActiveButtons = () => buttons.forEach(button => setButtonActive(button, false));
+      const publishFilterState = (isFiltered) => {
+        const state = {
+          visibleEntryIds: isFiltered ? getVisibleEntryIds() : null,
+          isFiltered
+        };
+        window.__backtestCacheFilterState = state;
+        window.dispatchEvent(new CustomEvent('backtestCacheFilterChanged', { detail: state }));
+      };
+      const updateCount = (isFiltered) => {
+        if (!countBadge) {
+          return;
+        }
+        const visibleCount = getVisibleRows().length;
+        countBadge.textContent = isFiltered
+          ? `${visibleCount} / ${countLabel(rows.length)}`
+          : countLabel(rows.length);
+      };
+
+      const clearFilter = () => {
+        rows.forEach(row => row.classList.remove('d-none'));
+        clearActiveButtons();
+        if (filterBar) {
+          filterBar.classList.add('d-none');
+        }
+        if (filterSummary) {
+          filterSummary.textContent = '';
+        }
+        updateCount(false);
+        syncCacheTableHeight();
+        publishFilterState(false);
+      };
+
+      const applyFilter = (sourceRow, varyingParamIndex, sourceButton) => {
+        const expectedValues = new Map(
+          paramIndexes
+            .filter(paramIndex => paramIndex !== varyingParamIndex)
+            .map(paramIndex => [paramIndex, getParamValue(sourceRow, paramIndex)])
+        );
+
+        rows.forEach(row => {
+          const matches = paramIndexes.every(paramIndex =>
+            paramIndex === varyingParamIndex ||
+            getParamValue(row, paramIndex) === expectedValues.get(paramIndex)
+          );
+          row.classList.toggle('d-none', !matches);
+        });
+
+        clearActiveButtons();
+        buttons.forEach(button => {
+          const row = button.closest('.backtest-cache-row');
+          const paramIndex = Number(button.dataset.paramFilterIndex);
+          setButtonActive(
+            button,
+            paramIndex === varyingParamIndex && Boolean(row) && !row.classList.contains('d-none')
+          );
+        });
+
+        const visibleCount = getVisibleRows().length;
+        const label = sourceButton.dataset.paramFilterLabel || `Param ${varyingParamIndex + 1}`;
+        if (filterSummary) {
+          filterSummary.textContent = `Varying ${label}; ${visibleCount} matching ${visibleCount === 1 ? 'set' : 'sets'}`;
+        }
+        if (filterBar) {
+          filterBar.classList.remove('d-none');
+        }
+        updateCount(true);
+        syncCacheTableHeight();
+        publishFilterState(true);
+      };
+
+      buttons.forEach(button => {
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const sourceRow = button.closest('.backtest-cache-row');
+          const varyingParamIndex = Number(button.dataset.paramFilterIndex);
+          if (!sourceRow || !Number.isInteger(varyingParamIndex)) {
+            return;
+          }
+          applyFilter(sourceRow, varyingParamIndex, button);
+        });
+      });
+
+      clearButton?.addEventListener('click', clearFilter);
+      window.__backtestCacheFilterState = window.__backtestCacheFilterState || {
+        visibleEntryIds: null,
+        isFiltered: false
+      };
+      updateCount(false);
     };
 
     const initCacheSorting = () => {
@@ -1284,6 +1542,7 @@
     };
 
     whenReady(() => {
+      initCacheParamFiltering();
       initCacheSorting();
       syncCacheTableHeight();
       observeCacheTableHeight();

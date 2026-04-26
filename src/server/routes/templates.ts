@@ -641,7 +641,9 @@ router.get<TemplateParams>('/:templateId', requireAuth, async (req, res) => {
           (nextComparable !== null && nextComparable !== currentComparable);
         return {
           key: column.key,
+          label: column.label,
           value: formatParameterDisplayValue(value),
+          comparableValue: currentComparable,
           isDifferent
         };
       });
