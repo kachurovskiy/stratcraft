@@ -19,6 +19,13 @@ for (const file of templateFiles) {
   }
 }
 
+export interface DefaultStrategyRefreshSummary {
+  checked: number;
+  refreshed: number;
+  unchanged: number;
+  failures: string[];
+}
+
 export class StrategyRegistry {
   private db: Database;
   private logging?: LoggingService;
@@ -319,6 +326,61 @@ export class StrategyRegistry {
     }
   }
 
+  async refreshOutdatedDefaultStrategies(): Promise<DefaultStrategyRefreshSummary> {
+    const summary: DefaultStrategyRefreshSummary = {
+      checked: 0,
+      refreshed: 0,
+      unchanged: 0,
+      failures: []
+    };
+
+    for (const template of this.getTemplates()) {
+      if (template.id === 'buy_and_hold' || template.id.startsWith('lightgbm_')) {
+        continue;
+      }
+
+      summary.checked += 1;
+      const defaultStrategyId = `default_${template.id}`;
+
+      try {
+        const desiredParameters = await this.resolveDefaultStrategyParameters(template, 'Checking default strategy');
+        const existingDefault = await this.db.strategies.getStrategy(defaultStrategyId, 0);
+
+        if (existingDefault && this.parametersMatch(existingDefault.parameters, desiredParameters)) {
+          summary.unchanged += 1;
+          continue;
+        }
+
+        if (existingDefault) {
+          await this.db.strategies.deleteStrategy(defaultStrategyId);
+        }
+
+        await this.db.strategies.insertStrategy({
+          id: defaultStrategyId,
+          name: template.name,
+          templateId: template.id,
+          parameters: desiredParameters,
+          status: 'active'
+        });
+
+        summary.refreshed += 1;
+        this.logging?.info(
+          'StrategyManager',
+          `${existingDefault ? 'Recreated' : 'Created'} default strategy for ${template.id} with current best parameters`,
+          { strategyId: defaultStrategyId }
+        );
+      } catch (error) {
+        summary.failures.push(template.id);
+        this.logging?.error('StrategyManager', `Failed to refresh default strategy for ${template.id}`, {
+          strategyId: defaultStrategyId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+
+    return summary;
+  }
+
   async setTemplateEnabled(templateId: string, enabled: boolean): Promise<void> {
     if (typeof templateId !== 'string' || templateId.trim().length === 0) {
       throw new Error('templateId is required to update template status');
@@ -577,6 +639,28 @@ export class StrategyRegistry {
       }
     }
     return parameters;
+  }
+
+  private parametersMatch(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+    return this.canonicalizeParameters(left) === this.canonicalizeParameters(right);
+  }
+
+  private canonicalizeParameters(parameters: Record<string, unknown>): string {
+    return JSON.stringify(this.canonicalizeValue(parameters));
+  }
+
+  private canonicalizeValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.canonicalizeValue(entry));
+    }
+    if (value && typeof value === 'object') {
+      const normalized: Record<string, unknown> = {};
+      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+        normalized[key] = this.canonicalizeValue((value as Record<string, unknown>)[key]);
+      }
+      return normalized;
+    }
+    return value;
   }
 
   private validateParameters(template: StrategyTemplate, parameters: Record<string, any>): void {

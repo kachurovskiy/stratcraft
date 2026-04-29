@@ -327,12 +327,12 @@ async fn optimize_smoke() -> Result<()> {
         template.id
     );
 
-    let deleted_strategy = db
+    let existing_strategy = db
         .get_strategy_config(&format!("default_{}", template.id))
         .await?;
     assert!(
-        deleted_strategy.is_none(),
-        "expected default strategy cleanup for {}",
+        existing_strategy.is_some(),
+        "expected default strategy to remain until post-validation refresh for {}",
         template.id
     );
 

@@ -145,10 +145,6 @@ impl<'a> OptimizationEngine<'a> {
         self.db.as_deref()
     }
 
-    fn db_mut(&mut self) -> Option<&mut Database> {
-        self.db.as_deref_mut()
-    }
-
     pub fn new(
         db: Option<&'a mut Database>,
         cache_manager: &'a CacheManager,
@@ -415,21 +411,6 @@ impl<'a> OptimizationEngine<'a> {
             warn!(
                 "Skipping template version update for {} because database is unavailable",
                 template_id
-            );
-        }
-        let default_strategy_id = format!("default_{}", template_id);
-        if let Some(db) = self.db_mut() {
-            match db.delete_strategy_and_related(&default_strategy_id).await {
-                Ok(_) => info!("Deleted default strategy {}", default_strategy_id),
-                Err(e) => warn!(
-                    "Failed to delete default strategy {}: {}",
-                    default_strategy_id, e
-                ),
-            }
-        } else {
-            warn!(
-                "Skipping cleanup for {} because database is unavailable",
-                default_strategy_id
             );
         }
         Ok(())

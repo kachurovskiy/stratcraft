@@ -13,6 +13,10 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
     let balanceAttempted = 0;
     let balancedCount = 0;
     const balanceFailures: string[] = [];
+    let defaultRefreshChecked = 0;
+    let defaultRefreshCount = 0;
+    let defaultRefreshUnchanged = 0;
+    const defaultRefreshFailures: string[] = [];
     let exploreAttempted = 0;
     let exploredCount = 0;
     const exploreFailures: string[] = [];
@@ -43,15 +47,6 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
         try {
           await deps.engineCli.run('optimize', [template.id], ctx.abortSignal, logMetadata);
           optimizedCount += 1;
-          try {
-            await deps.strategyRegistry.ensureDefaultStrategyForTemplate(template.id);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            ctx.loggingService.error(OPTIMIZE_SOURCE, `Failed to recreate default strategy for ${template.id}`, {
-              ...logMetadata,
-              error: message
-            });
-          }
         } catch (error) {
           if (ctx.abortSignal.aborted) {
             throw new Error('Optimization cancelled');
@@ -130,6 +125,31 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
         }
       }
 
+      ctx.loggingService.info(
+        OPTIMIZE_SOURCE,
+        'Checking default strategies for current best parameters after verification and balance',
+        logMetadata
+      );
+      try {
+        if (ctx.abortSignal.aborted) {
+          throw new Error('Default strategy refresh cancelled');
+        }
+        const defaultRefresh = await deps.strategyRegistry.refreshOutdatedDefaultStrategies();
+        defaultRefreshChecked = defaultRefresh.checked;
+        defaultRefreshCount = defaultRefresh.refreshed;
+        defaultRefreshUnchanged = defaultRefresh.unchanged;
+        defaultRefreshFailures.push(...defaultRefresh.failures);
+      } catch (error) {
+        if (ctx.abortSignal.aborted) {
+          throw new Error('Default strategy refresh cancelled');
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.loggingService.error(OPTIMIZE_SOURCE, 'Default strategy refresh failed', {
+          ...logMetadata,
+          error: message
+        });
+      }
+
       const cacheCounts = await deps.db.backtestCache.getBacktestCacheTemplateCounts();
       const cacheCountsByTemplate = new Map(cacheCounts.map((entry) => [entry.templateId, entry.count]));
       const exploreTemplateIds = templateIds
@@ -194,6 +214,10 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
           balanceAttempted,
           balanced: balancedCount,
           balanceFailures,
+          defaultRefreshAttempted: defaultRefreshChecked,
+          defaultRefreshed: defaultRefreshCount,
+          defaultRefreshSkipped: defaultRefreshUnchanged,
+          defaultRefreshFailures,
           exploreAttempted,
           explored: exploredCount,
           exploreFailures
