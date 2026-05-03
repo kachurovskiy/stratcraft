@@ -897,9 +897,9 @@ server {
     send_timeout 30s;
 
     # Proxy settings
-    proxy_connect_timeout 60s;
-    proxy_send_timeout 60s;
-    proxy_read_timeout 60s;
+    proxy_connect_timeout 180s;
+    proxy_send_timeout 180s;
+    proxy_read_timeout 180s;
     proxy_buffering on;
     proxy_buffer_size 4k;
     proxy_buffers 8 4k;
