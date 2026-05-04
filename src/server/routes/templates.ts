@@ -18,7 +18,7 @@ import {
 import { SETTING_KEYS } from '../constants';
 import type { BacktestCachePerformancePoint } from '../database/types';
 import {
-  computeTemplateScoreResults,
+  computeTemplateScores,
   type TemplateScoreSnapshot,
   type TemplateVerificationMetrics
 } from '../scoring/templateScore';
@@ -127,7 +127,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       });
     });
 
-    const templateScoreResults = await computeTemplateScoreResults(defaultBacktestSnapshots, {
+    const templateScoreResults = await computeTemplateScores(defaultBacktestSnapshots, {
       verificationByTemplate,
       settingsValue: req.db.settings.value.templateScoring
     });

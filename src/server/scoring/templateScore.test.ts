@@ -1,7 +1,7 @@
 import { createDefaultSettingsValue } from '../settings/defaults';
 import type { StrategyPerformance } from '../types/StrategyTemplate';
 import type { TemplateScoreSnapshot } from './templateScore';
-import { computeTemplateScoreResults } from './templateScore';
+import { computeTemplateScores } from './templateScore';
 
 const createPerformance = (overrides: Partial<StrategyPerformance> = {}): StrategyPerformance => ({
   totalTrades: 1,
@@ -61,10 +61,10 @@ describe('templateScore settings integration', () => {
     const relaxedLiquiditySettings = createDefaultSettingsValue();
     relaxedLiquiditySettings.templateScoring.tradeWeight = 0;
 
-    const baseline = await computeTemplateScoreResults(createSnapshots(), {
+    const baseline = await computeTemplateScores(createSnapshots(), {
       settingsValue: baselineSettings.templateScoring
     });
-    const relaxed = await computeTemplateScoreResults(createSnapshots(), {
+    const relaxed = await computeTemplateScores(createSnapshots(), {
       settingsValue: relaxedLiquiditySettings.templateScoring
     });
 

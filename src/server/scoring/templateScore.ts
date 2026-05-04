@@ -231,7 +231,7 @@ type TemplateScorePeriodBreakdown = {
   weight: number;
 };
 
-export const computeTemplateScoreResults = async (
+export const computeTemplateScores = async (
   snapshots: TemplateScoreSnapshot[],
   options: TemplateScoreOptions
 ): Promise<TemplateScoreResults> => {
