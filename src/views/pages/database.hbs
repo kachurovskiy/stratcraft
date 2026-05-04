@@ -222,6 +222,22 @@
                 </button>
               </div>
             </form>
+            <form method="POST" action="/admin/database/prune-backtest-cache-by-best-params">
+                {{> csrf-field}}
+              <div class="input-group">
+                <span class="input-group-text">
+                  <i class="fas fa-compress-alt"></i>
+                  <span class="ms-2">Prune template</span>
+                </span>
+                <input type="text" name="templateId" class="form-control" placeholder="template-id" required>
+                <input type="number" name="minDifferentParameters" class="form-control" min="1" step="1"
+                  value="{{defaultBacktestCacheParameterDifferenceThreshold}}" aria-label="Minimum parameter differences">
+                <button type="submit" class="btn btn-outline-secondary"
+                  onclick="return confirm('Remove cached backtest results for template ' + (this.form.templateId.value || '(unspecified)') + ' that differ from best params in ' + (this.form.minDifferentParameters.value || '{{defaultBacktestCacheParameterDifferenceThreshold}}') + ' or more parameters? This action cannot be undone.');">
+                  Prune by best
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>

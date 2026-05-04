@@ -4,6 +4,7 @@ import fs from 'fs';
 import multer from 'multer';
 import os from 'os';
 import path from 'path';
+import { DEFAULT_BACKTEST_CACHE_PARAMETER_DIFFERENCE_THRESHOLD } from '../database/repos/BacktestCacheRepo';
 import { JobScheduler, JobType } from '../jobs/JobScheduler';
 import { handleCsrfFailure, isCsrfRequestValid } from '../middleware/csrf';
 import { normalizeUppercaseStrings } from '../utils/stringNormalization';
@@ -239,6 +240,7 @@ router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) =
       allUsers,
       backtestCacheStats,
       backtestCacheTemplateCounts,
+      defaultBacktestCacheParameterDifferenceThreshold: DEFAULT_BACKTEST_CACHE_PARAMETER_DIFFERENCE_THRESHOLD,
       databaseEntityCounts,
       success: req.query.success as string,
       error: req.query.error as string
@@ -798,6 +800,34 @@ router.post('/clear-backtest-cache-by-template', requireAuth, requireAdmin, asyn
   } catch (error) {
     console.error(`Error clearing backtest cache for template ${templateId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to clear template backtest cache entries';
+    res.redirect(`/admin/database?error=${encodeURIComponent(errorMessage)}`);
+  }
+});
+
+// Prune backtest cache entries far away from a template's best params (admin only)
+router.post('/prune-backtest-cache-by-best-params', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const templateId = (req.body.templateId ?? '').trim();
+  const thresholdInput = String(req.body.minDifferentParameters ?? '').trim();
+  const threshold = thresholdInput
+    ? Number(thresholdInput)
+    : DEFAULT_BACKTEST_CACHE_PARAMETER_DIFFERENCE_THRESHOLD;
+
+  if (!templateId) {
+    return res.redirect('/admin/database?error=Template ID is required to prune cache entries');
+  }
+  if (!Number.isInteger(threshold) || threshold < 1) {
+    return res.redirect('/admin/database?error=Parameter difference threshold must be 1 or higher');
+  }
+
+  try {
+    const result = await req.db.backtestCache.pruneBacktestCacheByBestParams(templateId, threshold);
+    const message = result.bestFound
+      ? `Removed ${result.deleted} of ${result.scanned} backtest cache entr${result.scanned === 1 ? 'y' : 'ies'} for template ${templateId} with ${result.threshold} or more parameter differences from best params`
+      : `No eligible best backtest cache params found for template ${templateId}`;
+    res.redirect(`/admin/database?success=${encodeURIComponent(message)}`);
+  } catch (error) {
+    console.error(`Error pruning backtest cache for template ${templateId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to prune template backtest cache entries';
     res.redirect(`/admin/database?error=${encodeURIComponent(errorMessage)}`);
   }
 });

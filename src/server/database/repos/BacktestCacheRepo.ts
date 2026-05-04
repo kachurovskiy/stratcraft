@@ -111,6 +111,15 @@ type TemplateMaxRow = QueryResultRow & { template_id: string; value: number | nu
 
 type BestTemplateRow = QueryResultRow & { template_id: string; sharpe_ratio: number | null };
 
+export const DEFAULT_BACKTEST_CACHE_PARAMETER_DIFFERENCE_THRESHOLD = 5;
+
+export type BacktestCachePruneByBestParamsResult = {
+  deleted: number;
+  scanned: number;
+  threshold: number;
+  bestFound: boolean;
+};
+
 export class BacktestCacheRepo {
   constructor(
     private readonly db: DbClient,
@@ -144,6 +153,43 @@ export class BacktestCacheRepo {
       return { ...(raw as Record<string, unknown>) };
     }
     return null;
+  }
+
+  private normalizeParameterValueForComparison(value: unknown): string {
+    if (value === undefined) {
+      return 'undefined';
+    }
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return `[${value.map(item => this.normalizeParameterValueForComparison(item)).join(',')}]`;
+    }
+
+    const objectValue = value as Record<string, unknown>;
+    return `{${Object.keys(objectValue)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${this.normalizeParameterValueForComparison(objectValue[key])}`)
+      .join(',')}}`;
+  }
+
+  private countParameterDifferences(
+    parameters: Record<string, unknown>,
+    bestParameters: Record<string, unknown>
+  ): number {
+    const keys = new Set([...Object.keys(parameters ?? {}), ...Object.keys(bestParameters ?? {})]);
+    let differences = 0;
+
+    for (const key of keys) {
+      if (
+        this.normalizeParameterValueForComparison(parameters?.[key]) !==
+        this.normalizeParameterValueForComparison(bestParameters?.[key])
+      ) {
+        differences += 1;
+      }
+    }
+
+    return differences;
   }
 
   private mapBacktestCacheRow(row: BacktestCacheDbRow): BacktestCacheRow {
@@ -882,6 +928,67 @@ export class BacktestCacheRepo {
       return result.changes || 0;
     } catch (error) {
       console.error(`Error clearing backtest cache for template ${templateId}:`, error);
+      throw error;
+    }
+  }
+
+  async pruneBacktestCacheByBestParams(
+    templateId: string,
+    minDifferentParameters = DEFAULT_BACKTEST_CACHE_PARAMETER_DIFFERENCE_THRESHOLD
+  ): Promise<BacktestCachePruneByBestParamsResult> {
+    const threshold = Number.isFinite(minDifferentParameters)
+      ? Math.max(1, Math.floor(minDifferentParameters))
+      : DEFAULT_BACKTEST_CACHE_PARAMETER_DIFFERENCE_THRESHOLD;
+
+    try {
+      const rows = await this.db.all<BacktestCacheDbRow>(
+        `
+          SELECT id, template_id, parameters, sharpe_ratio, calmar_ratio, total_return, cagr, max_drawdown,
+                 max_drawdown_ratio, verify_sharpe_ratio, verify_calmar_ratio, verify_cagr, verify_max_drawdown_ratio,
+                 balance_training_sharpe_ratio, balance_training_calmar_ratio, balance_training_cagr,
+                 balance_training_max_drawdown_ratio, balance_validation_sharpe_ratio,
+                 balance_validation_calmar_ratio, balance_validation_cagr, balance_validation_max_drawdown_ratio,
+                 win_rate, total_trades, top_abs_gain_ticker, top_rel_gain_ticker
+          FROM backtest_cache
+          WHERE template_id = ?
+          ORDER BY created_at DESC
+        `,
+        [templateId]
+      );
+
+      if (!rows.length) {
+        return { deleted: 0, scanned: 0, threshold, bestFound: false };
+      }
+
+      const normalizedRows = rows.map((row) => this.mapBacktestCacheRow(row));
+      const scored = await scoreBacktestParameters(normalizedRows, this.settings.value.paramScoring);
+      const best = scored.scored[0] ?? null;
+      if (!best) {
+        return { deleted: 0, scanned: normalizedRows.length, threshold, bestFound: false };
+      }
+
+      const idsToDelete = normalizedRows
+        .filter(row => typeof row.id === 'string' && row.id.trim().length > 0)
+        .filter(row => this.countParameterDifferences(row.parameters, best.parameters) >= threshold)
+        .map(row => row.id as string);
+
+      if (idsToDelete.length === 0) {
+        return { deleted: 0, scanned: normalizedRows.length, threshold, bestFound: true };
+      }
+
+      const result = await this.db.run(
+        'DELETE FROM backtest_cache WHERE template_id = ? AND id = ANY(?::text[])',
+        [templateId, idsToDelete]
+      );
+
+      return {
+        deleted: result.changes || 0,
+        scanned: normalizedRows.length,
+        threshold,
+        bestFound: true
+      };
+    } catch (error) {
+      console.error(`Error pruning backtest cache for template ${templateId}:`, error);
       throw error;
     }
   }
