@@ -13,8 +13,9 @@ use crate::models::{
 };
 use crate::param_utils::{
     add_fixed_parameter_value_variations, add_single_parameter_neighbor_variations,
-    build_multi_start_seeds_with_limit, clamp_to_bounds, collect_numeric_parameter_ranges,
-    parameter_signature, target_multi_start_refinement_count,
+    allowed_volume_usd_values, build_multi_start_seeds_with_limit, clamp_to_bounds,
+    collect_numeric_parameter_ranges, is_volume_usd_parameter, parameter_signature,
+    target_multi_start_refinement_count,
 };
 use crate::strategy::create_strategy;
 use anyhow::{anyhow, Result};
@@ -29,7 +30,6 @@ use std::time::Instant;
 
 const ALLOW_SHORT_SELLING_OPTIMIZATION_SETTING: &str = "ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED";
 const ALLOW_SHORT_SELLING_PARAMETER: &str = "allowShortSelling";
-const MAX_VOLUME_USD_PARAMETER: &str = "maxVolumeUsd";
 const MAX_UNADJUSTED_PRICE_PARAMETER: &str = "maxUnadjustedPrice";
 
 enum VariationOutcome {
@@ -49,7 +49,6 @@ fn add_special_parameter_neighbor_variations(
     parameters_to_optimize: &[String],
     parameter_ranges: &HashMap<String, ParameterRange>,
     max_unadjusted_price_values: &[f64],
-    max_volume_usd_values: &[f64],
     current_params: &HashMap<String, f64>,
     seen_variations: &mut HashSet<String>,
     neighbor_variations: &mut Vec<HashMap<String, f64>>,
@@ -68,14 +67,14 @@ fn add_special_parameter_neighbor_variations(
         );
     }
 
-    if parameters_to_optimize
+    for param_name in parameters_to_optimize
         .iter()
-        .any(|name| name == MAX_VOLUME_USD_PARAMETER)
+        .filter(|name| is_volume_usd_parameter(name))
     {
         add_fixed_parameter_value_variations(
-            MAX_VOLUME_USD_PARAMETER,
+            param_name,
             parameter_ranges,
-            max_volume_usd_values,
+            allowed_volume_usd_values(),
             current_params,
             seen_variations,
             neighbor_variations,
@@ -211,9 +210,6 @@ impl<'a> OptimizationEngine<'a> {
         let max_unadjusted_price_values = runtime_settings
             .local_optimization_max_unadjusted_price_values
             .as_slice();
-        let max_volume_usd_values = runtime_settings
-            .local_optimization_max_volume_usd_values
-            .as_slice();
         let template = self.load_strategy_template(template_id).await?;
 
         info!(
@@ -314,7 +310,6 @@ impl<'a> OptimizationEngine<'a> {
                     parameter_ranges,
                     step_multipliers,
                     max_unadjusted_price_values,
-                    max_volume_usd_values,
                     max_drawdown_ratio,
                     primary_objective,
                 )
@@ -337,7 +332,6 @@ impl<'a> OptimizationEngine<'a> {
                         parameter_ranges,
                         step_multipliers,
                         max_unadjusted_price_values,
-                        max_volume_usd_values,
                         max_drawdown_ratio,
                         secondary_objective,
                     )
@@ -557,7 +551,6 @@ impl<'a> OptimizationEngine<'a> {
         parameter_ranges: &HashMap<String, ParameterRange>,
         step_multipliers: &[f64],
         max_unadjusted_price_values: &[f64],
-        max_volume_usd_values: &[f64],
         max_drawdown_ratio: f64,
         objective: LocalOptimizationObjective,
     ) -> Result<OptimizationResult> {
@@ -587,7 +580,6 @@ impl<'a> OptimizationEngine<'a> {
                 parameters_to_optimize,
                 parameter_ranges,
                 max_unadjusted_price_values,
-                max_volume_usd_values,
                 &current_params,
                 &mut seen_variations,
                 &mut neighbor_variations,
@@ -1104,6 +1096,7 @@ fn extract_top_ticker_gains(trades: &[Trade]) -> (Option<String>, Option<String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::param_utils::{MAX_VOLUME_USD_PARAMETER, MIN_VOLUME_USD_PARAMETER};
 
     fn make_result(
         parameters: &[(&str, f64)],
@@ -1155,20 +1148,34 @@ mod tests {
     }
 
     #[test]
-    fn add_special_parameter_neighbor_variations_includes_max_volume_milestones() {
-        let parameters_to_optimize = vec![MAX_VOLUME_USD_PARAMETER.to_string()];
-        let mut parameter_ranges = HashMap::new();
-        parameter_ranges.insert(
+    fn add_special_parameter_neighbor_variations_includes_volume_ladder_for_min_and_max() {
+        let parameters_to_optimize = vec![
+            MIN_VOLUME_USD_PARAMETER.to_string(),
             MAX_VOLUME_USD_PARAMETER.to_string(),
-            ParameterRange {
-                min: 150_000.0,
-                max: 51_000_000_000.0,
-                step: 10_000_000_000.0,
-            },
-        );
+        ];
+        let parameter_ranges = HashMap::from([
+            (
+                MIN_VOLUME_USD_PARAMETER.to_string(),
+                ParameterRange {
+                    min: 150_000.0,
+                    max: 51_000_000_000.0,
+                    step: 150_000.0,
+                },
+            ),
+            (
+                MAX_VOLUME_USD_PARAMETER.to_string(),
+                ParameterRange {
+                    min: 150_000.0,
+                    max: 51_000_000_000.0,
+                    step: 10_000_000_000.0,
+                },
+            ),
+        ]);
 
-        let mut current_params = HashMap::new();
-        current_params.insert(MAX_VOLUME_USD_PARAMETER.to_string(), 51_000_000_000.0);
+        let current_params = HashMap::from([
+            (MIN_VOLUME_USD_PARAMETER.to_string(), 150_000.0),
+            (MAX_VOLUME_USD_PARAMETER.to_string(), 51_000_000_000.0),
+        ]);
 
         let mut seen_variations = HashSet::new();
         let mut neighbor_variations = Vec::new();
@@ -1176,22 +1183,47 @@ mod tests {
             &parameters_to_optimize,
             &parameter_ranges,
             &[],
-            &[1_000_000.0, 10_000_000.0, 100_000_000.0],
             &current_params,
             &mut seen_variations,
             &mut neighbor_variations,
         );
 
-        let mut observed_values: Vec<_> = neighbor_variations
+        let mut observed_min_values: Vec<_> = neighbor_variations
             .iter()
+            .filter(|params| {
+                params.get(MAX_VOLUME_USD_PARAMETER) == current_params.get(MAX_VOLUME_USD_PARAMETER)
+            })
+            .filter_map(|params| params.get(MIN_VOLUME_USD_PARAMETER).copied())
+            .collect();
+        observed_min_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut observed_max_values: Vec<_> = neighbor_variations
+            .iter()
+            .filter(|params| {
+                params.get(MIN_VOLUME_USD_PARAMETER) == current_params.get(MIN_VOLUME_USD_PARAMETER)
+            })
             .filter_map(|params| params.get(MAX_VOLUME_USD_PARAMETER).copied())
             .collect();
-        observed_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        observed_max_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let expected_min_values: Vec<_> = allowed_volume_usd_values()
+            .iter()
+            .copied()
+            .filter(|value| *value != 150_000.0)
+            .collect();
+        let expected_max_values: Vec<_> = allowed_volume_usd_values()
+            .iter()
+            .copied()
+            .filter(|value| *value != 51_000_000_000.0)
+            .collect();
 
         assert_eq!(
-            observed_values,
-            vec![1_000_000.0, 10_000_000.0, 100_000_000.0],
-            "expected fixed 1M/10M/100M max volume candidates regardless of configured step"
+            observed_min_values, expected_min_values,
+            "expected all fixed minVolumeUsd candidates regardless of configured step"
+        );
+        assert_eq!(
+            observed_max_values, expected_max_values,
+            "expected all fixed maxVolumeUsd candidates regardless of configured step"
         );
     }
 }

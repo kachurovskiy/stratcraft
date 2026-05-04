@@ -10,8 +10,6 @@ const DEFAULT_MIN_VOLUME_USD: f64 = 150_000.0;
 const DEFAULT_MAX_VOLUME_USD: f64 = 51_000_000_000.0;
 const DEFAULT_LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES: [f64; 6] =
     [3.0, 5.0, 7.0, 10.0, 15.0, 20.0];
-const DEFAULT_LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES: [f64; 3] =
-    [1_000_000.0, 10_000_000.0, 100_000_000.0];
 
 pub fn resolve_backtest_initial_capital(settings: &HashMap<String, String>) -> f64 {
     let raw = settings
@@ -104,7 +102,6 @@ pub struct EngineRuntimeSettings {
     pub local_optimization_multi_start_seeds: usize,
     pub local_optimization_step_multipliers: Vec<f64>,
     pub local_optimization_max_unadjusted_price_values: Vec<f64>,
-    pub local_optimization_max_volume_usd_values: Vec<f64>,
     pub local_optimization_objective: LocalOptimizationObjective,
     pub local_optimization_objective_2: LocalOptimizationObjective,
     pub max_allowed_drawdown_ratio: f64,
@@ -180,14 +177,6 @@ impl EngineRuntimeSettings {
             }
             None => DEFAULT_LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES.to_vec(),
         };
-        let local_optimization_max_volume_usd_values = match settings
-            .get("LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES")
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-        {
-            Some(raw) => parse_f64_list(raw, "LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES", true)?,
-            None => DEFAULT_LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES.to_vec(),
-        };
         let raw_local_optimization_objective = settings
             .get("OPTIMIZATION_OBJECTIVE")
             .map(|value| value.trim())
@@ -231,7 +220,6 @@ impl EngineRuntimeSettings {
             local_optimization_multi_start_seeds,
             local_optimization_step_multipliers,
             local_optimization_max_unadjusted_price_values,
-            local_optimization_max_volume_usd_values,
             local_optimization_objective,
             local_optimization_objective_2,
             max_allowed_drawdown_ratio,
@@ -550,10 +538,6 @@ mod tests {
         assert_eq!(
             runtime_settings.local_optimization_objective_2,
             LocalOptimizationObjective::Cagr
-        );
-        assert_eq!(
-            runtime_settings.local_optimization_max_volume_usd_values,
-            DEFAULT_LOCAL_OPTIMIZATION_MAX_VOLUME_USD_VALUES.to_vec()
         );
     }
 

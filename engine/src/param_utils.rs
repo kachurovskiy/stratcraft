@@ -4,13 +4,56 @@ use std::collections::{HashMap, HashSet};
 const MULTI_START_MIN_SEEDS: usize = 8;
 const MULTI_START_MAX_SEEDS: usize = 24;
 const MULTI_START_ATTEMPT_MULTIPLIER: usize = 12;
-const MAX_VOLUME_USD_PARAMETER: &str = "maxVolumeUsd";
-const MILLION: f64 = 1_000_000.0;
-const TEN_MILLION: f64 = 10_000_000.0;
-const HUNDRED_MILLION: f64 = 100_000_000.0;
-const BILLION: f64 = 1_000_000_000.0;
-const TEN_BILLION: f64 = 10_000_000_000.0;
+pub const MIN_VOLUME_USD_PARAMETER: &str = "minVolumeUsd";
+pub const MAX_VOLUME_USD_PARAMETER: &str = "maxVolumeUsd";
 const STEP_EPSILON: f64 = 1e-9;
+const VOLUME_USD_ALLOWED_VALUES: [f64; 45] = [
+    150_000.0,
+    300_000.0,
+    500_000.0,
+    750_000.0,
+    1_000_000.0,
+    2_000_000.0,
+    3_000_000.0,
+    4_000_000.0,
+    5_000_000.0,
+    6_000_000.0,
+    7_000_000.0,
+    8_000_000.0,
+    9_000_000.0,
+    10_000_000.0,
+    20_000_000.0,
+    30_000_000.0,
+    40_000_000.0,
+    50_000_000.0,
+    60_000_000.0,
+    70_000_000.0,
+    80_000_000.0,
+    90_000_000.0,
+    100_000_000.0,
+    200_000_000.0,
+    300_000_000.0,
+    400_000_000.0,
+    500_000_000.0,
+    600_000_000.0,
+    700_000_000.0,
+    800_000_000.0,
+    900_000_000.0,
+    1_000_000_000.0,
+    2_000_000_000.0,
+    3_000_000_000.0,
+    4_000_000_000.0,
+    5_000_000_000.0,
+    6_000_000_000.0,
+    7_000_000_000.0,
+    8_000_000_000.0,
+    9_000_000_000.0,
+    10_000_000_000.0,
+    20_000_000_000.0,
+    30_000_000_000.0,
+    40_000_000_000.0,
+    51_000_000_000.0,
+];
 
 /// Extract a parameter as usize with a default value
 pub fn get_param_usize(params: &HashMap<String, f64>, key: &str, default: usize) -> usize {
@@ -91,6 +134,40 @@ pub fn coerce_binary_param(value: f64, default: f64) -> f64 {
     }
 }
 
+pub fn allowed_volume_usd_values() -> &'static [f64] {
+    &VOLUME_USD_ALLOWED_VALUES
+}
+
+pub fn is_volume_usd_parameter(param_name: &str) -> bool {
+    matches!(
+        param_name,
+        MIN_VOLUME_USD_PARAMETER | MAX_VOLUME_USD_PARAMETER
+    )
+}
+
+fn volume_usd_values_in_range(range: &ParameterRange) -> Vec<f64> {
+    VOLUME_USD_ALLOWED_VALUES
+        .iter()
+        .copied()
+        .filter(|value| *value >= range.min - STEP_EPSILON && *value <= range.max + STEP_EPSILON)
+        .collect()
+}
+
+fn nearest_volume_usd_value(value: f64, range: &ParameterRange) -> Option<f64> {
+    if !value.is_finite() {
+        return None;
+    }
+
+    volume_usd_values_in_range(range)
+        .into_iter()
+        .min_by(|a, b| {
+            (*a - value)
+                .abs()
+                .partial_cmp(&(*b - value).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
 /// Get a parameter rounded to an i32
 pub fn get_rounded_param(params: &HashMap<String, f64>, key: &str, default: i32) -> i32 {
     params
@@ -132,7 +209,12 @@ pub fn clamp_to_bounds(
 ) {
     for key in keys {
         if let (Some(range), Some(value)) = (parameter_ranges.get(key), params.get_mut(key)) {
-            *value = value.clamp(range.min, range.max);
+            let clamped = value.clamp(range.min, range.max);
+            *value = if is_volume_usd_parameter(key) {
+                nearest_volume_usd_value(clamped, range).unwrap_or(clamped)
+            } else {
+                clamped
+            };
         }
     }
 }
@@ -246,7 +328,24 @@ fn halton(index: usize, base: usize) -> f64 {
     result
 }
 
-fn quantize_sample_to_range(range: &ParameterRange, sample: f64) -> Option<f64> {
+fn quantize_volume_usd_sample_to_range(range: &ParameterRange, sample: f64) -> Option<f64> {
+    let values = volume_usd_values_in_range(range);
+    if values.is_empty() {
+        return None;
+    }
+
+    if values.len() == 1 {
+        return values.first().copied();
+    }
+
+    let max_index = values.len() - 1;
+    let index = (sample.clamp(0.0, 1.0) * max_index as f64)
+        .round()
+        .clamp(0.0, max_index as f64) as usize;
+    values.get(index).copied()
+}
+
+fn quantize_sample_to_range(param_name: &str, range: &ParameterRange, sample: f64) -> Option<f64> {
     if !range.min.is_finite()
         || !range.max.is_finite()
         || !range.step.is_finite()
@@ -257,6 +356,10 @@ fn quantize_sample_to_range(range: &ParameterRange, sample: f64) -> Option<f64> 
 
     if range.max < range.min {
         return None;
+    }
+
+    if is_volume_usd_parameter(param_name) {
+        return quantize_volume_usd_sample_to_range(range, sample);
     }
 
     let span = range.max - range.min;
@@ -289,67 +392,39 @@ pub fn build_multi_start_seeds(
     )
 }
 
-fn max_volume_usd_up_step(value: f64) -> f64 {
-    if value < TEN_MILLION - STEP_EPSILON {
-        MILLION
-    } else if value < HUNDRED_MILLION - STEP_EPSILON {
-        TEN_MILLION
-    } else if value < BILLION - STEP_EPSILON {
-        HUNDRED_MILLION
-    } else if value < TEN_BILLION - STEP_EPSILON {
-        BILLION
-    } else {
-        TEN_BILLION
-    }
-}
-
-fn max_volume_usd_down_step(value: f64) -> f64 {
-    if value <= TEN_MILLION + STEP_EPSILON {
-        MILLION
-    } else if value <= HUNDRED_MILLION + STEP_EPSILON {
-        TEN_MILLION
-    } else if value <= BILLION + STEP_EPSILON {
-        HUNDRED_MILLION
-    } else if value <= TEN_BILLION + STEP_EPSILON {
-        BILLION
-    } else {
-        TEN_BILLION
-    }
-}
-
-fn next_aligned_step_value(value: f64, step: f64) -> f64 {
-    ((value / step).floor() + 1.0) * step
-}
-
-fn previous_aligned_step_value(value: f64, step: f64) -> f64 {
-    ((value / step).ceil() - 1.0).max(0.0) * step
-}
-
-fn stepped_max_volume_usd_candidate(current_value: f64, multiplier: f64) -> Option<f64> {
+fn stepped_volume_usd_candidate(
+    current_value: f64,
+    multiplier: f64,
+    range: &ParameterRange,
+) -> Option<f64> {
     if !current_value.is_finite() || !multiplier.is_finite() || multiplier.abs() < STEP_EPSILON {
         return None;
     }
 
     let step_count = multiplier.abs().round();
     if (step_count - multiplier.abs()).abs() > STEP_EPSILON || step_count > 100.0 {
-        let step = if multiplier.is_sign_positive() {
-            max_volume_usd_up_step(current_value)
-        } else {
-            max_volume_usd_down_step(current_value)
-        };
-        return Some(current_value + multiplier * step);
+        return None;
     }
 
-    let mut value = current_value;
-    for _ in 0..step_count as usize {
-        value = if multiplier.is_sign_positive() {
-            next_aligned_step_value(value, max_volume_usd_up_step(value))
-        } else {
-            previous_aligned_step_value(value, max_volume_usd_down_step(value))
-        };
-    }
+    let values = volume_usd_values_in_range(range);
+    let current_index = values
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| {
+            (**a - current_value)
+                .abs()
+                .partial_cmp(&(**b - current_value).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(index, _)| index)?;
+    let step_count = step_count as usize;
+    let candidate_index = if multiplier.is_sign_positive() {
+        current_index.checked_add(step_count)?
+    } else {
+        current_index.checked_sub(step_count)?
+    };
 
-    Some(value)
+    values.get(candidate_index).copied()
 }
 
 pub fn build_multi_start_seeds_with_limit(
@@ -391,7 +466,7 @@ pub fn build_multi_start_seeds_with_limit(
             };
 
             let sample = halton(sample_index, prime_for_dimension(dimension));
-            if let Some(value) = quantize_sample_to_range(range, sample) {
+            if let Some(value) = quantize_sample_to_range(param_name, range, sample) {
                 candidate.insert(param_name.clone(), value);
             }
         }
@@ -510,8 +585,8 @@ pub fn add_single_parameter_neighbor_variations(
 
         for &multiplier in step_multipliers {
             let mut neighbor_params = current_params.clone();
-            let candidate = if param == MAX_VOLUME_USD_PARAMETER {
-                match stepped_max_volume_usd_candidate(current_value, multiplier) {
+            let candidate = if is_volume_usd_parameter(param) {
+                match stepped_volume_usd_candidate(current_value, multiplier, range) {
                     Some(value) => value,
                     None => continue,
                 }
@@ -644,17 +719,82 @@ mod tests {
     }
 
     #[test]
-    fn max_volume_usd_neighbors_use_piecewise_steps() {
-        let parameters_to_optimize = vec![MAX_VOLUME_USD_PARAMETER.to_string()];
-        let parameter_ranges = HashMap::from([(
+    fn build_multi_start_seeds_quantizes_volume_usd_to_allowed_values() {
+        let baseline = HashMap::from([
+            (MIN_VOLUME_USD_PARAMETER.to_string(), 450_000.0),
+            (MAX_VOLUME_USD_PARAMETER.to_string(), 51_000_000_000.0),
+        ]);
+        let parameters_to_optimize = vec![
+            MIN_VOLUME_USD_PARAMETER.to_string(),
             MAX_VOLUME_USD_PARAMETER.to_string(),
-            ParameterRange {
-                min: 150_000.0,
-                max: 51_000_000_000.0,
-                step: TEN_BILLION,
-            },
-        )]);
-        let current_params = HashMap::from([(MAX_VOLUME_USD_PARAMETER.to_string(), 50_000_000.0)]);
+        ];
+        let parameter_ranges = HashMap::from([
+            (
+                MIN_VOLUME_USD_PARAMETER.to_string(),
+                ParameterRange {
+                    min: 150_000.0,
+                    max: 51_000_000_000.0,
+                    step: 150_000.0,
+                },
+            ),
+            (
+                MAX_VOLUME_USD_PARAMETER.to_string(),
+                ParameterRange {
+                    min: 150_000.0,
+                    max: 51_000_000_000.0,
+                    step: 10_000_000_000.0,
+                },
+            ),
+        ]);
+
+        let seeds = build_multi_start_seeds_with_limit(
+            &baseline,
+            &parameters_to_optimize,
+            &parameter_ranges,
+            Some(6),
+        );
+
+        assert_eq!(seeds[0].get(MIN_VOLUME_USD_PARAMETER), Some(&500_000.0));
+        assert_eq!(
+            seeds[0].get(MAX_VOLUME_USD_PARAMETER),
+            Some(&51_000_000_000.0)
+        );
+        for seed in seeds {
+            let min_volume = seed.get(MIN_VOLUME_USD_PARAMETER).copied().unwrap();
+            let max_volume = seed.get(MAX_VOLUME_USD_PARAMETER).copied().unwrap();
+            assert!(allowed_volume_usd_values().contains(&min_volume));
+            assert!(allowed_volume_usd_values().contains(&max_volume));
+        }
+    }
+
+    #[test]
+    fn volume_usd_neighbors_use_fixed_ladder_for_min_and_max() {
+        let parameters_to_optimize = vec![
+            MIN_VOLUME_USD_PARAMETER.to_string(),
+            MAX_VOLUME_USD_PARAMETER.to_string(),
+        ];
+        let parameter_ranges = HashMap::from([
+            (
+                MIN_VOLUME_USD_PARAMETER.to_string(),
+                ParameterRange {
+                    min: 150_000.0,
+                    max: 51_000_000_000.0,
+                    step: 150_000.0,
+                },
+            ),
+            (
+                MAX_VOLUME_USD_PARAMETER.to_string(),
+                ParameterRange {
+                    min: 150_000.0,
+                    max: 51_000_000_000.0,
+                    step: 10_000_000_000.0,
+                },
+            ),
+        ]);
+        let current_params = HashMap::from([
+            (MIN_VOLUME_USD_PARAMETER.to_string(), 750_000.0),
+            (MAX_VOLUME_USD_PARAMETER.to_string(), 50_000_000.0),
+        ]);
         let mut seen_variations = HashSet::new();
         let mut neighbor_variations = Vec::new();
 
@@ -667,22 +807,37 @@ mod tests {
             &mut neighbor_variations,
         );
 
-        let mut observed_values: Vec<_> = neighbor_variations
+        let mut observed_min_values: Vec<_> = neighbor_variations
             .iter()
+            .filter(|params| {
+                params.get(MAX_VOLUME_USD_PARAMETER) == current_params.get(MAX_VOLUME_USD_PARAMETER)
+            })
+            .filter_map(|params| params.get(MIN_VOLUME_USD_PARAMETER).copied())
+            .collect();
+        observed_min_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mut observed_max_values: Vec<_> = neighbor_variations
+            .iter()
+            .filter(|params| {
+                params.get(MIN_VOLUME_USD_PARAMETER) == current_params.get(MIN_VOLUME_USD_PARAMETER)
+            })
             .filter_map(|params| params.get(MAX_VOLUME_USD_PARAMETER).copied())
             .collect();
-        observed_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        observed_max_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-        assert_eq!(
-            observed_values,
-            vec![40_000_000.0, 60_000_000.0],
-            "50M should move by 10M, not by the template's 10B step"
-        );
+        assert_eq!(observed_min_values, vec![500_000.0, 1_000_000.0]);
+        assert_eq!(observed_max_values, vec![40_000_000.0, 60_000_000.0]);
     }
 
     #[test]
-    fn max_volume_usd_neighbors_switch_steps_at_boundaries() {
+    fn volume_usd_neighbors_switch_ladder_sections_at_boundaries() {
+        let range = ParameterRange {
+            min: 150_000.0,
+            max: 51_000_000_000.0,
+            step: 10_000_000_000.0,
+        };
         let cases = [
+            (750_000.0, 500_000.0, 1_000_000.0),
             (10_000_000.0, 9_000_000.0, 20_000_000.0),
             (100_000_000.0, 90_000_000.0, 200_000_000.0),
             (1_000_000_000.0, 900_000_000.0, 2_000_000_000.0),
@@ -691,11 +846,11 @@ mod tests {
 
         for (current, expected_down, expected_up) in cases {
             assert_eq!(
-                stepped_max_volume_usd_candidate(current, -1.0),
+                stepped_volume_usd_candidate(current, -1.0, &range),
                 Some(expected_down)
             );
             assert_eq!(
-                stepped_max_volume_usd_candidate(current, 1.0),
+                stepped_volume_usd_candidate(current, 1.0, &range),
                 Some(expected_up)
             );
         }
