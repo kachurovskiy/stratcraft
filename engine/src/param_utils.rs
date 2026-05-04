@@ -4,6 +4,13 @@ use std::collections::{HashMap, HashSet};
 const MULTI_START_MIN_SEEDS: usize = 8;
 const MULTI_START_MAX_SEEDS: usize = 24;
 const MULTI_START_ATTEMPT_MULTIPLIER: usize = 12;
+const MAX_VOLUME_USD_PARAMETER: &str = "maxVolumeUsd";
+const MILLION: f64 = 1_000_000.0;
+const TEN_MILLION: f64 = 10_000_000.0;
+const HUNDRED_MILLION: f64 = 100_000_000.0;
+const BILLION: f64 = 1_000_000_000.0;
+const TEN_BILLION: f64 = 10_000_000_000.0;
+const STEP_EPSILON: f64 = 1e-9;
 
 /// Extract a parameter as usize with a default value
 pub fn get_param_usize(params: &HashMap<String, f64>, key: &str, default: usize) -> usize {
@@ -282,6 +289,69 @@ pub fn build_multi_start_seeds(
     )
 }
 
+fn max_volume_usd_up_step(value: f64) -> f64 {
+    if value < TEN_MILLION - STEP_EPSILON {
+        MILLION
+    } else if value < HUNDRED_MILLION - STEP_EPSILON {
+        TEN_MILLION
+    } else if value < BILLION - STEP_EPSILON {
+        HUNDRED_MILLION
+    } else if value < TEN_BILLION - STEP_EPSILON {
+        BILLION
+    } else {
+        TEN_BILLION
+    }
+}
+
+fn max_volume_usd_down_step(value: f64) -> f64 {
+    if value <= TEN_MILLION + STEP_EPSILON {
+        MILLION
+    } else if value <= HUNDRED_MILLION + STEP_EPSILON {
+        TEN_MILLION
+    } else if value <= BILLION + STEP_EPSILON {
+        HUNDRED_MILLION
+    } else if value <= TEN_BILLION + STEP_EPSILON {
+        BILLION
+    } else {
+        TEN_BILLION
+    }
+}
+
+fn next_aligned_step_value(value: f64, step: f64) -> f64 {
+    ((value / step).floor() + 1.0) * step
+}
+
+fn previous_aligned_step_value(value: f64, step: f64) -> f64 {
+    ((value / step).ceil() - 1.0).max(0.0) * step
+}
+
+fn stepped_max_volume_usd_candidate(current_value: f64, multiplier: f64) -> Option<f64> {
+    if !current_value.is_finite() || !multiplier.is_finite() || multiplier.abs() < STEP_EPSILON {
+        return None;
+    }
+
+    let step_count = multiplier.abs().round();
+    if (step_count - multiplier.abs()).abs() > STEP_EPSILON || step_count > 100.0 {
+        let step = if multiplier.is_sign_positive() {
+            max_volume_usd_up_step(current_value)
+        } else {
+            max_volume_usd_down_step(current_value)
+        };
+        return Some(current_value + multiplier * step);
+    }
+
+    let mut value = current_value;
+    for _ in 0..step_count as usize {
+        value = if multiplier.is_sign_positive() {
+            next_aligned_step_value(value, max_volume_usd_up_step(value))
+        } else {
+            previous_aligned_step_value(value, max_volume_usd_down_step(value))
+        };
+    }
+
+    Some(value)
+}
+
 pub fn build_multi_start_seeds_with_limit(
     baseline_params: &HashMap<String, f64>,
     parameters_to_optimize: &[String],
@@ -440,7 +510,14 @@ pub fn add_single_parameter_neighbor_variations(
 
         for &multiplier in step_multipliers {
             let mut neighbor_params = current_params.clone();
-            let candidate = current_value + multiplier * range.step;
+            let candidate = if param == MAX_VOLUME_USD_PARAMETER {
+                match stepped_max_volume_usd_candidate(current_value, multiplier) {
+                    Some(value) => value,
+                    None => continue,
+                }
+            } else {
+                current_value + multiplier * range.step
+            };
 
             if candidate < range.min - 1e-9 || candidate > range.max + 1e-9 {
                 continue;
@@ -563,6 +640,64 @@ mod tests {
                 "threshold must stay aligned to the configured step"
             );
             assert_eq!(fixed, 99.0, "non-optimized parameters should be preserved");
+        }
+    }
+
+    #[test]
+    fn max_volume_usd_neighbors_use_piecewise_steps() {
+        let parameters_to_optimize = vec![MAX_VOLUME_USD_PARAMETER.to_string()];
+        let parameter_ranges = HashMap::from([(
+            MAX_VOLUME_USD_PARAMETER.to_string(),
+            ParameterRange {
+                min: 150_000.0,
+                max: 51_000_000_000.0,
+                step: TEN_BILLION,
+            },
+        )]);
+        let current_params = HashMap::from([(MAX_VOLUME_USD_PARAMETER.to_string(), 50_000_000.0)]);
+        let mut seen_variations = HashSet::new();
+        let mut neighbor_variations = Vec::new();
+
+        add_single_parameter_neighbor_variations(
+            &parameters_to_optimize,
+            &parameter_ranges,
+            &[-1.0, 1.0],
+            &current_params,
+            &mut seen_variations,
+            &mut neighbor_variations,
+        );
+
+        let mut observed_values: Vec<_> = neighbor_variations
+            .iter()
+            .filter_map(|params| params.get(MAX_VOLUME_USD_PARAMETER).copied())
+            .collect();
+        observed_values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        assert_eq!(
+            observed_values,
+            vec![40_000_000.0, 60_000_000.0],
+            "50M should move by 10M, not by the template's 10B step"
+        );
+    }
+
+    #[test]
+    fn max_volume_usd_neighbors_switch_steps_at_boundaries() {
+        let cases = [
+            (10_000_000.0, 9_000_000.0, 20_000_000.0),
+            (100_000_000.0, 90_000_000.0, 200_000_000.0),
+            (1_000_000_000.0, 900_000_000.0, 2_000_000_000.0),
+            (10_000_000_000.0, 9_000_000_000.0, 20_000_000_000.0),
+        ];
+
+        for (current, expected_down, expected_up) in cases {
+            assert_eq!(
+                stepped_max_volume_usd_candidate(current, -1.0),
+                Some(expected_down)
+            );
+            assert_eq!(
+                stepped_max_volume_usd_candidate(current, 1.0),
+                Some(expected_up)
+            );
         }
     }
 }
