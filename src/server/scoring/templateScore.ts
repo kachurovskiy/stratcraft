@@ -213,14 +213,6 @@ const computeVerificationMultiplier = (
     (settings.verifyMaxMultiplier - settings.verifyMinMultiplier) * verificationScore;
 };
 
-export const computeTemplateScores = async (
-  snapshots: TemplateScoreSnapshot[],
-  options: TemplateScoreOptions
-): Promise<Map<string, number>> => {
-  const results = await computeTemplateScoreResults(snapshots, options);
-  return results.scores;
-};
-
 type TemplateScorePeriodBreakdown = {
   periodMonths: number;
   periodDays: number | null;
