@@ -473,11 +473,6 @@ export class SettingsRepo {
         defaults.paramScoring.neighborThreshold,
         { min: 0, clamp: true }
       ),
-      coreScoreQuantile: this.parseNumber(
-        this.rawSettings[SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE],
-        defaults.paramScoring.coreScoreQuantile,
-        { min: 0, max: 1, clamp: true }
-      ),
       pairwiseNeighborLimit: this.parseNumber(
         this.rawSettings[SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT],
         defaults.paramScoring.pairwiseNeighborLimit,

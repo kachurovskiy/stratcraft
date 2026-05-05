@@ -103,7 +103,6 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     minTrades: 20,
     drawdownLambda: 3.5,
     neighborThreshold: 0.15,
-    coreScoreQuantile: 0.6,
     pairwiseNeighborLimit: 1500,
     stabilityGamma: 2
   },

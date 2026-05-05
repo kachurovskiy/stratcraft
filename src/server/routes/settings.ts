@@ -754,15 +754,6 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     min: '0'
   },
   {
-    key: SETTING_KEYS.PARAM_SCORE_CORE_SCORE_QUANTILE,
-    group: 'param-scoring',
-    label: 'Param Score Core Quantile',
-    description: 'Quantile (0-1) used as the core-score cutoff for good neighbors. Increase to require higher core scores; decrease to be more lenient.',
-    placeholder: '0.6',
-    inputType: 'number',
-    min: '0'
-  },
-  {
     key: SETTING_KEYS.PARAM_SCORE_PAIRWISE_NEIGHBOR_LIMIT,
     group: 'param-scoring',
     label: 'Param Score Pairwise Neighbor Limit',

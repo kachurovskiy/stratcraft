@@ -154,7 +154,6 @@ export interface ParamScoringSettingsValue {
   minTrades: number;
   drawdownLambda: number;
   neighborThreshold: number;
-  coreScoreQuantile: number;
   pairwiseNeighborLimit: number;
   stabilityGamma: number;
 }

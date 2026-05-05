@@ -91,6 +91,7 @@ type ParameterScaleMap = Map<string, number>;
 
 const PERCENTILE_TOLERANCE = 1e-12;
 const CORE_SCORE_EPSILON = 1e-9;
+const STABILITY_TARGET_NEIGHBOR_COUNT = 4;
 
 const STABILITY_IGNORED_PARAMS = new Set(['initialCapital', 'maxLeverage', 'ticker']);
 
@@ -450,7 +451,8 @@ const applyPairwiseStabilityScores = (
     if (neighborCount > 0) {
       const neighborMean = neighborQualitySum / neighborCount;
       const normalized = hasQualityRange ? (neighborMean - qualityMin) / qualityRange : 1;
-      candidates[i].stabilityScore = clampNumber(normalized, 0, 1);
+      const densityFactor = computeNeighborDensityFactor(neighborCount);
+      candidates[i].stabilityScore = clampNumber(normalized * densityFactor, 0, 1);
     } else {
       candidates[i].stabilityScore = 0;
     }
@@ -510,12 +512,17 @@ const applyBucketedStabilityScores = (
     if (neighborCount > 0) {
       const neighborMean = neighborQualitySum / neighborCount;
       const normalized = hasQualityRange ? (neighborMean - qualityMin) / qualityRange : 1;
-      candidates[i].stabilityScore = clampNumber(normalized, 0, 1);
+      const densityFactor = computeNeighborDensityFactor(neighborCount);
+      candidates[i].stabilityScore = clampNumber(normalized * densityFactor, 0, 1);
     } else {
       candidates[i].stabilityScore = 0;
     }
   }
 };
+
+const computeNeighborDensityFactor = (neighborCount: number): number => (
+  clampNumber(neighborCount / STABILITY_TARGET_NEIGHBOR_COUNT, 0, 1)
+);
 
 const buildBucketKeysForCandidate = (
   parameters: Record<string, unknown>,
