@@ -418,10 +418,11 @@ fn stepped_volume_usd_candidate(
         })
         .map(|(index, _)| index)?;
     let step_count = step_count as usize;
+    let max_index = values.len().checked_sub(1)?;
     let candidate_index = if multiplier.is_sign_positive() {
-        current_index.checked_add(step_count)?
+        current_index.saturating_add(step_count).min(max_index)
     } else {
-        current_index.checked_sub(step_count)?
+        current_index.saturating_sub(step_count)
     };
 
     values.get(candidate_index).copied()
@@ -854,5 +855,31 @@ mod tests {
                 Some(expected_up)
             );
         }
+    }
+
+    #[test]
+    fn volume_usd_stepper_saturates_at_ladder_edges() {
+        let range = ParameterRange {
+            min: 150_000.0,
+            max: 51_000_000_000.0,
+            step: 10_000_000_000.0,
+        };
+
+        assert_eq!(
+            stepped_volume_usd_candidate(150_000.0, -1.0, &range),
+            Some(150_000.0)
+        );
+        assert_eq!(
+            stepped_volume_usd_candidate(300_000.0, -2.0, &range),
+            Some(150_000.0)
+        );
+        assert_eq!(
+            stepped_volume_usd_candidate(40_000_000_000.0, 2.0, &range),
+            Some(51_000_000_000.0)
+        );
+        assert_eq!(
+            stepped_volume_usd_candidate(51_000_000_000.0, 1.0, &range),
+            Some(51_000_000_000.0)
+        );
     }
 }
