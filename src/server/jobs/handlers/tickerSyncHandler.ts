@@ -147,7 +147,7 @@ function scheduleNextDailyTickerSync(
   if (!alreadyScheduled) {
     ctx.scheduler.scheduleJob('ticker-sync', {
       startAt: nextDailyRunAt,
-      description: 'Daily 2am London ticker sync pass',
+      description: 'Post-close ticker sync pass',
       metadata: { trigger: 'daily' }
     });
   }
@@ -192,8 +192,16 @@ async function triggerServerUpdateIfBehind(
 function getNextDailyTickerSyncUtc(): Date {
   const now = new Date();
   const next = new Date(now);
-  next.setUTCHours(3, 59, 0, 0);
-  next.setUTCDate(next.getUTCDate() + 1);
+
+  do {
+    next.setUTCDate(next.getUTCDate() + 1);
+    next.setUTCHours(3, 59, 0, 0);
+  } while (isSkippedTickerSyncDayUtc(next));
 
   return next;
+}
+
+function isSkippedTickerSyncDayUtc(runAt: Date): boolean {
+  const day = runAt.getUTCDay();
+  return day === 0 || day === 1;
 }

@@ -222,7 +222,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.AUTO_DAILY_CANDLE_SYNC_ENABLED,
     group: 'candle-sync',
     label: 'Automatic Daily Candle Sync Enabled',
-    description: 'Set to false to stop scheduling the daily 3am London ticker sync pipeline (true/false).',
+    description: 'Set to false to stop scheduling the early-morning ticker sync pipeline (skips Sunday and Monday).',
     placeholder: 'true',
     inputType: 'text',
     isBoolean: true

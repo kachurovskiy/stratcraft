@@ -94,6 +94,10 @@ function createHarness(options: HarnessOptions = {}) {
 }
 
 describe('createTickerSyncHandler', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   test('syncs tickers and starts corporate actions sync when finished', async () => {
     const { ctx, deps, scheduler } = createHarness();
 
@@ -134,6 +138,34 @@ describe('createTickerSyncHandler', () => {
         disabled: 0,
         corporateActionsSyncScheduled: false
       }
+    });
+  });
+
+  test('keeps Saturday ticker sync scheduled for Friday market data', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2025-01-03T04:05:00.000Z'));
+    const { ctx, deps, scheduler } = createHarness({ autoDailyCandleSyncEnabled: true });
+
+    const handler = createTickerSyncHandler(deps);
+    await handler(ctx);
+
+    expect(scheduler.scheduleJob).toHaveBeenCalledWith('ticker-sync', {
+      startAt: new Date('2025-01-04T03:59:00.000Z'),
+      description: 'Post-close ticker sync pass',
+      metadata: { trigger: 'daily' }
+    });
+  });
+
+  test('skips Sunday and Monday early morning ticker sync scheduling', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2025-01-04T04:05:00.000Z'));
+    const { ctx, deps, scheduler } = createHarness({ autoDailyCandleSyncEnabled: true });
+
+    const handler = createTickerSyncHandler(deps);
+    await handler(ctx);
+
+    expect(scheduler.scheduleJob).toHaveBeenCalledWith('ticker-sync', {
+      startAt: new Date('2025-01-07T03:59:00.000Z'),
+      description: 'Post-close ticker sync pass',
+      metadata: { trigger: 'daily' }
     });
   });
 });
