@@ -27,6 +27,13 @@ function createHarness() {
       },
       backtestCache: {
         getBacktestCacheTemplateCounts: jest.fn().mockResolvedValue([{ templateId: template.id, count: 1 }])
+      },
+      settings: {
+        value: {
+          optimizer: {
+            optimizerExploreEnabled: true
+          }
+        }
       }
     },
     engineCli: {
@@ -105,5 +112,27 @@ describe('createOptimizeHandler', () => {
       defaultRefreshed: 1,
       defaultRefreshSkipped: 0
     });
+  });
+
+  test('skips explore runs when optimizer explore is disabled', async () => {
+    const { ctx, deps } = createHarness();
+    deps.db.settings.value.optimizer.optimizerExploreEnabled = false;
+
+    const handler = createOptimizeHandler(deps);
+    const result = await handler(ctx);
+
+    expect(deps.engineCli.run.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+      'optimize',
+      'verify',
+      'balance'
+    ]);
+    expect(deps.db.backtestCache.getBacktestCacheTemplateCounts).not.toHaveBeenCalled();
+    expect(result?.meta).toMatchObject({
+      exploreEnabled: false,
+      exploreAttempted: 0,
+      explored: 0,
+      exploreFailures: []
+    });
+    expect(result?.message).toContain('Explore disabled');
   });
 });

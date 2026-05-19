@@ -360,6 +360,10 @@ export class SettingsRepo {
         this.rawSettings[SETTING_KEYS.ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED],
         defaults.optimizer.allowShortSellingOptimizationEnabled
       ),
+      optimizerExploreEnabled: this.parseBoolean(
+        this.rawSettings[SETTING_KEYS.OPTIMIZER_EXPLORE_ENABLED],
+        defaults.optimizer.optimizerExploreEnabled
+      ),
       lightgbmTrainingStartDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE],
         defaults.optimizer.lightgbmTrainingStartDate

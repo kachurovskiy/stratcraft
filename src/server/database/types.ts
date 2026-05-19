@@ -126,6 +126,7 @@ export interface OptimizerSettingsValue {
   autoOptimizationEnabled: boolean;
   autoOptimizationDelaySeconds: number;
   allowShortSellingOptimizationEnabled: boolean;
+  optimizerExploreEnabled: boolean;
   lightgbmTrainingStartDate: string;
   lightgbmTrainingEndDate: string;
   optimizerTrainingStartDate: string;

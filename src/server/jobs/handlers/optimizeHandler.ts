@@ -150,47 +150,56 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
         });
       }
 
-      const cacheCounts = await deps.db.backtestCache.getBacktestCacheTemplateCounts();
-      const cacheCountsByTemplate = new Map(cacheCounts.map((entry) => [entry.templateId, entry.count]));
-      const exploreTemplateIds = templateIds
-        .filter((templateId) => templateId !== 'buy_and_hold')
-        .sort((left, right) => {
-          const leftCount = cacheCountsByTemplate.get(left) ?? 0;
-          const rightCount = cacheCountsByTemplate.get(right) ?? 0;
-          if (leftCount !== rightCount) {
-            return leftCount - rightCount;
-          }
-          return left.localeCompare(right);
-        });
+      const exploreEnabled = deps.db.settings.value.optimizer.optimizerExploreEnabled;
+      if (exploreEnabled) {
+        const cacheCounts = await deps.db.backtestCache.getBacktestCacheTemplateCounts();
+        const cacheCountsByTemplate = new Map(cacheCounts.map((entry) => [entry.templateId, entry.count]));
+        const exploreTemplateIds = templateIds
+          .filter((templateId) => templateId !== 'buy_and_hold')
+          .sort((left, right) => {
+            const leftCount = cacheCountsByTemplate.get(left) ?? 0;
+            const rightCount = cacheCountsByTemplate.get(right) ?? 0;
+            if (leftCount !== rightCount) {
+              return leftCount - rightCount;
+            }
+            return left.localeCompare(right);
+          });
 
-      exploreAttempted = exploreTemplateIds.length;
-      if (exploreAttempted > 0) {
-        ctx.loggingService.info(
-          OPTIMIZE_SOURCE,
-          `Starting explore runs for ${exploreAttempted} template(s) ordered by fewest cached backtests`,
-          logMetadata
-        );
-      }
-
-      for (const templateId of exploreTemplateIds) {
-        if (ctx.abortSignal.aborted) {
-          throw new Error('Explore cancelled');
+        exploreAttempted = exploreTemplateIds.length;
+        if (exploreAttempted > 0) {
+          ctx.loggingService.info(
+            OPTIMIZE_SOURCE,
+            `Starting explore runs for ${exploreAttempted} template(s) ordered by fewest cached backtests`,
+            logMetadata
+          );
         }
-        ctx.loggingService.info(OPTIMIZE_SOURCE, `Exploring template ${templateId}`, logMetadata);
-        try {
-          await deps.engineCli.run('explore', [templateId], ctx.abortSignal, logMetadata);
-          exploredCount += 1;
-        } catch (error) {
+
+        for (const templateId of exploreTemplateIds) {
           if (ctx.abortSignal.aborted) {
             throw new Error('Explore cancelled');
           }
-          const message = error instanceof Error ? error.message : String(error);
-          exploreFailures.push(templateId);
-          ctx.loggingService.error(OPTIMIZE_SOURCE, `Explore run failed for ${templateId}`, {
-            ...logMetadata,
-            error: message
-          });
+          ctx.loggingService.info(OPTIMIZE_SOURCE, `Exploring template ${templateId}`, logMetadata);
+          try {
+            await deps.engineCli.run('explore', [templateId], ctx.abortSignal, logMetadata);
+            exploredCount += 1;
+          } catch (error) {
+            if (ctx.abortSignal.aborted) {
+              throw new Error('Explore cancelled');
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            exploreFailures.push(templateId);
+            ctx.loggingService.error(OPTIMIZE_SOURCE, `Explore run failed for ${templateId}`, {
+              ...logMetadata,
+              error: message
+            });
+          }
         }
+      } else {
+        ctx.loggingService.info(
+          OPTIMIZE_SOURCE,
+          'Skipping explore runs because optimizer explore is disabled',
+          logMetadata
+        );
       }
 
       const optimizeMessage = optimizedCount > 0 ? `Optimized ${optimizedCount} templates` : 'No optimization required';
@@ -200,9 +209,11 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
       const balanceMessage = balanceAttempted > 0
         ? `Balanced ${balancedCount}/${balanceAttempted} templates${balanceFailures.length ? ` (${balanceFailures.length} failed)` : ''}`
         : 'No templates balanced';
-      const exploreMessage = exploreAttempted > 0
-        ? `Explored ${exploredCount}/${exploreAttempted} templates${exploreFailures.length ? ` (${exploreFailures.length} failed)` : ''}`
-        : 'No templates explored';
+      const exploreMessage = exploreEnabled
+        ? exploreAttempted > 0
+          ? `Explored ${exploredCount}/${exploreAttempted} templates${exploreFailures.length ? ` (${exploreFailures.length} failed)` : ''}`
+          : 'No templates explored'
+        : 'Explore disabled';
 
       return {
         message: `${optimizeMessage}; ${verifyMessage}; ${balanceMessage}; ${exploreMessage}`,
@@ -218,6 +229,7 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
           defaultRefreshed: defaultRefreshCount,
           defaultRefreshSkipped: defaultRefreshUnchanged,
           defaultRefreshFailures,
+          exploreEnabled,
           exploreAttempted,
           explored: exploredCount,
           exploreFailures

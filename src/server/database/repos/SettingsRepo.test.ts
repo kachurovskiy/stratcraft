@@ -13,6 +13,7 @@ describe('SettingsRepo', () => {
         { setting_key: SETTING_KEYS.ALWAYS_VALIDATION_TICKERS, value: 'spy, qqq, tlt' },
         { setting_key: SETTING_KEYS.BACKTEST_ACTIVE_MONTHS, value: '[1, 6, 12]' },
         { setting_key: SETTING_KEYS.PARAM_SCORE_STABILITY_GAMMA, value: '3' },
+        { setting_key: SETTING_KEYS.OPTIMIZER_EXPLORE_ENABLED, value: 'false' },
         { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE, value: 'cagr' },
         { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2, value: 'sharpe' },
         { setting_key: SETTING_KEYS.LOCAL_OPTIMIZATION_STEP_MULTIPLIERS, value: '-2,-1,1,2' },
@@ -34,6 +35,7 @@ describe('SettingsRepo', () => {
     expect(repo.value.tickerRules.alwaysValidationTickers).toEqual(['SPY', 'QQQ', 'TLT']);
     expect(repo.value.engine.backtestActiveMonths).toEqual([1, 6, 12]);
     expect(repo.value.paramScoring.stabilityGamma).toBe(3);
+    expect(repo.value.optimizer.optimizerExploreEnabled).toBe(false);
     expect(repo.value.optimizer.optimizationObjective).toBe('CAGR');
     expect(repo.value.optimizer.optimizationObjective2).toBe('SHARPE');
     expect(repo.value.optimizer.localOptimizationStepMultipliers).toEqual([-2, -1, 1, 2]);

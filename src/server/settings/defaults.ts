@@ -76,6 +76,7 @@ export const createDefaultSettingsValue = (): SettingsValue => ({
     autoOptimizationEnabled: true,
     autoOptimizationDelaySeconds: 300,
     allowShortSellingOptimizationEnabled: false,
+    optimizerExploreEnabled: true,
     lightgbmTrainingStartDate: '2021-01-01',
     lightgbmTrainingEndDate: '2024-12-31',
     optimizerTrainingStartDate: '2021-01-01',

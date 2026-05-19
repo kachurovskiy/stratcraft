@@ -546,6 +546,15 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     isBoolean: true
   },
   {
+    key: SETTING_KEYS.OPTIMIZER_EXPLORE_ENABLED,
+    group: 'optimizer',
+    label: 'Optimizer Explore Enabled',
+    description: 'Set to false to skip explore runs after optimization, verification, and balance (true/false).',
+    placeholder: 'true',
+    inputType: 'text',
+    isBoolean: true
+  },
+  {
     key: SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE,
     group: 'optimizer',
     label: 'LightGBM Training Start Date',
@@ -947,7 +956,11 @@ router.get('/', requireAuth, requireAdmin, async (req: Request, res: Response) =
     const settingsMap = await req.db.settings.getSettingsByKeys(SETTING_KEY_LIST);
     const settings = SETTINGS_DEFINITIONS.map(definition => {
       const rawValue = settingsMap[definition.key];
-      const value = typeof rawValue === 'string' ? rawValue : '';
+      const value = typeof rawValue === 'string'
+        ? rawValue
+        : definition.isBoolean
+          ? definition.placeholder ?? ''
+          : '';
       const isChecked =
         definition.isBoolean && value.trim().toLowerCase() === 'true';
 
