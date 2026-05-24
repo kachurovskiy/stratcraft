@@ -3,10 +3,19 @@ import { JobHandlerDependencies } from '../types';
 
 const OPTIMIZE_SOURCE = 'optimize-job';
 
+function formatFailureSummary(label: string, failures: string[]): string | null {
+  if (failures.length === 0) {
+    return null;
+  }
+
+  return `${label} failed (${failures.length}): ${failures.join(', ')}`;
+}
+
 export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler {
   return async (ctx) => {
     const logMetadata = { jobId: ctx.job.id };
     let optimizedCount = 0;
+    const optimizeFailures: string[] = [];
     let verifyAttempted = 0;
     let verifiedCount = 0;
     const verifyFailures: string[] = [];
@@ -52,6 +61,7 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
             throw new Error('Optimization cancelled');
           }
           const message = error instanceof Error ? error.message : String(error);
+          optimizeFailures.push(template.id);
           ctx.loggingService.error(OPTIMIZE_SOURCE, `Optimization failed for ${template.id}`, {
             ...logMetadata,
             error: message
@@ -144,6 +154,7 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
           throw new Error('Default strategy refresh cancelled');
         }
         const message = error instanceof Error ? error.message : String(error);
+        defaultRefreshFailures.push(message);
         ctx.loggingService.error(OPTIMIZE_SOURCE, 'Default strategy refresh failed', {
           ...logMetadata,
           error: message
@@ -214,11 +225,23 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
           ? `Explored ${exploredCount}/${exploreAttempted} templates${exploreFailures.length ? ` (${exploreFailures.length} failed)` : ''}`
           : 'No templates explored'
         : 'Explore disabled';
+      const failureSummary = [
+        formatFailureSummary('optimization', optimizeFailures),
+        formatFailureSummary('verification', verifyFailures),
+        formatFailureSummary('balance', balanceFailures),
+        formatFailureSummary('default strategy refresh', defaultRefreshFailures),
+        formatFailureSummary('explore', exploreFailures)
+      ].filter((entry): entry is string => Boolean(entry));
+
+      if (failureSummary.length > 0) {
+        throw new Error(`Optimize pass incomplete: ${failureSummary.join('; ')}`);
+      }
 
       return {
         message: `${optimizeMessage}; ${verifyMessage}; ${balanceMessage}; ${exploreMessage}`,
         meta: {
           optimized: optimizedCount,
+          optimizeFailures,
           verifyAttempted,
           verified: verifiedCount,
           verifyFailures,

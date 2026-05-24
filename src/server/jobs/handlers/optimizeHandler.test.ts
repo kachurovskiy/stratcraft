@@ -103,15 +103,28 @@ describe('createOptimizeHandler', () => {
     });
 
     const handler = createOptimizeHandler(deps);
-    const result = await handler(ctx);
+    await expect(handler(ctx)).rejects.toThrow(
+      `Optimize pass incomplete: verification failed (1): ${template.id}`
+    );
 
     expect(deps.strategyRegistry.refreshOutdatedDefaultStrategies).toHaveBeenCalledTimes(1);
-    expect(result?.meta).toMatchObject({
-      verifyFailures: [template.id],
-      defaultRefreshAttempted: 1,
-      defaultRefreshed: 1,
-      defaultRefreshSkipped: 0
+  });
+
+  test('fails incomplete balance pass so the scheduler can retry', async () => {
+    const { ctx, deps, template } = createHarness();
+    deps.engineCli.run.mockImplementation((command: string) => {
+      if (command === 'balance') {
+        return Promise.reject(new Error('connection closed'));
+      }
+      return Promise.resolve();
     });
+
+    const handler = createOptimizeHandler(deps);
+    await expect(handler(ctx)).rejects.toThrow(
+      `Optimize pass incomplete: balance failed (1): ${template.id}`
+    );
+
+    expect(deps.strategyRegistry.refreshOutdatedDefaultStrategies).toHaveBeenCalledTimes(1);
   });
 
   test('skips explore runs when optimizer explore is disabled', async () => {
