@@ -95,7 +95,7 @@ export type BacktestComparisonView = {
 const SAMPLE_DAY_LIMIT = 5;
 const ENTRY_STATUS = new Set<Trade['status']>(['active', 'closed']);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const SIGNAL_SKIP_LOOKBACK_DAYS = 3;
+const SIGNAL_SKIP_LOOKBACK_DAYS = 4;
 
 export const BACKTEST_SCOPE_META: Record<BacktestScope, { label: string; badge: string }> = {
   validation: { label: 'Validation tickers', badge: 'bg-warning text-dark' },
@@ -689,8 +689,7 @@ const buildSignalSkipIndex = (skips: AccountSignalSkipRow[]): Map<string, Accoun
 
 const buildSignalSkipDateKeys = (tradeDate: Date): string[] => {
   const keys = [toDateKey(tradeDate)];
-  const maxOffsetDays = tradeDate.getUTCDay() === 1 ? SIGNAL_SKIP_LOOKBACK_DAYS : 1;
-  for (let offset = 1; offset <= maxOffsetDays; offset += 1) {
+  for (let offset = 1; offset <= SIGNAL_SKIP_LOOKBACK_DAYS; offset += 1) {
     keys.push(toDateKey(new Date(tradeDate.getTime() - ONE_DAY_MS * offset)));
   }
   return keys;
