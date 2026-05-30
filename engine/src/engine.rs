@@ -2983,7 +2983,9 @@ impl Engine {
 mod tests {
     use super::*;
     use crate::config::LocalOptimizationObjective;
-    use crate::models::{AccountOperationType, SignalAction, StrategySignal, Trade, TradeStatus};
+    use crate::models::{
+        AccountOperationType, GeneratedSignal, SignalAction, StrategySignal, Trade, TradeStatus,
+    };
     use crate::trading_rules::PRICE_EPSILON;
     use chrono::{Duration, Utc};
     use std::collections::{HashMap, HashSet};
@@ -3271,6 +3273,39 @@ mod tests {
                 .abs()
                 < 1e-9
         );
+    }
+
+    #[test]
+    fn test_provided_signals_use_pre_window_history_for_entry_filters() {
+        let engine = Engine::new(test_runtime_settings());
+        let ticker = "HIST".to_string();
+        let (candles, all_dates, history_offset) =
+            generate_candles_with_history(&ticker, vec![100.0, 101.0, 102.0]);
+        let unique_dates = all_dates[history_offset..].to_vec();
+        let signals = vec![GeneratedSignal {
+            date: unique_dates[0],
+            ticker: ticker.clone(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+
+        let run = engine
+            .backtest(
+                None,
+                "provided_signal_strategy",
+                std::slice::from_ref(&ticker),
+                &candles,
+                &unique_dates,
+                Some(&signals),
+                Some(unique_dates[0]),
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(run.result.start_date, unique_dates[0]);
+        assert_eq!(run.result.trades.len(), 1);
+        assert_eq!(run.result.trades[0].date, unique_dates[1]);
+        assert!(run.signal_skips.is_empty());
     }
 
     #[test]

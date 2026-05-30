@@ -156,16 +156,10 @@ impl<'a> ActiveStrategyBacktester<'a> {
                     .filter(|&date| *date >= forced_start)
                     .cloned()
                     .collect();
-                let filtered_candles: Vec<_> = self
-                    .data
-                    .all_candles()
-                    .iter()
-                    .filter(|&c| c.date >= forced_start)
-                    .cloned()
-                    .collect();
                 (
                     Arc::new(filtered_dates),
-                    Arc::new(filtered_candles),
+                    // Keep pre-window candles available for entry-volume, sizing, and stop lookbacks.
+                    self.data.all_candles_arc(),
                     adjusted_start,
                 )
             } else {
