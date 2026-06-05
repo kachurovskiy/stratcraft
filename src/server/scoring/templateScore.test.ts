@@ -70,4 +70,32 @@ describe('templateScore settings integration', () => {
 
     expect(relaxed.scores.get('template-1') ?? 0).toBeGreaterThan(baseline.scores.get('template-1') ?? 0);
   });
+
+  test('ignores all-ticker snapshots when pairing training and validation periods', async () => {
+    const settings = createDefaultSettingsValue();
+    const result = await computeTemplateScores([
+      {
+        templateId: 'template-1',
+        strategyId: 'strategy-1',
+        periodMonths: 12,
+        periodDays: 365,
+        tickerScope: 'validation',
+        performance: createPerformance({ cagr: 0.2, totalTrades: 12 }),
+        createdAt: new Date('2026-01-01T00:00:00.000Z')
+      },
+      {
+        templateId: 'template-1',
+        strategyId: 'strategy-1',
+        periodMonths: 12,
+        periodDays: 365,
+        tickerScope: 'all',
+        performance: createPerformance({ cagr: 0.3, totalTrades: 12 }),
+        createdAt: new Date('2026-01-01T00:00:00.000Z')
+      }
+    ], {
+      settingsValue: settings.templateScoring
+    });
+
+    expect(result.scores.has('template-1')).toBe(false);
+  });
 });

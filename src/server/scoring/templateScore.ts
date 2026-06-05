@@ -249,6 +249,9 @@ export const computeTemplateScores = async (
     if (!snapshot.performance || snapshot.periodMonths <= 0) {
       return;
     }
+    if (snapshot.tickerScope !== 'training' && snapshot.tickerScope !== 'validation') {
+      return;
+    }
     const strategyId = snapshot.strategyId;
     let entry = strategyMap.get(strategyId);
     if (!entry) {

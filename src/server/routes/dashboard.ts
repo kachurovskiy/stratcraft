@@ -7,6 +7,13 @@ import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel } from './utils'
 const router = express.Router();
 
 const DEFAULT_SIGNAL_LOOKBACK_DAYS = 7;
+type DashboardBacktestScope = Exclude<BacktestScope, 'live'>;
+
+const DASHBOARD_BACKTEST_SCOPE_OPTIONS: Array<{ key: DashboardBacktestScope; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'validation', label: 'Validation' },
+  { key: 'training', label: 'Training' }
+];
 
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAuth(req, res, next);
@@ -28,7 +35,9 @@ const getSnapshotBadgeMeta = (snapshot?: AccountSnapshot) => {
 
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
-    const availableBacktestPeriods = await req.db.backtestResults.getAvailableBacktestPeriods();
+    const availableBacktestScopes = await req.db.backtestResults.getAvailableBacktestScopes();
+    const selectedBacktestScope = normalizeDashboardBacktestScope(req, availableBacktestScopes);
+    const availableBacktestPeriods = await req.db.backtestResults.getAvailableBacktestPeriods(selectedBacktestScope);
     const {
       selectedKey: selectedBacktestPeriod,
       selectedMonths: selectedBacktestPeriodMonths
@@ -40,16 +49,16 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       strategiesWithPerformance,
       rawAccounts
     ] = await Promise.all([
-      fetchStrategiesWithPerformance(req, userId, selectedBacktestPeriodMonths ?? undefined, 'validation'),
+      fetchStrategiesWithPerformance(req, userId, selectedBacktestPeriodMonths ?? undefined, selectedBacktestScope),
       req.db.accounts.getAccountsForUser(userId)
     ]);
     const backtestInitialCapital = req.db.settings.value.engine.backtestInitialCapital;
 
     const strategies = strategiesWithPerformance.filter((strategy: Strategy) => {
       const performance = strategy.performance;
-      const isValidationScope = performance?.tickerScope === 'validation';
+      const isSelectedScope = performance?.tickerScope === selectedBacktestScope;
       const hasBacktest = Boolean(performance?.backtestStartDate);
-      return isValidationScope && hasBacktest;
+      return isSelectedScope && hasBacktest;
     });
     const hasStrategiesAwaitingBacktests = strategiesWithPerformance.length > 0 && strategies.length === 0;
 
@@ -80,13 +89,19 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         strategyCalmarMedianMap,
         strategyCagrByPeriod
       ] = await Promise.all([
-        req.db.backtestResults.getStrategySharpeMedians(strategyIds),
-        req.db.backtestResults.getStrategyCalmarMedians(strategyIds),
-        req.db.backtestResults.getStrategyCagrByPeriod(strategyIds, 'validation')
+        req.db.backtestResults.getStrategySharpeMedians(strategyIds, selectedBacktestScope),
+        req.db.backtestResults.getStrategyCalmarMedians(strategyIds, selectedBacktestScope),
+        req.db.backtestResults.getStrategyCagrByPeriod(strategyIds, selectedBacktestScope)
       ]);
     }
 
-    const backtestPeriodOptions = buildBacktestPeriodOptions(req, availableBacktestPeriods, selectedBacktestPeriod);
+    const backtestScopeOptions = buildBacktestScopeOptions(req, selectedBacktestScope, availableBacktestScopes);
+    const backtestPeriodOptions = buildBacktestPeriodOptions(
+      req,
+      availableBacktestPeriods,
+      selectedBacktestPeriod,
+      selectedBacktestScope
+    );
 
     const snapshotMap: Record<string, AccountSnapshot> = await req.accountDataService.fetchSnapshots(rawAccounts);
 
@@ -138,7 +153,9 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       user: req.user,
       strategies: sortedStrategies.map(annotateStrategy),
       accounts,
+      backtestScopeOptions,
       backtestPeriodOptions,
+      selectedBacktestScope,
       selectedBacktestPeriod,
       selectedBacktestPeriodMonths,
       hasStrategiesAwaitingBacktests,
@@ -200,11 +217,31 @@ function normalizeBacktestPeriod(
     return { selectedKey: null, selectedMonths: null };
   }
 
-  const raw = Array.isArray(req.query.backtestPeriod) ? req.query.backtestPeriod[0] : req.query.backtestPeriod;
+  const raw = getDashboardQueryString(req, 'backtestPeriod');
   const parsed = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
   const validMonths = Number.isFinite(parsed) && availablePeriods.includes(parsed) ? parsed : availablePeriods[0];
   const selectedKey = String(validMonths);
   return { selectedKey, selectedMonths: validMonths };
+}
+
+function getDashboardQueryString(req: Request, key: string): string | undefined {
+  const value = req.query[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function normalizeDashboardBacktestScope(
+  req: Request,
+  availableScopes: DashboardBacktestScope[]
+): DashboardBacktestScope {
+  const raw = getDashboardQueryString(req, 'backtestScope');
+  const available = new Set<DashboardBacktestScope>(availableScopes);
+  if ((raw === 'training' || raw === 'validation' || raw === 'all') && available.has(raw)) {
+    return raw;
+  }
+  if (available.has('all')) {
+    return 'all';
+  }
+  return availableScopes[0] ?? 'all';
 }
 
 async function fetchStrategiesWithPerformance(
@@ -230,32 +267,76 @@ async function fetchStrategiesWithPerformance(
   );
 }
 
-function buildBacktestPeriodOptions(req: Request, availablePeriods: number[], selectedKey: string | null) {
+function buildDashboardQueryParams(req: Request, excludedKeys: string[]): URLSearchParams {
+  const excluded = new Set(excludedKeys);
+  const baseParams = new URLSearchParams();
+  Object.entries(req.query).forEach(([key, value]) => {
+    if (excluded.has(key)) return;
+    if (Array.isArray(value)) {
+      value.forEach(v => {
+        if (typeof v === 'string') {
+          baseParams.append(key, v);
+        }
+      });
+    } else if (typeof value === 'string') {
+      baseParams.append(key, value);
+    }
+  });
+  return baseParams;
+}
+
+function setDashboardBacktestScopeParam(params: URLSearchParams, scope: DashboardBacktestScope) {
+  if (scope !== 'all') {
+    params.set('backtestScope', scope);
+  }
+}
+
+function buildDashboardUrl(params: URLSearchParams): string {
+  const queryString = params.toString();
+  return queryString ? `/dashboard?${queryString}` : '/dashboard';
+}
+
+function buildBacktestScopeOptions(
+  req: Request,
+  selectedScope: DashboardBacktestScope,
+  availableScopes: DashboardBacktestScope[]
+) {
+  const baseParams = buildDashboardQueryParams(req, ['backtestScope', 'backtestPeriod']);
+  const available = new Set<DashboardBacktestScope>(availableScopes);
+
+  return DASHBOARD_BACKTEST_SCOPE_OPTIONS
+    .filter(option => available.has(option.key))
+    .map(option => {
+      const params = new URLSearchParams(baseParams.toString());
+      setDashboardBacktestScopeParam(params, option.key);
+
+      return {
+        ...option,
+        href: buildDashboardUrl(params),
+        active: selectedScope === option.key
+      };
+    });
+}
+
+function buildBacktestPeriodOptions(
+  req: Request,
+  availablePeriods: number[],
+  selectedKey: string | null,
+  selectedScope: DashboardBacktestScope
+) {
   if (availablePeriods.length === 0) {
     return [];
   }
-  const baseParams = new URLSearchParams();
-  Object.entries(req.query).forEach(([key, value]) => {
-    if (key === 'backtestPeriod') return;
-    if (Array.isArray(value)) {
-      value.forEach(v => {
-        if (v !== undefined && v !== null) {
-          baseParams.append(key, String(v));
-        }
-      });
-    } else if (value !== undefined && value !== null) {
-      baseParams.append(key, String(value));
-    }
-  });
+  const baseParams = buildDashboardQueryParams(req, ['backtestPeriod', 'backtestScope']);
+  setDashboardBacktestScopeParam(baseParams, selectedScope);
 
   return availablePeriods.map(periodMonths => {
     const params = new URLSearchParams(baseParams.toString());
     params.set('backtestPeriod', String(periodMonths));
-    const queryString = params.toString();
     return {
       key: String(periodMonths),
       label: formatBacktestPeriodLabel(periodMonths),
-      href: queryString ? `/dashboard?${queryString}` : '/dashboard',
+      href: buildDashboardUrl(params),
       active: selectedKey === String(periodMonths)
     };
   });

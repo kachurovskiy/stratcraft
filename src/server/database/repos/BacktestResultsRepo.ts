@@ -81,6 +81,10 @@ type AvailablePeriodRow = QueryResultRow & {
   period: number | null;
 };
 
+type AvailableScopeRow = QueryResultRow & {
+  scope: string | null;
+};
+
 type TickerBacktestPerformanceDbRow = QueryResultRow & {
   strategy_id: string;
   strategy_name: string;
@@ -207,7 +211,7 @@ export class BacktestResultsRepo {
 
   private buildPerformanceScopeOrder(tickerScope?: BacktestScope): (BacktestScope | null)[] {
     if (tickerScope === 'all') {
-      return [null];
+      return ['all'];
     }
     if (tickerScope === 'live') {
       return ['live'];
@@ -230,7 +234,7 @@ export class BacktestResultsRepo {
     let scopeFilterClause = '';
     let periodFilterClause = '';
 
-    if (tickerScope && tickerScope !== 'all') {
+    if (tickerScope) {
       scopeFilterClause = ' AND ticker_scope = ?';
       params.push(tickerScope);
     }
@@ -350,7 +354,7 @@ export class BacktestResultsRepo {
         INNER JOIN strategies s ON s.id = br.strategy_id
         WHERE s.template_id = ?
           AND (s.user_id = ? OR s.user_id IS NULL)
-          AND COALESCE(br.ticker_scope, 'training') != 'live'
+          AND COALESCE(br.ticker_scope, 'training') IN ('training', 'validation')
         ORDER BY br.created_at DESC
         ${limitClause}
       `,
@@ -600,7 +604,10 @@ export class BacktestResultsRepo {
     }
   }
 
-  async getStrategySharpeMedians(strategyIds: string[]): Promise<Record<string, number | null>> {
+  async getStrategySharpeMedians(
+    strategyIds: string[],
+    tickerScope: BacktestScope = 'validation'
+  ): Promise<Record<string, number | null>> {
     if (!Array.isArray(strategyIds) || strategyIds.length === 0) {
       return {};
     }
@@ -614,7 +621,7 @@ export class BacktestResultsRepo {
             (NULLIF(br.performance, '')::jsonb ->> 'totalTrades')::INTEGER AS total_trades
           FROM backtest_results br
           WHERE br.strategy_id = ANY(?::text[])
-            AND COALESCE(br.ticker_scope, 'training') = 'validation'
+            AND COALESCE(br.ticker_scope, 'training') = ?
         )
         SELECT
           strategy_id,
@@ -624,7 +631,7 @@ export class BacktestResultsRepo {
           AND total_trades > 0
         GROUP BY strategy_id
       `,
-      [strategyIds]
+      [strategyIds, tickerScope]
     );
 
     return rows.reduce((acc, row) => {
@@ -636,7 +643,10 @@ export class BacktestResultsRepo {
     }, {} as Record<string, number | null>);
   }
 
-  async getStrategyCalmarMedians(strategyIds: string[]): Promise<Record<string, number | null>> {
+  async getStrategyCalmarMedians(
+    strategyIds: string[],
+    tickerScope: BacktestScope = 'validation'
+  ): Promise<Record<string, number | null>> {
     if (!Array.isArray(strategyIds) || strategyIds.length === 0) {
       return {};
     }
@@ -650,7 +660,7 @@ export class BacktestResultsRepo {
             (NULLIF(br.performance, '')::jsonb ->> 'totalTrades')::INTEGER AS total_trades
           FROM backtest_results br
           WHERE br.strategy_id = ANY(?::text[])
-            AND COALESCE(br.ticker_scope, 'training') = 'validation'
+            AND COALESCE(br.ticker_scope, 'training') = ?
         )
         SELECT
           strategy_id,
@@ -660,7 +670,7 @@ export class BacktestResultsRepo {
           AND total_trades > 0
         GROUP BY strategy_id
       `,
-      [strategyIds]
+      [strategyIds, tickerScope]
     );
 
     return rows.reduce((acc, row) => {
@@ -731,7 +741,7 @@ export class BacktestResultsRepo {
     }
   }
 
-  async getAvailableBacktestPeriods(): Promise<number[]> {
+  async getAvailableBacktestPeriods(tickerScope: BacktestScope = 'validation'): Promise<number[]> {
     try {
       const rows = await this.db.all<AvailablePeriodRow>(
         `
@@ -740,16 +750,45 @@ export class BacktestResultsRepo {
           INNER JOIN strategies s ON s.id = br.strategy_id
           WHERE br.period_months IS NOT NULL
             AND br.period_months > 0
-            AND COALESCE(br.ticker_scope, 'training') = 'validation'
+            AND COALESCE(br.ticker_scope, 'training') = ?
             AND COALESCE((NULLIF(br.performance, '')::jsonb ->> 'totalTrades')::INTEGER, 0) > 0
           ORDER BY period_months DESC
-        `
+        `,
+        [tickerScope]
       );
       return rows
         .map((row) => toNullableInteger(row.period))
         .filter((period): period is number => period !== null && period > 0);
     } catch (error) {
       console.error('Error retrieving available backtest periods:', error);
+      return [];
+    }
+  }
+
+  async getAvailableBacktestScopes(): Promise<Array<Exclude<BacktestScope, 'live'>>> {
+    try {
+      const rows = await this.db.all<AvailableScopeRow>(
+        `
+          SELECT COALESCE(br.ticker_scope, 'training') AS scope
+          FROM backtest_results br
+          WHERE COALESCE(br.ticker_scope, 'training') IN ('all', 'validation', 'training')
+          GROUP BY COALESCE(br.ticker_scope, 'training')
+          ORDER BY CASE COALESCE(br.ticker_scope, 'training')
+            WHEN 'all' THEN 0
+            WHEN 'validation' THEN 1
+            WHEN 'training' THEN 2
+            ELSE 3
+          END
+        `
+      );
+
+      return rows
+        .map((row) => this.toBacktestScope(row.scope))
+        .filter((scope): scope is Exclude<BacktestScope, 'live'> =>
+          scope === 'all' || scope === 'validation' || scope === 'training'
+        );
+    } catch (error) {
+      console.error('Error retrieving available backtest scopes:', error);
       return [];
     }
   }

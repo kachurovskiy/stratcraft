@@ -94,7 +94,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         if (!Number.isFinite(periodMonths) || periodMonths <= 0) {
           return;
         }
-        const tickerScope = result.tickerScope === 'validation' ? 'validation' : 'training';
+        const tickerScope = result.tickerScope;
+        if (tickerScope !== 'training' && tickerScope !== 'validation') {
+          return;
+        }
         const key = `${strategyId}:${periodMonths}:${tickerScope}`;
         if (seen.has(key)) {
           return;

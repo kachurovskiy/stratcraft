@@ -3,7 +3,7 @@ import { JobHandler } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
 
 const BACKTEST_SOURCE = 'backtest-job';
-const BACKTEST_SCOPES: BacktestScope[] = ['validation', 'training'];
+const BACKTEST_SCOPES: BacktestScope[] = ['validation', 'training', 'all'];
 
 export function createBacktestHandler(deps: JobHandlerDependencies): JobHandler {
   return async (ctx) => {

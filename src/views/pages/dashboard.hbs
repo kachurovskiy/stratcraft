@@ -40,13 +40,15 @@
         white-space: nowrap;
     }
 
-    .backtest-period-toggle {
+    .backtest-period-toggle,
+    .backtest-scope-toggle {
         flex-wrap: nowrap;
         gap: 0;
         overflow-x: auto;
     }
 
-    .backtest-period-toggle .btn {
+    .backtest-period-toggle .btn,
+    .backtest-scope-toggle .btn {
         margin: 0;
     }
 
@@ -120,13 +122,15 @@
             margin-top: 0.25rem;
         }
 
-        .backtest-period-toggle {
+        .backtest-period-toggle,
+        .backtest-scope-toggle {
             gap: 6px;
             flex-direction: row !important;
             width: auto;
         }
 
-        .backtest-period-toggle .btn {
+        .backtest-period-toggle .btn,
+        .backtest-scope-toggle .btn {
             margin-bottom: 0 !important;
             border-radius: 0;
             white-space: nowrap;
@@ -405,9 +409,21 @@
             <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
                 <div>
                     <h5 class="card-title mb-0">Strategy Performance Overview</h5>
-                    <small class="text-muted">Strategies default to highest CAGR first; use the headers to re-sort.</small>
+                    <small class="text-muted">Select ticker scope and window; strategies default to highest CAGR first.</small>
                 </div>
-                <div class="d-flex flex-row flex-md-row align-items-md-center gap-2">
+                <div class="d-flex flex-wrap flex-md-row justify-content-md-end align-items-md-center gap-2">
+                    {{#if backtestScopeOptions.length}}
+                    <div class="btn-group btn-group-sm backtest-scope-toggle" role="group" aria-label="Select ticker scope">
+                        {{#each backtestScopeOptions}}
+                        <a href="{{href}}"
+                           class="btn {{#if active}}btn-primary active{{else}}btn-outline-primary{{/if}}"
+                           role="button"
+                           {{#if active}}aria-current="page"{{/if}}>
+                            {{label}}
+                        </a>
+                        {{/each}}
+                    </div>
+                    {{/if}}
                     <div class="btn-group btn-group-sm backtest-period-toggle" role="group" aria-label="Select backtest period">
                         {{#each backtestPeriodOptions}}
                         <a href="{{href}}"
@@ -450,10 +466,10 @@
                                 <th scope="col" class="border-0 text-end sortable" data-sort="calmarRatio">
                                     Calmar Ratio <i class="fas fa-sort ms-1"></i>
                                 </th>
-                                <th scope="col" class="border-0 text-end sortable" data-sort="medianCalmar" title="Median Calmar ratio across all backtests with non-zero trades">
+                                <th scope="col" class="border-0 text-end sortable" data-sort="medianCalmar" title="Median Calmar ratio across selected-scope backtests with non-zero trades">
                                     Median Calmar <i class="fas fa-sort ms-1"></i>
                                 </th>
-                                <th scope="col" class="border-0 text-end sortable" data-sort="medianSharpe" title="Median Sharpe across all backtests with non-zero trades">
+                                <th scope="col" class="border-0 text-end sortable" data-sort="medianSharpe" title="Median Sharpe across selected-scope backtests with non-zero trades">
                                     Median Sharpe <i class="fas fa-sort ms-1"></i>
                                 </th>
                                 <th scope="col" class="border-0 text-end sortable" data-sort="maxDrawdown">
@@ -536,14 +552,14 @@
                                 </td>
                                 <td class="border-0 text-end" data-label="Median Calmar">
                                     {{#if (defined medianCalmarRatio)}}
-                                        <span class="fw-bold" title="Median Calmar ratio across all recorded backtests with trades">{{formatPrice medianCalmarRatio}}</span>
+                                        <span class="fw-bold" title="Median Calmar ratio across selected-scope recorded backtests with trades">{{formatPrice medianCalmarRatio}}</span>
                                     {{else}}
                                         <span class="text-muted">N/A</span>
                                     {{/if}}
                                 </td>
                                 <td class="border-0 text-end" data-label="Median Sharpe">
                                     {{#if (defined medianSharpeRatio)}}
-                                        <span class="fw-bold" title="Median Sharpe across all recorded backtests with trades">{{formatPrice medianSharpeRatio}}</span>
+                                        <span class="fw-bold" title="Median Sharpe across selected-scope recorded backtests with trades">{{formatPrice medianSharpeRatio}}</span>
                                     {{else}}
                                         <span class="text-muted">N/A</span>
                                     {{/if}}
@@ -581,7 +597,7 @@
                 <div class="text-center py-5">
                     {{#if hasStrategiesAwaitingBacktests}}
                     <h6 class="text-muted">Strategies are set up, backtests are still running</h6>
-                    <p class="text-muted small">Default strategies already exist. Validation backtests can take a little time to appear here.</p>
+                    <p class="text-muted small">Default strategies already exist. Selected backtests can take a little time to appear here.</p>
                     {{else}}
                     <h6 class="text-muted">No strategies to display</h6>
                     <p class="text-muted small">Create a strategy to see it here.</p>
@@ -604,7 +620,7 @@
             <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
                 <div>
                     <h5 class="card-title mb-0">CAGR by Backtest Period</h5>
-                    <small class="text-muted">Validation backtests plotted per window for each strategy.</small>
+                    <small class="text-muted">Selected ticker-scope backtests plotted per window for each strategy.</small>
                 </div>
                 <div class="text-muted small d-flex align-items-center gap-2">
                     <i class="fas fa-chart-line"></i>
