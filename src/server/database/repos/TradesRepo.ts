@@ -63,6 +63,9 @@ type AccountTradeCorporateActionScopeRow = QueryResultRow & {
   first_trade_date: Date | string | null;
   tickers: string[] | null;
 };
+type AppliedCorporateActionsRow = QueryResultRow & {
+  applied_corporate_actions: unknown;
+};
 
 export class TradesRepo {
   constructor(private readonly db: DbClient) {}
@@ -123,6 +126,39 @@ export class TradesRepo {
         .filter((item): item is TradeChange => item !== null);
     } catch (error) {
       console.warn('Failed to parse trade changes JSON', error);
+      return [];
+    }
+  }
+
+  private parseAppliedCorporateActionIds(raw: unknown): string[] {
+    if (raw === null || raw === undefined) {
+      return [];
+    }
+
+    let jsonText: string;
+    if (typeof raw === 'string') {
+      jsonText = raw;
+    } else if (raw instanceof Buffer) {
+      jsonText = raw.toString('utf8');
+    } else {
+      jsonText = String(raw);
+    }
+
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return Array.from(
+        new Set(
+          parsed
+            .map((value: unknown) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0)
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to parse applied corporate actions JSON', error);
       return [];
     }
   }
@@ -780,6 +816,17 @@ export class TradesRepo {
     }
 
     return this.mapTradeRow(row);
+  }
+
+  async getAppliedCorporateActionIds(tradeId: string, userId: number): Promise<string[]> {
+    const row = await this.db.get<AppliedCorporateActionsRow>(
+      `SELECT applied_corporate_actions
+         FROM trades
+        WHERE id = ? AND (user_id = ? OR user_id IS NULL)`,
+      [tradeId, userId]
+    );
+
+    return this.parseAppliedCorporateActionIds(row?.applied_corporate_actions);
   }
 
   private async getTradesByPnlPercentOrder(

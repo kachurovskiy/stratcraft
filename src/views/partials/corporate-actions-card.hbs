@@ -1,0 +1,103 @@
+<div class="col-12">
+    <div class="card h-100">
+        <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+            <div>
+                <h5 class="card-title mb-{{#if subtitle}}1{{else}}0{{/if}}">
+                    <i class="fas fa-building me-2"></i>
+                    {{title}}
+                </h5>
+                {{#if subtitle}}
+                    <p class="text-muted mb-0">{{subtitle}}</p>
+                {{/if}}
+            </div>
+            {{#if showCountBadge}}
+                <span class="badge bg-light text-dark text-uppercase">
+                    {{actions.length}} action{{#if (ne actions.length 1)}}s{{/if}}
+                </span>
+            {{/if}}
+        </div>
+        <div class="card-body">
+            {{#if actions.length}}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Type</th>
+                                <th scope="col">Dates</th>
+                                <th scope="col">Symbols</th>
+                                <th scope="col">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each actions}}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{typeLabel}}</div>
+                                        {{#if ratioLabel}}
+                                            <div class="mt-2">
+                                                <span class="badge bg-primary">{{ratioLabel}}</span>
+                                            </div>
+                                        {{else if matchLabel}}
+                                            <div class="mt-2">
+                                                {{#if (eq matchLabel 'Primary')}}
+                                                    <span class="badge bg-primary">Primary</span>
+                                                {{else}}
+                                                    <span class="badge bg-secondary">Related</span>
+                                                {{/if}}
+                                            </div>
+                                        {{/if}}
+                                        <div class="text-muted small mt-2">{{id}}</div>
+                                    </td>
+                                    <td class="small">
+                                        {{#if displayDate}}
+                                            <div><span class="text-muted">Applied:</span> {{formatDate displayDate}}</div>
+                                        {{/if}}
+                                        <div><span class="text-muted">Process:</span> {{formatDate processDate}}</div>
+                                        {{#if effectiveDate}}
+                                            <div><span class="text-muted">Effective:</span> {{formatDate effectiveDate}}</div>
+                                        {{/if}}
+                                        {{#if exDate}}
+                                            <div><span class="text-muted">Ex:</span> {{formatDate exDate}}</div>
+                                        {{/if}}
+                                        {{#if recordDate}}
+                                            <div><span class="text-muted">Record:</span> {{formatDate recordDate}}</div>
+                                        {{/if}}
+                                        {{#if payableDate}}
+                                            <div><span class="text-muted">Payable:</span> {{formatDate payableDate}}</div>
+                                        {{/if}}
+                                    </td>
+                                    <td class="small">
+                                        <div class="mb-2">
+                                            <span class="text-muted">Primary:</span>
+                                            <span class="fw-semibold">{{primarySymbol}}</span>
+                                        </div>
+                                        <div>
+                                            <span class="text-muted">Related:</span>
+                                            {{#if relatedSymbols.length}}
+                                                <div class="mt-1 d-flex flex-wrap gap-1">
+                                                    {{#each relatedSymbols}}
+                                                        <span class="badge bg-light text-dark border">{{this}}</span>
+                                                    {{/each}}
+                                                </div>
+                                            {{else}}
+                                                <span class="text-muted"> None</span>
+                                            {{/if}}
+                                        </div>
+                                    </td>
+                                    <td class="small">
+                                        <details>
+                                            <summary class="text-primary">View payload</summary>
+                                            <pre class="small bg-light border rounded p-2 mt-2 mb-0" style="white-space: pre-wrap; word-break: break-word;">{{{json payload}}}</pre>
+                                        </details>
+                                    </td>
+                                </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+            {{else}}
+                <p class="text-muted mb-0">{{emptyMessage}}</p>
+            {{/if}}
+        </div>
+    </div>
+</div>

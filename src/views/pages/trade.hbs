@@ -429,6 +429,16 @@
         </div>
         {{/if}}
 
+        {{#if hasTradeCorporateActions}}
+            {{> corporate-actions-card
+                actions=tradeCorporateActions
+                title="Trade Corporate Actions"
+                subtitle="Corporate actions applied directly to this trade."
+                showCountBadge=true
+                emptyMessage="No corporate actions were applied to this trade."
+            }}
+        {{/if}}
+
         <!-- Trade Change History -->
         <div class="col-12">
             <div class="card h-100">

@@ -9,6 +9,10 @@ import {
 } from '../types/StrategyTemplate';
 import { SETTING_KEYS } from '../constants';
 import { resolveEntryOrderCancellationReason } from '../utils/tradeOrderStatus';
+import {
+  buildTradeCorporateActionHistoryChanges,
+  buildTradeCorporateActions
+} from '../utils/corporateActionViews';
 import { normalizeOptionalUppercaseString as normalizeTickerFilter } from '../utils/stringNormalization';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel, parsePageParam } from './utils';
 
@@ -1085,11 +1089,21 @@ router.get<TradeParams>('/trades/:id', requireAuth, async (req, res) => {
       ? (trade.pnl / tradeValue) * 100
       : null;
 
-    const tradeChangeGroups = buildTradeChangeGroups(trade.changes);
-    const tradeOperations = await req.db.accountOperations.getAccountOperationsForTrade(trade.id, undefined, {
-      sortBy: 'triggeredAt',
-      order: 'desc'
-    });
+    const [appliedCorporateActionIds, tradeOperations] = await Promise.all([
+      req.db.trades.getAppliedCorporateActionIds(trade.id, userId),
+      req.db.accountOperations.getAccountOperationsForTrade(trade.id, undefined, {
+        sortBy: 'triggeredAt',
+        order: 'desc'
+      })
+    ]);
+    const tradeCorporateActions = buildTradeCorporateActions(
+      appliedCorporateActionIds,
+      await req.db.corporateActions.getCorporateActionsByIds(appliedCorporateActionIds)
+    );
+    const tradeChangeGroups = buildTradeChangeGroups([
+      ...trade.changes,
+      ...buildTradeCorporateActionHistoryChanges(tradeCorporateActions, trade.changes)
+    ]);
     const tradeOperationsSummary = buildTradeOperationsSummary(tradeOperations);
     const tradeOperationsStatusBreakdown = TRADE_OPERATION_STATUS_ORDER.map(status => ({
       status,
@@ -1108,6 +1122,8 @@ router.get<TradeParams>('/trades/:id', requireAuth, async (req, res) => {
         pnlPercent
       },
       tradeChangeGroups,
+      tradeCorporateActions,
+      hasTradeCorporateActions: tradeCorporateActions.length > 0,
       tradeOperations,
       tradeOperationsSummary,
       tradeOperationsStatusBreakdown,

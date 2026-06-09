@@ -1,7 +1,7 @@
 import express, { NextFunction, Request, Response } from 'express';
-import type { CorporateActionRecord } from '../database/types';
 import { TickerQueryParams, TickerParams } from '../types/Express';
 import { BacktestScope, Candle, Strategy, TickerInfo } from '../types/StrategyTemplate';
+import { buildTickerCorporateActions } from '../utils/corporateActionViews';
 import { formatBacktestPeriodLabel, getReqUserId, parsePageParam } from './utils';
 
 const router = express.Router();
@@ -22,21 +22,6 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
   income_etf: 'Income ETF'
 };
 const SIGNAL_SIMULATION_LOOKBACK_DAYS = 365;
-const CORPORATE_ACTION_TYPE_LABELS: Record<string, string> = {
-  reverse_split: 'Reverse Split',
-  forward_split: 'Forward Split',
-  unit_split: 'Unit Split',
-  cash_dividend: 'Cash Dividend',
-  stock_dividend: 'Stock Dividend',
-  spin_off: 'Spin-Off',
-  cash_merger: 'Cash Merger',
-  stock_merger: 'Stock Merger',
-  stock_and_cash_merger: 'Stock + Cash Merger',
-  redemption: 'Redemption',
-  name_change: 'Name Change',
-  worthless_removal: 'Worthless Removal',
-  rights_distribution: 'Rights Distribution'
-};
 
 interface PriceVolumePoint {
   symbol: string;
@@ -70,20 +55,6 @@ interface EntryRuleSettingsPayload {
   tradeEntryPriceMax: number | null;
   minimumDollarVolumeForEntry: number;
   minimumDollarVolumeLookback: number;
-}
-
-interface TickerCorporateActionViewModel {
-  id: string;
-  typeLabel: string;
-  matchLabel: 'Primary' | 'Related';
-  primarySymbol: string;
-  relatedSymbols: string[];
-  processDate: Date;
-  effectiveDate: Date | null;
-  exDate: Date | null;
-  recordDate: Date | null;
-  payableDate: Date | null;
-  payload: Record<string, unknown>;
 }
 
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -135,37 +106,6 @@ function deriveLatestUsdVolume(ticker: TickerInfo): number | null {
     return toPositiveNumber(close * shares);
   }
   return null;
-}
-
-function formatCorporateActionTypeLabel(actionType: string): string {
-  if (actionType in CORPORATE_ACTION_TYPE_LABELS) {
-    return CORPORATE_ACTION_TYPE_LABELS[actionType];
-  }
-
-  return actionType
-    .split('_')
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function buildTickerCorporateActions(
-  symbol: string,
-  actions: CorporateActionRecord[]
-): TickerCorporateActionViewModel[] {
-  return actions.map((action) => ({
-    id: action.id,
-    typeLabel: formatCorporateActionTypeLabel(action.actionType),
-    matchLabel: action.primarySymbol === symbol ? 'Primary' : 'Related',
-    primarySymbol: action.primarySymbol,
-    relatedSymbols: action.relatedSymbols,
-    processDate: action.processDate,
-    effectiveDate: action.effectiveDate ?? null,
-    exDate: action.exDate ?? null,
-    recordDate: action.recordDate ?? null,
-    payableDate: action.payableDate ?? null,
-    payload: action.payload
-  }));
 }
 
 function buildTickerAnalytics(tickers: (TickerInfo & { tradeCount: number })[]): TickerAnalyticsPayload {

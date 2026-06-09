@@ -24,6 +24,26 @@ type CorporateActionRow = QueryResultRow & {
 export class CorporateActionsRepo {
   constructor(private readonly db: DbClient) {}
 
+  private mapCorporateActionRow(row: CorporateActionRow): CorporateActionRecord | null {
+    const processDate = parseDate(row.process_date);
+    if (!processDate) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      actionType: row.action_type,
+      primarySymbol: normalizeUppercaseString(row.primary_symbol),
+      relatedSymbols: normalizeUppercaseStrings(row.related_symbols),
+      processDate,
+      effectiveDate: parseDate(row.effective_date) ?? null,
+      exDate: parseDate(row.ex_date) ?? null,
+      recordDate: parseDate(row.record_date) ?? null,
+      payableDate: parseDate(row.payable_date) ?? null,
+      payload: row.payload
+    };
+  }
+
   async getLatestProcessDate(): Promise<Date | null> {
     const row = await this.db.get<LatestProcessDateRow>(
       `SELECT MAX(process_date) AS process_date
@@ -56,29 +76,45 @@ export class CorporateActionsRepo {
       [normalizedSymbol, normalizedSymbol]
     );
 
-    const actions: CorporateActionRecord[] = [];
+    return rows
+      .map((row) => this.mapCorporateActionRow(row))
+      .filter((action): action is CorporateActionRecord => action !== null);
+  }
 
-    for (const row of rows) {
-      const processDate = parseDate(row.process_date);
-      if (!processDate) {
-        continue;
-      }
-
-      actions.push({
-        id: row.id,
-        actionType: row.action_type,
-        primarySymbol: normalizeUppercaseString(row.primary_symbol),
-        relatedSymbols: normalizeUppercaseStrings(row.related_symbols),
-        processDate,
-        effectiveDate: parseDate(row.effective_date) ?? null,
-        exDate: parseDate(row.ex_date) ?? null,
-        recordDate: parseDate(row.record_date) ?? null,
-        payableDate: parseDate(row.payable_date) ?? null,
-        payload: row.payload
-      });
+  async getCorporateActionsByIds(ids: string[]): Promise<CorporateActionRecord[]> {
+    const normalizedIds = Array.from(
+      new Set(
+        ids
+          .map((id) => (typeof id === 'string' ? id.trim() : ''))
+          .filter((id) => id.length > 0)
+      )
+    );
+    if (normalizedIds.length === 0) {
+      return [];
     }
 
-    return actions;
+    const placeholders = normalizedIds.map(() => '?').join(', ');
+    const rows = await this.db.all<CorporateActionRow>(
+      `SELECT id,
+              action_type,
+              primary_symbol,
+              related_symbols,
+              process_date,
+              effective_date,
+              ex_date,
+              record_date,
+              payable_date,
+              payload
+         FROM corporate_actions
+        WHERE id IN (${placeholders})
+           OR COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text) IN (${placeholders})
+        ORDER BY process_date ASC, effective_date ASC NULLS LAST, ex_date ASC NULLS LAST, id ASC`,
+      [...normalizedIds, ...normalizedIds]
+    );
+
+    return rows
+      .map((row) => this.mapCorporateActionRow(row))
+      .filter((action): action is CorporateActionRecord => action !== null);
   }
 
   async upsertCorporateActions(actions: CorporateActionRecord[]): Promise<{ upserted: number }> {

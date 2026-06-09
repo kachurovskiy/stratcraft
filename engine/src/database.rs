@@ -1415,46 +1415,42 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT DISTINCT ON (COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text))
-                        COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text) AS action_id,
+                "SELECT DISTINCT ON (action_id)
+                        action_id,
                         action_type,
-                        COALESCE(
-                            payable_date,
-                            effective_date,
-                            process_date,
-                            ex_date,
-                            record_date
-                        ) AS action_date,
+                        action_date,
                         payload
-                 FROM corporate_actions
-                 WHERE action_type IN (
-                        'cash_dividend',
-                        'stock_dividend',
-                        'forward_split',
-                        'reverse_split',
-                        'unit_split'
-                 )
-                   AND COALESCE(
-                        payable_date,
-                        effective_date,
-                        process_date,
-                        ex_date,
-                        record_date
-                   ) >= $2
+                 FROM (
+                        SELECT COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text) AS action_id,
+                               action_type,
+                               CASE
+                                   WHEN action_type IN ('stock_dividend', 'forward_split', 'reverse_split', 'unit_split')
+                                       THEN COALESCE(ex_date, effective_date, process_date, record_date, payable_date)
+                                   ELSE COALESCE(payable_date, effective_date, process_date, ex_date, record_date)
+                               END AS action_date,
+                               payload,
+                               updated_at,
+                               id,
+                               primary_symbol,
+                               related_symbols
+                        FROM corporate_actions
+                        WHERE action_type IN (
+                               'cash_dividend',
+                               'stock_dividend',
+                               'forward_split',
+                               'reverse_split',
+                               'unit_split'
+                        )
+                 ) actions
+                 WHERE action_date > $2
                    AND (
                         primary_symbol = ANY($1::text[])
                         OR related_symbols && $1::text[]
                         OR UPPER(COALESCE(payload ->> 'old_symbol', '')) = ANY($1::text[])
                         OR UPPER(COALESCE(payload ->> 'new_symbol', '')) = ANY($1::text[])
                    )
-                 ORDER BY COALESCE(NULLIF(payload ->> 'corporate_action_id', ''), id::text),
-                          COALESCE(
-                            payable_date,
-                            effective_date,
-                            process_date,
-                            ex_date,
-                            record_date
-                          ) DESC,
+                 ORDER BY action_id,
+                          action_date DESC,
                           updated_at DESC,
                           id DESC",
                 &[&symbol_values, &opened_date],

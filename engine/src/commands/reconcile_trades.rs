@@ -3,11 +3,13 @@ use crate::config::{EngineConfig, StopLossConfig};
 use crate::context::AppContext;
 use crate::database::{Database, TradeCorporateActionRecord, TradeReconciliationCandidate};
 use crate::engine::AccountPositionState;
-use crate::models::{Trade, TradeCancellationSource, TradeStatus};
+use crate::models::{Candle, Trade, TradeCancellationSource, TradeStatus};
+use crate::trading_rules::stop_loss_exit_price;
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use log::{info, warn};
 use reqwest::Client;
+use serde_json::Value;
 use std::{
     collections::{HashMap, HashSet},
     time::Duration as StdDuration,
@@ -91,16 +93,17 @@ pub async fn run(app: &AppContext) -> Result<()> {
             .map(|candidate| candidate.trade.clone())
             .collect();
 
-        let mut position_prices = match fetch_last_candle_closes(&db, &trades, &positions).await {
-            Ok(prices) => prices,
+        let market_candles = match fetch_market_candles(&db, &trades, &positions).await {
+            Ok(candles) => candles,
             Err(err) => {
                 warn!(
-                    "Failed to fetch candle closes for account {}: {}",
+                    "Failed to fetch market candles for account {}: {}",
                     account_id, err
                 );
                 HashMap::new()
             }
         };
+        let mut position_prices = latest_close_by_ticker(&market_candles);
 
         if !positions.is_empty() {
             for position in &positions {
@@ -136,6 +139,7 @@ pub async fn run(app: &AppContext) -> Result<()> {
                 &client,
                 trade,
                 &mut candidate.applied_corporate_actions,
+                &market_candles,
                 &position_prices,
                 &positions,
                 &stop_loss_configs,
@@ -176,6 +180,7 @@ async fn reconcile_trade(
     client: &AlpacaClient<'_>,
     trade: &mut Trade,
     applied_corporate_actions: &mut Vec<String>,
+    market_candles: &HashMap<String, Vec<Candle>>,
     position_prices: &HashMap<String, f64>,
     positions: &[AccountPositionState],
     stop_loss_configs: &HashMap<String, Option<StopLossConfig>>,
@@ -206,6 +211,8 @@ async fn reconcile_trade(
     let stop_loss_config = stop_loss_configs
         .get(trade.strategy_id.as_str())
         .and_then(|config| config.as_ref());
+    let has_applied_manual_corporate_action =
+        apply_manual_corporate_actions && !applied_corporate_actions.is_empty();
 
     let mut changed = false;
     if let Some(eval) = entry_eval.as_ref() {
@@ -251,7 +258,10 @@ async fn reconcile_trade(
             trade.set_status(TradeStatus::Active, changed_at);
             changed = true;
         }
-        if let Some(price) = eval.filled_price {
+        if let Some(price) = eval
+            .filled_price
+            .filter(|_| !has_applied_manual_corporate_action)
+        {
             if trade.price != price {
                 trade.set_price(price, changed_at);
                 update_stop_loss_for_fill(trade, price, changed_at, stop_loss_config);
@@ -305,16 +315,46 @@ async fn reconcile_trade(
         changed = true;
     }
 
-    if apply_manual_corporate_actions && trade.status == TradeStatus::Active {
-        let trade_corporate_actions = db
-            .get_trade_corporate_actions(&symbol_chain, trade.date)
-            .await?;
-        if apply_trade_corporate_actions(trade, applied_corporate_actions, &trade_corporate_actions)
-        {
+    let filled_closure = filled_closure_evaluation(&stop_eval, &exit_eval);
+    let corporate_action_cutoff = filled_closure
+        .map(|(evaluation, _)| evaluation.changed_at())
+        .unwrap_or_else(Utc::now);
+
+    let trade_corporate_actions =
+        if apply_manual_corporate_actions && trade.status == TradeStatus::Active {
+            db.get_trade_corporate_actions(&symbol_chain, trade.date)
+                .await?
+        } else {
+            Vec::new()
+        };
+
+    if !trade_corporate_actions.is_empty() {
+        if apply_trade_corporate_actions(
+            trade,
+            applied_corporate_actions,
+            &trade_corporate_actions,
+            corporate_action_cutoff,
+        ) {
             changed = true;
         }
         if trade.status == TradeStatus::Closed {
             return Ok(true);
+        }
+    }
+    let latest_quantity_action_at = if apply_manual_corporate_actions {
+        latest_applied_quantity_action_date(
+            applied_corporate_actions,
+            &trade_corporate_actions,
+            corporate_action_cutoff,
+        )
+    } else {
+        None
+    };
+    if apply_manual_corporate_actions {
+        if let Some(action_date) = latest_quantity_action_at {
+            if restore_applied_quantity_action_changes(trade, action_date) {
+                changed = true;
+            }
         }
     }
 
@@ -325,7 +365,8 @@ async fn reconcile_trade(
         position_match.is_some() || initial_position_match.is_some() || has_synthetic_position;
 
     if let Some(position) = position_match {
-        if trade.status == TradeStatus::Active
+        if !has_synthetic_position
+            && trade.status == TradeStatus::Active
             && position.avg_entry_price.is_finite()
             && position.avg_entry_price > 0.0
             && (trade.price - position.avg_entry_price).abs() > PNL_EPSILON
@@ -353,19 +394,8 @@ async fn reconcile_trade(
         }
     }
 
-    if let Some(eval) = stop_eval
-        .as_ref()
-        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
-    {
-        apply_closure(trade, eval, true);
-        return Ok(true);
-    }
-
-    if let Some(eval) = exit_eval
-        .as_ref()
-        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
-    {
-        apply_closure(trade, eval, false);
+    if let Some((eval, is_stop)) = filled_closure {
+        apply_closure(trade, eval, is_stop);
         return Ok(true);
     }
 
@@ -380,7 +410,19 @@ async fn reconcile_trade(
         return Ok(true);
     }
 
-    if update_mark_to_market_pnl(trade, position_prices) {
+    let synthetic_stop_check_after =
+        if apply_manual_corporate_actions && trade.stop_order_id.is_none() {
+            latest_quantity_action_at.map(|date| date - Duration::days(1))
+        } else {
+            None
+        };
+
+    if update_trade_for_latest_market(
+        trade,
+        market_candles,
+        position_prices,
+        synthetic_stop_check_after,
+    ) {
         changed = true;
     }
 
@@ -399,6 +441,23 @@ fn apply_closure(trade: &mut Trade, evaluation: &OrderEvaluation, is_stop: bool)
         let pnl = (exit_price - trade.price) * trade.quantity as f64;
         trade.set_pnl(Some(pnl), changed_at);
     }
+}
+
+fn filled_closure_evaluation<'a>(
+    stop_eval: &'a Option<OrderEvaluation>,
+    exit_eval: &'a Option<OrderEvaluation>,
+) -> Option<(&'a OrderEvaluation, bool)> {
+    if let Some(eval) = stop_eval
+        .as_ref()
+        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
+    {
+        return Some((eval, true));
+    }
+
+    exit_eval
+        .as_ref()
+        .filter(|evaluation| matches!(evaluation.state, OrderState::Filled))
+        .map(|eval| (eval, false))
 }
 
 fn apply_cancellation(
@@ -576,11 +635,11 @@ fn order_state_label(state: OrderState) -> &'static str {
     }
 }
 
-async fn fetch_last_candle_closes(
+async fn fetch_market_candles(
     db: &Database,
     trades: &[Trade],
     positions: &[AccountPositionState],
-) -> Result<HashMap<String, f64>> {
+) -> Result<HashMap<String, Vec<Candle>>> {
     let mut tickers = HashSet::new();
     for trade in trades {
         tickers.insert(trade.ticker.clone());
@@ -596,22 +655,24 @@ async fn fetch_last_candle_closes(
     symbol_list.sort();
 
     let candles = db.get_candles_for_tickers(&symbol_list).await?;
-    let mut latest = HashMap::new();
+    let mut by_ticker: HashMap<String, Vec<Candle>> = HashMap::new();
     for candle in candles {
-        let ticker = candle.ticker.clone();
-        let should_replace = latest
-            .get(&ticker)
-            .map(|(date, _)| candle.date > *date)
-            .unwrap_or(true);
-        if should_replace {
-            latest.insert(ticker, (candle.date, candle.close));
-        }
+        by_ticker
+            .entry(candle.ticker.clone())
+            .or_default()
+            .push(candle);
     }
 
-    Ok(latest
-        .into_iter()
-        .map(|(ticker, (_, close))| (ticker, close))
-        .collect())
+    Ok(by_ticker)
+}
+
+fn latest_close_by_ticker(
+    candles_by_ticker: &HashMap<String, Vec<Candle>>,
+) -> HashMap<String, f64> {
+    candles_by_ticker
+        .iter()
+        .filter_map(|(ticker, candles)| candles.last().map(|candle| (ticker.clone(), candle.close)))
+        .collect()
 }
 
 fn find_position_match<'a>(
@@ -656,10 +717,15 @@ fn apply_trade_corporate_actions(
     trade: &mut Trade,
     applied_corporate_actions: &mut Vec<String>,
     actions: &[TradeCorporateActionRecord],
+    apply_until: DateTime<Utc>,
 ) -> bool {
     let mut applied_any = false;
 
     for action in actions {
+        if action.effective_at > apply_until {
+            continue;
+        }
+
         if applied_corporate_actions
             .iter()
             .any(|existing| existing == &action.action_id)
@@ -671,6 +737,7 @@ fn apply_trade_corporate_actions(
         applied_corporate_actions.push(action.action_id.clone());
         applied_any = true;
         if action_changed {
+            record_corporate_action_change(trade, action);
             info!(
                 "Applied paper {} corporate action {} to trade {}",
                 action.action_type, action.action_id, trade.id
@@ -686,10 +753,7 @@ fn apply_trade_corporate_actions(
 }
 
 fn apply_trade_corporate_action(trade: &mut Trade, action: &TradeCorporateActionRecord) -> bool {
-    let is_quantity_adjustment = matches!(
-        action.action_type.as_str(),
-        "stock_dividend" | "forward_split" | "reverse_split" | "unit_split"
-    );
+    let is_quantity_adjustment = is_quantity_adjustment_action(&action.action_type);
     let ratio = if is_quantity_adjustment {
         if !action.old_rate.is_finite()
             || !action.new_rate.is_finite()
@@ -773,6 +837,144 @@ fn apply_trade_corporate_action(trade: &mut Trade, action: &TradeCorporateAction
     changed
 }
 
+fn latest_applied_quantity_action_date(
+    applied_corporate_actions: &[String],
+    actions: &[TradeCorporateActionRecord],
+    apply_until: DateTime<Utc>,
+) -> Option<DateTime<Utc>> {
+    actions
+        .iter()
+        .filter(|action| {
+            action.effective_at <= apply_until
+                && is_quantity_adjustment_action(&action.action_type)
+                && applied_corporate_actions
+                    .iter()
+                    .any(|existing| existing == &action.action_id)
+        })
+        .map(|action| normalize_trade_date(action.effective_at))
+        .max()
+}
+
+fn is_quantity_adjustment_action(action_type: &str) -> bool {
+    matches!(
+        action_type,
+        "stock_dividend" | "forward_split" | "reverse_split" | "unit_split"
+    )
+}
+
+fn restore_applied_quantity_action_changes(trade: &mut Trade, action_date: DateTime<Utc>) -> bool {
+    let mut changed = false;
+    let changed_at = Utc::now();
+
+    if let Some(quantity) = latest_numeric_change_on_date(trade, "quantity", action_date)
+        .map(|value| value.round() as i32)
+        .filter(|quantity| *quantity != 0 && *quantity != trade.quantity)
+    {
+        trade.set_quantity(quantity, changed_at);
+        changed = true;
+    }
+
+    if let Some(price) =
+        latest_numeric_change_on_date(trade, "price", action_date).filter(|price| {
+            price.is_finite() && *price > 0.0 && (trade.price - *price).abs() > PNL_EPSILON
+        })
+    {
+        trade.set_price(price, changed_at);
+        changed = true;
+    }
+
+    if let Some(stop_loss) =
+        latest_numeric_change_on_date(trade, "stopLoss", action_date).filter(|stop_loss| {
+            stop_loss.is_finite()
+                && *stop_loss > 0.0
+                && trade
+                    .stop_loss
+                    .map(|current| (current - *stop_loss).abs() > PNL_EPSILON)
+                    .unwrap_or(true)
+        })
+    {
+        trade.set_stop_loss(Some(stop_loss), changed_at);
+        changed = true;
+    }
+
+    changed
+}
+
+fn latest_numeric_change_on_date(
+    trade: &Trade,
+    field: &str,
+    action_date: DateTime<Utc>,
+) -> Option<f64> {
+    trade
+        .changes
+        .iter()
+        .rev()
+        .find(|change| {
+            change.field == field && normalize_trade_date(change.changed_at) == action_date
+        })
+        .and_then(|change| numeric_json_value(&change.new_value))
+}
+
+fn numeric_json_value(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(number) => number.as_f64(),
+        Value::String(text) => text.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn record_corporate_action_change(trade: &mut Trade, action: &TradeCorporateActionRecord) {
+    if !is_quantity_adjustment_action(&action.action_type) {
+        return;
+    }
+
+    let old_value: Option<String> = None;
+    let new_value = Some(format_corporate_action_change(action));
+    trade.record_change(
+        "corporateAction",
+        &old_value,
+        &new_value,
+        normalize_trade_date(action.effective_at),
+    );
+}
+
+fn format_corporate_action_change(action: &TradeCorporateActionRecord) -> String {
+    let action_label = match action.action_type.as_str() {
+        "reverse_split" => "Reverse Split",
+        "forward_split" => "Forward Split",
+        "unit_split" => "Unit Split",
+        "stock_dividend" => "Stock Dividend",
+        other => other,
+    };
+
+    if action.old_rate.is_finite()
+        && action.new_rate.is_finite()
+        && action.old_rate > 0.0
+        && action.new_rate > 0.0
+    {
+        return format!(
+            "{} {}-for-{} ({})",
+            action_label,
+            format_corporate_action_rate(action.new_rate),
+            format_corporate_action_rate(action.old_rate),
+            action.action_id
+        );
+    }
+
+    format!("{} ({})", action_label, action.action_id)
+}
+
+fn format_corporate_action_rate(value: f64) -> String {
+    if (value - value.round()).abs() <= PNL_EPSILON {
+        format!("{:.0}", value)
+    } else {
+        format!("{:.4}", value)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
+    }
+}
+
 fn round_corporate_action_quantity(quantity: f64) -> i32 {
     if !quantity.is_finite() || quantity <= 0.0 {
         return 0;
@@ -793,12 +995,38 @@ fn normalize_trade_date(date: DateTime<Utc>) -> DateTime<Utc> {
         .and_utc()
 }
 
-fn update_mark_to_market_pnl(
+fn update_trade_for_latest_market(
     trade: &mut Trade,
+    market_candles: &HashMap<String, Vec<Candle>>,
     last_close_by_ticker: &HashMap<String, f64>,
+    synthetic_stop_check_after: Option<DateTime<Utc>>,
 ) -> bool {
     if trade.status != TradeStatus::Active {
         return false;
+    }
+
+    if let (Some(stop_check_after), Some(stop_loss), Some(candles)) = (
+        synthetic_stop_check_after,
+        trade.stop_loss,
+        market_candles.get(&trade.ticker),
+    ) {
+        for candle in candles
+            .iter()
+            .filter(|candle| candle.date > stop_check_after)
+        {
+            if let Some(exit_price) = stop_loss_exit_price(candle, stop_loss, trade.quantity < 0) {
+                let changed_at = candle.date;
+                trade.set_status(TradeStatus::Closed, changed_at);
+                trade.set_exit_price(Some(exit_price), changed_at);
+                trade.set_exit_date(Some(changed_at), changed_at);
+                trade.set_stop_loss_triggered(Some(true), changed_at);
+                trade.set_pnl(
+                    Some((exit_price - trade.price) * trade.quantity as f64),
+                    changed_at,
+                );
+                return true;
+            }
+        }
     }
 
     let Some(current_price) = last_close_by_ticker.get(&trade.ticker) else {
@@ -991,6 +1219,42 @@ mod tests {
         }
     }
 
+    fn sample_candle(
+        ticker: &str,
+        date: DateTime<Utc>,
+        open: f64,
+        high: f64,
+        low: f64,
+        close: f64,
+    ) -> Candle {
+        Candle {
+            ticker: ticker.to_string(),
+            date,
+            open,
+            high,
+            low,
+            close,
+            unadjusted_close: Some(close),
+            volume_shares: 1_000,
+            disabled: None,
+        }
+    }
+
+    fn push_trade_change(
+        trade: &mut Trade,
+        field: &str,
+        old_value: serde_json::Value,
+        new_value: serde_json::Value,
+        changed_at: DateTime<Utc>,
+    ) {
+        trade.changes.push(crate::models::TradeChange {
+            field: field.to_string(),
+            old_value,
+            new_value,
+            changed_at,
+        });
+    }
+
     #[test]
     fn find_position_match_requires_same_ticker() {
         let trade = sample_trade("GPRO", 697, 1.04);
@@ -1043,7 +1307,14 @@ mod tests {
             1.0,
         )];
 
-        let changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+        let changed = apply_trade_corporate_actions(
+            &mut trade,
+            &mut applied,
+            &actions,
+            Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+        );
 
         assert!(changed);
         assert_eq!(trade.quantity, 2);
@@ -1068,8 +1339,14 @@ mod tests {
             1.0,
         )];
 
-        let first_changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
-        let second_changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+        let cutoff = Utc
+            .with_ymd_and_hms(2024, 2, 5, 0, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        let first_changed =
+            apply_trade_corporate_actions(&mut trade, &mut applied, &actions, cutoff);
+        let second_changed =
+            apply_trade_corporate_actions(&mut trade, &mut applied, &actions, cutoff);
 
         assert!(first_changed);
         assert!(!second_changed);
@@ -1093,7 +1370,14 @@ mod tests {
             1.0,
         )];
 
-        let changed = apply_trade_corporate_actions(&mut trade, &mut applied, &actions);
+        let changed = apply_trade_corporate_actions(
+            &mut trade,
+            &mut applied,
+            &actions,
+            Utc.with_ymd_and_hms(2024, 2, 9, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+        );
 
         assert!(changed);
         assert_eq!(trade.status, TradeStatus::Closed);
@@ -1110,14 +1394,129 @@ mod tests {
     }
 
     #[test]
-    fn update_mark_to_market_pnl_skips_pending_trades() {
+    fn apply_trade_corporate_actions_skips_reverse_split_after_stop_fill() {
+        let mut trade = sample_trade("OPAD", 796, 0.85);
+        trade.status = TradeStatus::Active;
+        trade.stop_loss = Some(0.5695);
+        let mut applied = Vec::new();
+        let actions = vec![sample_corporate_action(
+            "reverse_split",
+            "reverse-split-1",
+            Utc.with_ymd_and_hms(2026, 6, 9, 0, 0, 0)
+                .single()
+                .expect("valid timestamp"),
+            0.0,
+            10.0,
+            1.0,
+        )];
+        let stop_fill = OrderEvaluation {
+            state: OrderState::Filled,
+            filled_price: Some(0.5567),
+            symbol: Some("OPAD".to_string()),
+            timestamp: Some(
+                Utc.with_ymd_and_hms(2026, 6, 8, 13, 35, 0)
+                    .single()
+                    .expect("valid timestamp"),
+            ),
+        };
+
+        let changed = apply_trade_corporate_actions(
+            &mut trade,
+            &mut applied,
+            &actions,
+            stop_fill.changed_at(),
+        );
+        apply_closure(&mut trade, &stop_fill, true);
+
+        assert!(!changed);
+        assert!(applied.is_empty());
+        assert_eq!(trade.quantity, 796);
+        assert!((trade.price - 0.85).abs() < 1e-6);
+        assert_eq!(trade.exit_price, Some(0.5567));
+        assert!((trade.pnl.unwrap() - -233.4668).abs() < 1e-6);
+    }
+
+    #[test]
+    fn update_trade_for_latest_market_skips_pending_trades() {
         let mut trade = sample_trade("AAA", 10, 100.0);
         let prices = HashMap::from([(String::from("AAA"), 102.5)]);
 
-        let changed = update_mark_to_market_pnl(&mut trade, &prices);
+        let changed = update_trade_for_latest_market(&mut trade, &HashMap::new(), &prices, None);
 
         assert!(!changed);
         assert_eq!(trade.pnl, None);
+    }
+
+    #[test]
+    fn update_trade_for_latest_market_closes_split_adjusted_missing_stop() {
+        let mut trade = sample_trade("SCYX", 152, 5.86);
+        trade.status = TradeStatus::Active;
+        trade.date = Utc
+            .with_ymd_and_hms(2026, 5, 29, 0, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        trade.stop_loss = Some(4.66);
+        trade.stop_order_id = None;
+        let split_date = Utc
+            .with_ymd_and_hms(2026, 6, 1, 0, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        let candle = sample_candle("SCYX", split_date, 5.20, 10.25, 4.50, 10.00);
+        let market_candles = HashMap::from([(String::from("SCYX"), vec![candle])]);
+        let prices = latest_close_by_ticker(&market_candles);
+
+        let changed = update_trade_for_latest_market(
+            &mut trade,
+            &market_candles,
+            &prices,
+            Some(split_date - Duration::days(1)),
+        );
+
+        assert!(changed);
+        assert_eq!(trade.status, TradeStatus::Closed);
+        assert_eq!(trade.exit_price, Some(4.66));
+        assert_eq!(trade.exit_date, Some(split_date));
+        assert_eq!(trade.stop_loss_triggered, Some(true));
+        assert!((trade.pnl.unwrap() - -182.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn restore_applied_quantity_action_changes_repairs_stale_paper_fill_price() {
+        let split_date = Utc
+            .with_ymd_and_hms(2026, 6, 1, 0, 0, 0)
+            .single()
+            .expect("valid timestamp");
+        let mut trade = sample_trade("SCYX", 152, 0.7278);
+        trade.status = TradeStatus::Active;
+        trade.stop_loss = Some(0.5822);
+        push_trade_change(
+            &mut trade,
+            "quantity",
+            serde_json::json!(1223),
+            serde_json::json!(152),
+            split_date,
+        );
+        push_trade_change(
+            &mut trade,
+            "price",
+            serde_json::json!(0.7278),
+            serde_json::json!(5.86),
+            split_date,
+        );
+        push_trade_change(
+            &mut trade,
+            "stopLoss",
+            serde_json::json!(0.5822),
+            serde_json::json!(4.66),
+            split_date,
+        );
+
+        let changed = restore_applied_quantity_action_changes(&mut trade, split_date);
+
+        assert!(changed);
+        assert_eq!(trade.quantity, 152);
+        assert!((trade.price - 5.86).abs() < 1e-6);
+        assert_eq!(trade.stop_loss, Some(4.66));
     }
 
     #[test]
