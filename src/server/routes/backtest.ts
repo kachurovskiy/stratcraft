@@ -5,6 +5,7 @@ import type {
   BacktestDailySnapshot,
   EntryFillGapHistogram,
   BacktestResultRecord,
+  StartTimingBacktestRecord,
   TickerAssetRecord,
   TradeTickerStats
 } from '../database/types';
@@ -16,10 +17,11 @@ import {
   buildPortfolioValueDataFromSnapshots,
   type PortfolioValuePoint
 } from '../utils/backtestCharts';
+import { buildStartTimingAnalysis } from '../utils/startTiming';
 import { BACKTEST_SCOPE_META, normalizeBacktestScope, pickLatestBacktest } from '../scoring/backtestComparison';
 import { buildParameterContexts } from '../utils/parameters';
 import { normalizeUppercaseString } from '../utils/stringNormalization';
-import { getReqUserId } from './utils';
+import { formatBacktestPeriodLabel, getReqUserId } from './utils';
 
 const router = express.Router();
 
@@ -644,6 +646,291 @@ const renderBacktestLoadError = (res: Response, error: unknown): boolean => {
   });
   return true;
 };
+
+const formatBacktestOptionDate = (date: Date | null | undefined): string => {
+  if (!date) {
+    return 'N/A';
+  }
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toISOString().slice(0, 10);
+};
+
+const buildStartTimingBacktestOption = (
+  strategyId: string,
+  backtest: BacktestResultRecord,
+  selectedBacktestId: string | null
+) => {
+  const tickerScope = normalizeBacktestScope(backtest.tickerScope);
+  const scopeMeta = BACKTEST_SCOPE_META[tickerScope];
+  const periodMonths = Number(backtest.periodMonths);
+  const periodLabel = formatBacktestPeriodLabel(periodMonths);
+  const startLabel = formatBacktestOptionDate(backtest.startDate);
+  const endLabel = formatBacktestOptionDate(backtest.endDate);
+
+  return {
+    id: backtest.id,
+    label: `${periodLabel} ${scopeMeta.label} (${startLabel} to ${endLabel})`,
+    selected: backtest.id === selectedBacktestId,
+    href: `/strategies/${strategyId}/start-timing?backtestId=${encodeURIComponent(backtest.id)}`
+  };
+};
+
+const START_TIMING_SCOPE_OPTIONS = [
+  { value: 'validation', label: BACKTEST_SCOPE_META.validation.label, selected: true },
+  { value: 'training', label: BACKTEST_SCOPE_META.training.label, selected: false },
+  { value: 'all', label: BACKTEST_SCOPE_META.all.label, selected: false }
+];
+const START_TIMING_DEFAULT_SAMPLE_LIMIT = 8;
+const START_TIMING_MAX_SAMPLE_LIMIT = 20;
+const START_TIMING_DEFAULT_WEEKS = 52;
+const START_TIMING_MAX_WEEKS = 260;
+
+const normalizeStartTimingScope = (value: unknown): 'validation' | 'training' | 'all' => {
+  if (value === 'training' || value === 'all') {
+    return value;
+  }
+  return 'validation';
+};
+
+const normalizeStartTimingInteger = (value: unknown, fallback: number, max: number): number => {
+  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(max, Math.floor(parsed));
+};
+
+const formatTimingScopeLabel = (tickerScope: string): string => {
+  const normalized = tickerScope.replace(/^timing_/, '');
+  if (normalized === 'validation' || normalized === 'training' || normalized === 'all') {
+    return BACKTEST_SCOPE_META[normalized].label;
+  }
+  return tickerScope;
+};
+
+const buildStartTimingSampleViews = (samples: StartTimingBacktestRecord[]) => {
+  const rows = samples.map((sample) => {
+    const initialCapital = Number(sample.initialCapital);
+    const finalPortfolioValue = Number(sample.finalPortfolioValue);
+    const returnPercent =
+      Number.isFinite(initialCapital) && initialCapital > 0 && Number.isFinite(finalPortfolioValue)
+        ? ((finalPortfolioValue - initialCapital) / initialCapital) * 100
+        : null;
+    return {
+      id: sample.id,
+      startDate: sample.startDate,
+      endDate: sample.endDate,
+      createdAt: sample.createdAt,
+      periodMonths: sample.periodMonths,
+      tickerScope: sample.tickerScope,
+      scopeLabel: formatTimingScopeLabel(sample.tickerScope),
+      initialCapital: sample.initialCapital,
+      finalPortfolioValue: sample.finalPortfolioValue,
+      returnPercent,
+      totalTrades: sample.performance?.totalTrades ?? 0,
+      sharpeRatio: sample.performance?.sharpeRatio ?? null,
+      calmarRatio: sample.performance?.calmarRatio ?? null
+    };
+  });
+
+  const chartPoints = [...rows]
+    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
+    .map((row) => ({
+      date: formatBacktestOptionDate(row.startDate),
+      strategyReturnPercent: row.returnPercent,
+      finalPortfolioValue: row.finalPortfolioValue,
+      totalTrades: row.totalTrades,
+      scopeLabel: row.scopeLabel
+    }));
+
+  return {
+    rows,
+    chartPoints,
+    hasSamples: rows.length > 0,
+    count: rows.length,
+    latestCreatedAt: rows.reduce<Date | null>((latest, row) => {
+      if (!latest || row.createdAt.getTime() > latest.getTime()) {
+        return row.createdAt;
+      }
+      return latest;
+    }, null)
+  };
+};
+
+router.post<StrategyIdParams>('/strategies/:strategyId/start-timing/queue', requireAuth, async (req, res) => {
+  const { strategyId } = req.params;
+  try {
+    const userId = getReqUserId(req);
+    const strategy = await req.db.strategies.getStrategy(strategyId, userId);
+    if (!strategy) {
+      return res.status(404).render('pages/error', {
+        title: 'Strategy Not Found',
+        error: `Strategy ${strategyId} not found`
+      });
+    }
+
+    const scope = normalizeStartTimingScope(req.body?.scope);
+    const sampleLimit = normalizeStartTimingInteger(
+      req.body?.sampleLimit,
+      START_TIMING_DEFAULT_SAMPLE_LIMIT,
+      START_TIMING_MAX_SAMPLE_LIMIT
+    );
+    const weeks = normalizeStartTimingInteger(
+      req.body?.weeks,
+      START_TIMING_DEFAULT_WEEKS,
+      START_TIMING_MAX_WEEKS
+    );
+
+    const alreadyQueued = req.jobScheduler.hasPendingJob((job) =>
+      job.type === 'backtest-start-timing' &&
+      job.metadata?.strategyId === strategyId &&
+      job.metadata?.scope === scope
+    );
+
+    if (alreadyQueued) {
+      return res.redirect(
+        `/strategies/${strategyId}/start-timing?error=${encodeURIComponent('A start timing refresh is already queued or running for this strategy and scope.')}`
+      );
+    }
+
+    const job = req.jobScheduler.scheduleJob('backtest-start-timing', {
+      description: `Refresh start timing samples for ${strategy.name}`,
+      metadata: {
+        strategyId,
+        scope,
+        sampleLimit,
+        weeks
+      }
+    });
+
+    return res.redirect(
+      `/strategies/${strategyId}/start-timing?success=${encodeURIComponent(`Queued start timing refresh (${job.id}).`)}`
+    );
+  } catch (error) {
+    console.error('Error queueing start timing backtests:', error);
+    const message = error instanceof Error ? error.message : 'Failed to queue start timing refresh';
+    return res.redirect(`/strategies/${strategyId}/start-timing?error=${encodeURIComponent(message)}`);
+  }
+});
+
+router.get<StrategyIdParams>('/strategies/:strategyId/start-timing', requireAuth, async (req, res) => {
+  try {
+    const { strategyId } = req.params;
+    const userId = getReqUserId(req);
+    const strategy = await req.db.strategies.getStrategy(strategyId, userId);
+
+    if (!strategy) {
+      return res.status(404).render('pages/error', {
+        title: 'Strategy Not Found',
+        error: `Strategy ${strategyId} not found`
+      });
+    }
+
+    const template = req.strategyRegistry.getTemplate(strategy.templateId);
+    const backtests: BacktestResultRecord[] = await req.db.backtestResults.getBacktestResults(strategyId, 'all');
+    const requestedBacktestId = typeof req.query.backtestId === 'string' ? req.query.backtestId.trim() : '';
+    const requestedBacktest = requestedBacktestId
+      ? backtests.find((backtest) => backtest.id === requestedBacktestId) ?? null
+      : null;
+
+    if (requestedBacktestId && !requestedBacktest) {
+      return res.status(404).render('pages/error', {
+        title: 'Backtest Not Found',
+        error: `Backtest ${requestedBacktestId} not found for strategy ${strategyId}`
+      });
+    }
+
+    const selectedBacktest =
+      requestedBacktest ??
+      pickLatestBacktest(backtests, ['validation', 'training', 'all', 'live']) ??
+      backtests[0] ??
+      null;
+
+    const emptyBenchmarkData = { spy: [], qqq: [] };
+    let startTiming = buildStartTimingAnalysis({
+      portfolioValueData: [],
+      benchmarkData: emptyBenchmarkData
+    });
+    let selectedBacktestView: Record<string, unknown> | null = null;
+
+    if (selectedBacktest) {
+      const dailySnapshots = Array.isArray(selectedBacktest.dailySnapshots) ? selectedBacktest.dailySnapshots : [];
+      const portfolioValueData = buildPortfolioValueDataFromSnapshots(dailySnapshots);
+      const benchmarkData = await buildBenchmarkDataFromSnapshots(
+        req.db,
+        dailySnapshots,
+        Number(selectedBacktest.initialCapital)
+      );
+      const entryForwardOutcomes = await req.db.trades.getBacktestEntryForwardOutcomes(
+        selectedBacktest.id,
+        userId
+      );
+
+      startTiming = buildStartTimingAnalysis({
+        portfolioValueData,
+        benchmarkData,
+        entryForwardOutcomes
+      });
+
+      const tickerScope = normalizeBacktestScope(selectedBacktest.tickerScope);
+      const scopeMeta = BACKTEST_SCOPE_META[tickerScope];
+      selectedBacktestView = {
+        id: selectedBacktest.id,
+        detailUrl: `/backtests/${selectedBacktest.id}`,
+        startDate: selectedBacktest.startDate,
+        endDate: selectedBacktest.endDate,
+        createdAt: selectedBacktest.createdAt,
+        periodLabel: formatBacktestPeriodLabel(Number(selectedBacktest.periodMonths)),
+        scopeLabel: scopeMeta.label,
+        scopeBadge: scopeMeta.badge,
+        finalPortfolioValue: selectedBacktest.finalPortfolioValue,
+        initialCapital: selectedBacktest.initialCapital
+      };
+    }
+
+    const startTimingSamples = await req.db.backtestResults.getStartTimingBacktests(strategyId, userId, {
+      limit: 80
+    });
+    const startTimingSampleView = buildStartTimingSampleViews(startTimingSamples);
+    const pendingStartTimingJob = req.jobScheduler
+      .getQueuedJobs()
+      .find((job) => job.type === 'backtest-start-timing' && job.metadata?.strategyId === strategyId);
+
+    const backtestOptions = backtests.map((backtest) =>
+      buildStartTimingBacktestOption(strategyId, backtest, selectedBacktest?.id ?? null)
+    );
+    const { success, error } = req.query;
+
+    res.render('pages/start-timing', {
+      title: `${strategy.name} - Start Timing`,
+      page: 'dashboard',
+      user: req.user,
+      strategy,
+      template,
+      hasBacktests: backtests.length > 0,
+      selectedBacktest: selectedBacktestView,
+      backtestOptions,
+      startTiming,
+      startTimingSampleView,
+      startTimingScopeOptions: START_TIMING_SCOPE_OPTIONS,
+      startTimingDefaults: {
+        sampleLimit: START_TIMING_DEFAULT_SAMPLE_LIMIT,
+        maxSampleLimit: START_TIMING_MAX_SAMPLE_LIMIT,
+        weeks: START_TIMING_DEFAULT_WEEKS,
+        maxWeeks: START_TIMING_MAX_WEEKS
+      },
+      pendingStartTimingJob,
+      success,
+      error
+    });
+  } catch (error) {
+    console.error('Error rendering start timing page:', error);
+    res.status(500).render('pages/error', {
+      title: 'Error',
+      error: 'Failed to load start timing'
+    });
+  }
+});
 
 router.get<StrategyIdParams>('/strategies/:strategyId/backtests/compare', requireAuth, async (req, res) => {
   try {

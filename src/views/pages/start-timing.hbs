@@ -1,0 +1,668 @@
+<div class="container-fluid">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+        <div>
+            <h2 class="mb-0">Start Timing</h2>
+            <p class="text-muted mt-1 mb-0">{{strategy.name}}</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="/strategies/{{strategy.id}}" class="btn btn-primary btn-sm">
+                <i class="fas fa-arrow-left me-1"></i>
+                Strategy
+            </a>
+            {{#if selectedBacktest}}
+            <a href="{{selectedBacktest.detailUrl}}" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-chart-line me-1"></i>
+                Backtest
+            </a>
+            {{/if}}
+            {{#if template}}
+            <a href="/templates/{{template.id}}" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-link me-1"></i>
+                Template
+            </a>
+            {{/if}}
+        </div>
+    </div>
+
+    {{#unless hasBacktests}}
+    <div class="alert alert-info" role="alert">
+        <i class="fas fa-info-circle me-2"></i>
+        Start timing will appear after this strategy has at least one backtest.
+    </div>
+    {{/unless}}
+
+    {{#if hasBacktests}}
+    <div class="row g-4">
+        <div class="col-12 col-xl-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-sliders-h me-2"></i>
+                        Backtest
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="GET" action="/strategies/{{strategy.id}}/start-timing" class="mb-3">
+                        <label for="startTimingBacktestId" class="form-label fw-semibold">Selected Run</label>
+                        <div class="input-group">
+                            <select id="startTimingBacktestId" name="backtestId" class="form-select">
+                                {{#each backtestOptions}}
+                                <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                                {{/each}}
+                            </select>
+                            <button type="submit" class="btn btn-outline-primary">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </form>
+
+                    {{#if selectedBacktest}}
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold text-muted">Period</td>
+                                    <td class="text-end fw-bold">{{selectedBacktest.periodLabel}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Ticker Universe</td>
+                                    <td class="text-end">
+                                        <span class="badge {{selectedBacktest.scopeBadge}}">{{selectedBacktest.scopeLabel}}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Start</td>
+                                    <td class="text-end fw-bold">{{formatDate selectedBacktest.startDate}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">End</td>
+                                    <td class="text-end fw-bold">{{formatDate selectedBacktest.endDate}}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold text-muted">Final Value</td>
+                                    <td class="text-end fw-bold">{{formatCurrency selectedBacktest.finalPortfolioValue}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    {{/if}}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-compass me-2"></i>
+                        Deployment Context
+                    </h5>
+                    <span class="badge {{startTiming.deploymentContext.badge}}">
+                        {{startTiming.deploymentContext.label}}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <div class="text-muted small">Strategy 1M</div>
+                            <div class="fs-5 fw-bold {{#if (gt startTiming.deploymentContext.strategy1mReturnPercent 0)}}text-success{{else if (lt startTiming.deploymentContext.strategy1mReturnPercent 0)}}text-danger{{/if}}">
+                                {{formatPercentAsPercent startTiming.deploymentContext.strategy1mReturnPercent}}
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-muted small">Excess vs SPY 1M</div>
+                            <div class="fs-5 fw-bold {{#if (gt startTiming.deploymentContext.excess1mReturnPercent 0)}}text-success{{else if (lt startTiming.deploymentContext.excess1mReturnPercent 0)}}text-danger{{/if}}">
+                                {{formatPercentAsPercent startTiming.deploymentContext.excess1mReturnPercent}}
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-muted small">Strategy 3M</div>
+                            <div class="fs-5 fw-bold {{#if (gt startTiming.deploymentContext.strategy3mReturnPercent 0)}}text-success{{else if (lt startTiming.deploymentContext.strategy3mReturnPercent 0)}}text-danger{{/if}}">
+                                {{formatPercentAsPercent startTiming.deploymentContext.strategy3mReturnPercent}}
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-muted small">Excess vs SPY 3M</div>
+                            <div class="fs-5 fw-bold {{#if (gt startTiming.deploymentContext.excess3mReturnPercent 0)}}text-success{{else if (lt startTiming.deploymentContext.excess3mReturnPercent 0)}}text-danger{{/if}}">
+                                {{formatPercentAsPercent startTiming.deploymentContext.excess3mReturnPercent}}
+                            </div>
+                        </div>
+                    </div>
+                    <ul class="mb-0 ps-3">
+                        {{#each startTiming.deploymentContext.reasons}}
+                        <li>{{this}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="row g-4">
+                {{#each startTiming.regimeCards}}
+                <div class="col-12">
+                    <div class="card h-100">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-wave-square me-2"></i>
+                                {{symbol}}
+                            </h5>
+                            {{#if latestDate}}
+                            <span class="badge bg-light text-dark">{{latestDate}}</span>
+                            {{/if}}
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-4">
+                                    <div class="text-muted small">1M</div>
+                                    <div class="fw-bold {{#if (gt return1mPercent 0)}}text-success{{else if (lt return1mPercent 0)}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent return1mPercent}}
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">3M</div>
+                                    <div class="fw-bold {{#if (gt return3mPercent 0)}}text-success{{else if (lt return3mPercent 0)}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent return3mPercent}}
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Drawdown</div>
+                                    <div class="fw-bold {{#if (lt drawdownFromHighPercent 0)}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent drawdownFromHighPercent}}
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">50D</div>
+                                    <div class="fw-bold {{#if above50Day}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent sma50DistancePercent}}
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">200D</div>
+                                    <div class="fw-bold {{#if above200Day}}text-success{{else}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent sma200DistancePercent}}
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="text-muted small">Vol 20D</div>
+                                    <div class="fw-bold">{{formatPercentAsPercent volatility20dPercent}}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {{/each}}
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex flex-column flex-lg-row justify-content-lg-between align-items-lg-center gap-2">
+                    <div>
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-layer-group me-2"></i>
+                            Staggered Start Backtests
+                        </h5>
+                        {{#if startTimingSampleView.latestCreatedAt}}
+                        <div class="text-muted small">Latest sample run {{formatDateTime startTimingSampleView.latestCreatedAt}}</div>
+                        {{/if}}
+                    </div>
+                    {{#if pendingStartTimingJob}}
+                    <span class="badge bg-warning text-dark">
+                        {{pendingStartTimingJob.status}} {{pendingStartTimingJob.id}}
+                    </span>
+                    {{else}}
+                    <span class="badge bg-light text-dark">{{startTimingSampleView.count}} samples</span>
+                    {{/if}}
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/strategies/{{strategy.id}}/start-timing/queue" class="row g-2 align-items-end mb-3">
+                        {{> csrf-field}}
+                        <div class="col-12 col-md-4 col-xl-3">
+                            <label for="startTimingScope" class="form-label fw-semibold">Ticker Universe</label>
+                            <select id="startTimingScope" name="scope" class="form-select">
+                                {{#each startTimingScopeOptions}}
+                                <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                                {{/each}}
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-3 col-xl-2">
+                            <label for="startTimingWeeks" class="form-label fw-semibold">Weeks</label>
+                            <input id="startTimingWeeks" name="weeks" type="number" min="1" max="{{startTimingDefaults.maxWeeks}}" value="{{startTimingDefaults.weeks}}" class="form-control">
+                        </div>
+                        <div class="col-6 col-md-3 col-xl-2">
+                            <label for="startTimingSampleLimit" class="form-label fw-semibold">Batch Limit</label>
+                            <input id="startTimingSampleLimit" name="sampleLimit" type="number" min="1" max="{{startTimingDefaults.maxSampleLimit}}" value="{{startTimingDefaults.sampleLimit}}" class="form-control">
+                        </div>
+                        <div class="col-12 col-md-2">
+                            <button type="submit" class="btn btn-primary w-100" {{#if pendingStartTimingJob}}disabled{{/if}}>
+                                <i class="fas fa-play me-1"></i>
+                                Queue
+                            </button>
+                        </div>
+                    </form>
+
+                    {{#if startTimingSampleView.hasSamples}}
+                    <div style="position: relative; height: 360px; width: 100%;">
+                        <canvas id="staggeredStartChart"></canvas>
+                    </div>
+                    {{else}}
+                    <div class="alert alert-info mb-0" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Queue a refresh to compute weekly staggered-start samples. Each job only computes the configured number of missing samples.
+                    </div>
+                    {{/if}}
+                </div>
+                {{#if startTimingSampleView.hasSamples}}
+                <div class="table-responsive border-top">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col" class="ps-3">Start</th>
+                                <th scope="col">End</th>
+                                <th scope="col">Scope</th>
+                                <th scope="col" class="text-end">Return</th>
+                                <th scope="col" class="text-end">Final</th>
+                                <th scope="col" class="text-end">Sharpe</th>
+                                <th scope="col" class="text-end">Calmar</th>
+                                <th scope="col" class="text-end pe-3">Trades</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{#each startTimingSampleView.rows}}
+                            <tr>
+                                <td class="fw-semibold ps-3">{{formatDate startDate}}</td>
+                                <td>{{formatDate endDate}}</td>
+                                <td>{{scopeLabel}}</td>
+                                <td class="text-end fw-semibold {{#if (gt returnPercent 0)}}text-success{{else if (lt returnPercent 0)}}text-danger{{/if}}">
+                                    {{formatPercentAsPercent returnPercent}}
+                                </td>
+                                <td class="text-end">{{formatCurrency finalPortfolioValue}}</td>
+                                <td class="text-end">{{toFixed sharpeRatio 2}}</td>
+                                <td class="text-end">{{toFixed calmarRatio 2}}</td>
+                                <td class="text-end pe-3">{{totalTrades}}</td>
+                            </tr>
+                            {{/each}}
+                        </tbody>
+                    </table>
+                </div>
+                {{/if}}
+            </div>
+        </div>
+
+        {{#if startTiming.hasData}}
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Recent Relative Performance
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 420px; width: 100%;">
+                        <canvas id="startTimingMomentumChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex flex-column flex-md-row justify-content-md-between align-items-md-center gap-2">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-calendar-check me-2"></i>
+                        Start-Date Sensitivity
+                    </h5>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Forward return horizon">
+                        {{#each startTiming.windows}}
+                        <input type="radio" class="btn-check start-timing-window" name="startTimingWindow" id="startTimingWindow-{{key}}" value="{{key}}" autocomplete="off" {{#if (eq key '1m')}}checked{{/if}}>
+                        <label class="btn btn-outline-primary" for="startTimingWindow-{{key}}">{{label}}</label>
+                        {{/each}}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div style="position: relative; height: 460px; width: 100%;">
+                        <canvas id="startTimingSensitivityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {{else}}
+        <div class="col-12">
+            <div class="alert alert-info mb-0" role="alert">
+                <i class="fas fa-info-circle me-2"></i>
+                This backtest does not have enough daily snapshots for start timing charts.
+            </div>
+        </div>
+        {{/if}}
+
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-table me-2"></i>
+                        Start-Date Summary
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="ps-3">Window</th>
+                                    <th scope="col" class="text-end">Samples</th>
+                                    <th scope="col" class="text-end">Strategy Median</th>
+                                    <th scope="col" class="text-end">SPY Median</th>
+                                    <th scope="col" class="text-end">Positive</th>
+                                    <th scope="col" class="text-end pe-3">Beat SPY</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each startTiming.sensitivitySummary}}
+                                <tr>
+                                    <td class="fw-semibold ps-3">{{label}}</td>
+                                    <td class="text-end">{{sampleCount}}</td>
+                                    <td class="text-end fw-semibold {{#if (gt strategyMedianReturnPercent 0)}}text-success{{else if (lt strategyMedianReturnPercent 0)}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent strategyMedianReturnPercent}}
+                                    </td>
+                                    <td class="text-end">{{formatPercentAsPercent spyMedianReturnPercent}}</td>
+                                    <td class="text-end">
+                                        {{#if (and (defined strategyPositiveRate) (ne strategyPositiveRate null))}}
+                                        {{formatRateAsPercent strategyPositiveRate}}
+                                        {{else}}N/A{{/if}}
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        {{#if (and (defined outperformSpyRate) (ne outperformSpyRate null))}}
+                                        {{formatRateAsPercent outperformSpyRate}}
+                                        {{else}}N/A{{/if}}
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-sign-in-alt me-2"></i>
+                        Trade Entry Forward Outcomes
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="ps-3">Window</th>
+                                    <th scope="col" class="text-end">Entries</th>
+                                    <th scope="col" class="text-end">Median Entry Return</th>
+                                    <th scope="col" class="text-end">Win Rate</th>
+                                    <th scope="col" class="text-end">Median SPY</th>
+                                    <th scope="col" class="text-end pe-3">Median Excess</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{#each startTiming.entryOutcomes}}
+                                <tr>
+                                    <td class="fw-semibold ps-3">{{label}}</td>
+                                    <td class="text-end">{{sampleCount}}</td>
+                                    <td class="text-end fw-semibold {{#if (gt medianStrategyReturnPercent 0)}}text-success{{else if (lt medianStrategyReturnPercent 0)}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent medianStrategyReturnPercent}}
+                                    </td>
+                                    <td class="text-end">
+                                        {{#if (and (defined winRate) (ne winRate null))}}
+                                        {{formatRateAsPercent winRate}}
+                                        {{else}}N/A{{/if}}
+                                    </td>
+                                    <td class="text-end">{{formatPercentAsPercent medianSpyReturnPercent}}</td>
+                                    <td class="text-end pe-3 fw-semibold {{#if (gt medianExcessReturnPercent 0)}}text-success{{else if (lt medianExcessReturnPercent 0)}}text-danger{{/if}}">
+                                        {{formatPercentAsPercent medianExcessReturnPercent}}
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="border-top px-3 py-2 text-muted small">
+                        Entry return uses trade entry price to future close; SPY uses the same entry date and horizon.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {{/if}}
+</div>
+
+<script>
+    (() => {
+        const startTiming = {{{ json startTiming }}};
+        const staggeredStart = {{{ json startTimingSampleView.chartPoints }}};
+        let momentumChart = null;
+        let sensitivityChart = null;
+        let staggeredStartChart = null;
+
+        function formatPercent(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric)) return 'N/A';
+            const sign = numeric > 0 ? '+' : '';
+            return `${sign}${numeric.toFixed(2)}%`;
+        }
+
+        function renderMomentumChart() {
+            const element = document.getElementById('startTimingMomentumChart');
+            if (!element || !startTiming || !Array.isArray(startTiming.momentumPoints) || startTiming.momentumPoints.length === 0) {
+                return;
+            }
+
+            const labels = startTiming.momentumPoints.map((point) => point.date);
+            const datasets = [
+                {
+                    label: 'Strategy',
+                    data: startTiming.momentumPoints.map((point) => point.strategy),
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.08)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 0
+                },
+                {
+                    label: 'SPY',
+                    data: startTiming.momentumPoints.map((point) => point.spy),
+                    borderColor: '#198754',
+                    backgroundColor: 'rgba(25, 135, 84, 0.08)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 0
+                },
+                {
+                    label: 'QQQ',
+                    data: startTiming.momentumPoints.map((point) => point.qqq),
+                    borderColor: '#fd7e14',
+                    backgroundColor: 'rgba(253, 126, 20, 0.08)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 0
+                }
+            ];
+
+            momentumChart = new Chart(element.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { title: { display: true, text: 'Date' } },
+                        y: {
+                            title: { display: true, text: 'Rebased Value' },
+                            ticks: {
+                                callback: (value) => Number(value).toFixed(0)
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(2)}`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function getSensitivityDatasets(windowKey) {
+            return [
+                {
+                    label: 'Strategy',
+                    data: startTiming.sensitivityPoints.map((point) => point.returns?.[windowKey]?.strategy ?? null),
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.08)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 0
+                },
+                {
+                    label: 'SPY',
+                    data: startTiming.sensitivityPoints.map((point) => point.returns?.[windowKey]?.spy ?? null),
+                    borderColor: '#198754',
+                    backgroundColor: 'rgba(25, 135, 84, 0.08)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 0
+                },
+                {
+                    label: 'QQQ',
+                    data: startTiming.sensitivityPoints.map((point) => point.returns?.[windowKey]?.qqq ?? null),
+                    borderColor: '#fd7e14',
+                    backgroundColor: 'rgba(253, 126, 20, 0.08)',
+                    borderWidth: 2,
+                    tension: 0.2,
+                    pointRadius: 0
+                }
+            ];
+        }
+
+        function renderSensitivityChart(windowKey) {
+            const element = document.getElementById('startTimingSensitivityChart');
+            if (!element || !startTiming || !Array.isArray(startTiming.sensitivityPoints) || startTiming.sensitivityPoints.length === 0) {
+                return;
+            }
+
+            const labels = startTiming.sensitivityPoints.map((point) => point.date);
+            const datasets = getSensitivityDatasets(windowKey);
+
+            if (sensitivityChart) {
+                sensitivityChart.data.labels = labels;
+                sensitivityChart.data.datasets = datasets;
+                sensitivityChart.update();
+                return;
+            }
+
+            sensitivityChart = new Chart(element.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    spanGaps: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Start Date' } },
+                        y: {
+                            title: { display: true, text: 'Forward Return' },
+                            ticks: {
+                                callback: (value) => formatPercent(value)
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${formatPercent(context.parsed.y)}`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderStaggeredStartChart() {
+            const element = document.getElementById('staggeredStartChart');
+            if (!element || !Array.isArray(staggeredStart) || staggeredStart.length === 0) {
+                return;
+            }
+
+            staggeredStartChart = new Chart(element.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: staggeredStart.map((point) => point.date),
+                    datasets: [{
+                        label: 'Full Backtest Return',
+                        data: staggeredStart.map((point) => point.strategyReturnPercent),
+                        borderColor: '#6610f2',
+                        backgroundColor: 'rgba(102, 16, 242, 0.08)',
+                        borderWidth: 2,
+                        tension: 0.2,
+                        pointRadius: 3,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { title: { display: true, text: 'Backtest Start Date' } },
+                        y: {
+                            title: { display: true, text: 'Return To Latest Candle' },
+                            ticks: {
+                                callback: (value) => formatPercent(value)
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const point = staggeredStart[context.dataIndex] || {};
+                                    return [
+                                        `Return: ${formatPercent(context.parsed.y)}`,
+                                        `Trades: ${point.totalTrades ?? 0}`,
+                                        `Scope: ${point.scopeLabel || 'N/A'}`
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof Chart === 'undefined') return;
+            renderStaggeredStartChart();
+            renderMomentumChart();
+            renderSensitivityChart('1m');
+
+            document.querySelectorAll('.start-timing-window').forEach((input) => {
+                input.addEventListener('change', function (event) {
+                    const target = event.target;
+                    if (target && target.checked) {
+                        renderSensitivityChart(target.value);
+                    }
+                });
+            });
+        });
+    })();
+</script>

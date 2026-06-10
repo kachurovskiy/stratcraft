@@ -3,7 +3,7 @@ import type { BacktestScope, StrategyPerformance } from '../../types/StrategyTem
 import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { toNullableInteger, toNullableNumber } from '../core/valueParsers';
-import type { BacktestResultRecord, TickerBacktestPerformanceRow } from '../types';
+import type { BacktestResultRecord, StartTimingBacktestRecord, TickerBacktestPerformanceRow } from '../types';
 
 type BacktestResultsForTemplateRow = QueryResultRow & {
   id: string;
@@ -50,6 +50,23 @@ type BacktestResultsRow = QueryResultRow & {
   strategy_state: string | null;
   created_at: Date;
   ticker_scope: string;
+};
+
+type StartTimingBacktestRow = QueryResultRow & {
+  id: string;
+  strategy_id: string;
+  start_date: Date;
+  end_date: Date;
+  period_days: number;
+  period_months: number;
+  initial_capital: number;
+  final_portfolio_value: number;
+  performance: string;
+  daily_snapshots: string;
+  tickers: string;
+  ticker_scope: string;
+  strategy_state: string | null;
+  created_at: Date;
 };
 
 type StoredStrategyPerformanceRow = QueryResultRow & {
@@ -511,6 +528,101 @@ export class BacktestResultsRepo {
       });
     } catch (error) {
       console.error(`Error retrieving backtest results for strategy ${strategyId}:`, error);
+      return [];
+    }
+  }
+
+  private mapStartTimingBacktestRow(row: StartTimingBacktestRow): StartTimingBacktestRecord {
+    let performance: StartTimingBacktestRecord['performance'] = null;
+    try {
+      performance = row.performance ? JSON.parse(row.performance) : null;
+    } catch {
+      performance = null;
+    }
+
+    const dailySnapshots = this.parseDailySnapshots(row.daily_snapshots);
+    const tickers = this.parseBacktestTickers(row.tickers);
+
+    let strategyState: unknown | undefined;
+    if (row.strategy_state) {
+      try {
+        strategyState = JSON.parse(row.strategy_state);
+      } catch {
+        strategyState = undefined;
+      }
+    }
+
+    return {
+      id: row.id,
+      strategyId: row.strategy_id,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      periodDays: Number(row.period_days) || 0,
+      periodMonths: Number(row.period_months) || 0,
+      initialCapital: Number(row.initial_capital) || 0,
+      finalPortfolioValue: Number(row.final_portfolio_value) || 0,
+      performance,
+      dailySnapshots,
+      tickers,
+      tickerScope: row.ticker_scope,
+      strategyState,
+      createdAt: row.created_at
+    };
+  }
+
+  async getStartTimingBacktests(
+    strategyId: string,
+    userId: number,
+    options: { limit?: number; tickerScope?: string } = {}
+  ): Promise<StartTimingBacktestRecord[]> {
+    try {
+      const params: QueryValue[] = [strategyId, userId];
+      const conditions = [
+        'stb.strategy_id = ?',
+        '(s.user_id = ? OR s.user_id IS NULL)'
+      ];
+
+      const tickerScope = typeof options.tickerScope === 'string' ? options.tickerScope.trim() : '';
+      if (tickerScope) {
+        conditions.push('stb.ticker_scope = ?');
+        params.push(tickerScope);
+      }
+
+      let limitClause = '';
+      const limit = Number(options.limit);
+      if (Number.isFinite(limit) && limit > 0) {
+        limitClause = 'LIMIT ?';
+        params.push(Math.floor(limit));
+      }
+
+      const rows = await this.db.all<StartTimingBacktestRow>(
+        `
+          SELECT stb.id,
+                 stb.strategy_id,
+                 stb.start_date,
+                 stb.end_date,
+                 stb.period_days,
+                 stb.period_months,
+                 stb.initial_capital,
+                 stb.final_portfolio_value,
+                 stb.performance,
+                 stb.daily_snapshots,
+                 stb.tickers,
+                 stb.ticker_scope,
+                 stb.strategy_state,
+                 stb.created_at
+          FROM start_timing_backtests stb
+          INNER JOIN strategies s ON s.id = stb.strategy_id
+          WHERE ${conditions.join(' AND ')}
+          ORDER BY stb.start_date DESC, stb.created_at DESC
+          ${limitClause}
+        `,
+        params
+      );
+
+      return rows.map((row) => this.mapStartTimingBacktestRow(row));
+    } catch (error) {
+      console.error(`Error retrieving start timing backtests for strategy ${strategyId}:`, error);
       return [];
     }
   }

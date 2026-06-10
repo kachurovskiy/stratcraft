@@ -271,6 +271,18 @@ export interface TradeTickerStats {
   lossDurationCount: number;
 }
 
+export type TradeEntryForwardOutcome = {
+  windowKey: string;
+  label: string;
+  tradingDays: number;
+  sampleCount: number;
+  medianStrategyReturnPercent: number | null;
+  winRate: number | null;
+  medianSpyReturnPercent: number | null;
+  medianExcessReturnPercent: number | null;
+  outperformSpyRate: number | null;
+};
+
 export interface TradeVolumeSegmentStats {
   bucketLabel: string;
   bucketOrder: number;
@@ -358,6 +370,23 @@ export type BacktestResultRecord = {
   strategyState?: unknown;
   createdAt: Date;
   trades?: Trade[];
+};
+
+export type StartTimingBacktestRecord = {
+  id: string;
+  strategyId: string;
+  startDate: Date;
+  endDate: Date;
+  periodDays: number;
+  periodMonths: number;
+  initialCapital: number;
+  finalPortfolioValue: number;
+  performance: Partial<StrategyPerformance> | null;
+  dailySnapshots: BacktestDailySnapshot[];
+  tickers: string[];
+  tickerScope: string;
+  strategyState?: unknown;
+  createdAt: Date;
 };
 
 export type BacktestCacheLookupResult = {

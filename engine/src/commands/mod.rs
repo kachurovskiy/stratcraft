@@ -1,5 +1,6 @@
 pub mod backtest_accounts;
 pub mod backtest_active;
+pub mod backtest_start_timing;
 pub mod balance;
 pub mod explore;
 pub mod export_market_data;

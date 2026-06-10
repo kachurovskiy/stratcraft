@@ -7,6 +7,7 @@ import { createCandleSyncHandler } from './handlers/candleSyncHandler';
 import { createMarketDataSnapshotHandler } from './handlers/marketDataSnapshotHandler';
 import { createSignalHandler } from './handlers/signalHandler';
 import { createBacktestHandler } from './handlers/backtestHandler';
+import { createStartTimingBacktestHandler } from './handlers/startTimingBacktestHandler';
 import { createPlanOperationsHandler } from './handlers/planOperationsHandler';
 import { createDispatchOperationsHandler } from './handlers/dispatchOperationsHandler';
 import { createReconcileTradesHandler } from './handlers/reconcileTradesHandler';
@@ -25,6 +26,7 @@ export function createJobHandlers(deps: JobHandlerDependencies): HandlerMap {
     'export-market-data': createMarketDataSnapshotHandler(deps),
     'generate-signals': createSignalHandler(deps),
     'backtest-active': createBacktestHandler(deps),
+    'backtest-start-timing': createStartTimingBacktestHandler(deps),
     'reconcile-trades': createReconcileTradesHandler(deps),
     'liquidate-account': createLiquidateAccountHandler(deps),
     'plan-operations': createPlanOperationsHandler(deps),

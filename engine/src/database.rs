@@ -934,6 +934,81 @@ impl Database {
         Ok(())
     }
 
+    pub async fn get_start_timing_backtest_start_dates(
+        &self,
+        strategy_id: &str,
+        ticker_scope: &str,
+    ) -> Result<HashSet<DateTime<Utc>>> {
+        let rows = self
+            .client
+            .query(
+                "SELECT start_date
+                 FROM start_timing_backtests
+                 WHERE strategy_id = $1 AND ticker_scope = $2",
+                &[&strategy_id, &ticker_scope],
+            )
+            .await?;
+
+        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+    }
+
+    pub async fn upsert_start_timing_backtest(
+        &mut self,
+        strategy_id: &str,
+        result: &BacktestResult,
+        ticker_scope: &str,
+    ) -> Result<()> {
+        let performance_json = serialize_performance(&result.performance)?;
+        let snapshots_json = serialize_snapshots(&result.daily_snapshots)?;
+        let tickers_json = serde_json::to_string(&result.tickers)?;
+        let period_days = calculate_period_days(&result.start_date, &result.end_date);
+        let period_months = calculate_period_months(period_days);
+        let strategy_state_json = result
+            .strategy_state
+            .as_ref()
+            .map(|snapshot| serde_json::to_string(snapshot))
+            .transpose()?;
+
+        self.client
+            .execute(
+                "INSERT INTO start_timing_backtests
+                 (id, strategy_id, start_date, end_date, period_days, period_months,
+                  initial_capital, final_portfolio_value, performance, daily_snapshots,
+                  tickers, ticker_scope, strategy_state)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                 ON CONFLICT (strategy_id, start_date, ticker_scope) DO UPDATE SET
+                   id = EXCLUDED.id,
+                   end_date = EXCLUDED.end_date,
+                   period_days = EXCLUDED.period_days,
+                   period_months = EXCLUDED.period_months,
+                   initial_capital = EXCLUDED.initial_capital,
+                   final_portfolio_value = EXCLUDED.final_portfolio_value,
+                   performance = EXCLUDED.performance,
+                   daily_snapshots = EXCLUDED.daily_snapshots,
+                   tickers = EXCLUDED.tickers,
+                   strategy_state = EXCLUDED.strategy_state,
+                   created_at = CURRENT_TIMESTAMP",
+                &[
+                    &result.id,
+                    &strategy_id,
+                    &result.start_date,
+                    &result.end_date,
+                    &clamp_i64_to_i32(period_days),
+                    &clamp_i64_to_i32(period_months),
+                    &result.initial_capital,
+                    &result.final_portfolio_value,
+                    &performance_json,
+                    &snapshots_json,
+                    &tickers_json,
+                    &ticker_scope,
+                    &strategy_state_json,
+                ],
+            )
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn link_live_trades_to_backtest(
         &self,
         strategy_id: &str,

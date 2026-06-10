@@ -2,8 +2,9 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use engine::{
     commands::{
-        backtest_accounts, backtest_active, balance, explore, export_market_data, generate_signals,
-        optimize, plan_operations, reconcile_trades, train_lightgbm, verify,
+        backtest_accounts, backtest_active, backtest_start_timing, balance, explore,
+        export_market_data, generate_signals, optimize, plan_operations, reconcile_trades,
+        train_lightgbm, verify,
     },
     context::AppContext,
     strategy,
@@ -69,6 +70,21 @@ enum Commands {
     },
     /// Backtest strategies linked to live accounts using all tickers
     BacktestAccounts,
+    /// Compute staggered-start backtest samples for one strategy
+    BacktestStartTiming {
+        /// Strategy ID to sample
+        #[arg(long = "strategy-id")]
+        strategy_id: String,
+        /// Ticker scope to backtest
+        #[arg(long, value_enum, default_value = "validation")]
+        scope: backtest_active::BacktestScope,
+        /// Number of weekly start dates to consider
+        #[arg(long, default_value_t = 52)]
+        weeks: usize,
+        /// Maximum missing samples to compute in this run
+        #[arg(long = "sample-limit", default_value_t = 8)]
+        sample_limit: usize,
+    },
     /// Rebuild account operations for strategies that have both account and start date defined
     PlanOperations,
     /// Reconcile live trades with broker order states
@@ -186,6 +202,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::BacktestAccounts => {
             backtest_accounts::run(&app_context).await?;
         }
+        Commands::BacktestStartTiming {
+            strategy_id,
+            scope,
+            weeks,
+            sample_limit,
+        } => {
+            backtest_start_timing::run(&app_context, &strategy_id, scope, weeks, sample_limit)
+                .await?;
+        }
         Commands::PlanOperations => {
             plan_operations::run(&app_context).await?;
         }
@@ -265,6 +290,7 @@ fn command_requires_database(command: &Commands) -> bool {
         | Commands::GenerateSignals
         | Commands::BacktestActive { .. }
         | Commands::BacktestAccounts
+        | Commands::BacktestStartTiming { .. }
         | Commands::PlanOperations
         | Commands::ReconcileTrades
         | Commands::ExportMarketData { .. }

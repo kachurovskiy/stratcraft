@@ -23,7 +23,7 @@ pub enum BacktestScope {
 }
 
 impl BacktestScope {
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             BacktestScope::Validation => "validation",
             BacktestScope::Training => "training",
@@ -31,7 +31,7 @@ impl BacktestScope {
         }
     }
 
-    async fn build_context(self, app: &AppContext) -> Result<EngineContext> {
+    pub async fn build_context(self, app: &AppContext) -> Result<EngineContext> {
         match self {
             BacktestScope::Validation => app.engine_context_validation_tickers().await,
             BacktestScope::Training => app.engine_context_training_tickers().await,

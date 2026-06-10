@@ -9,7 +9,12 @@ import type {
 import { normalizeUppercaseString } from '../../utils/stringNormalization';
 import { DbClient, type QueryValue } from '../core/DbClient';
 import { parseDate, toNullableInteger, toNullableNumber, trimToNull } from '../core/valueParsers';
-import type { EntryFillGapHistogram, TradeTickerStats, TradeVolumeSegmentStats } from '../types';
+import type {
+  EntryFillGapHistogram,
+  TradeEntryForwardOutcome,
+  TradeTickerStats,
+  TradeVolumeSegmentStats
+} from '../types';
 
 type TradeStatus = 'pending' | 'active' | 'closed' | 'cancelled';
 
@@ -57,6 +62,17 @@ type EntryFillGapBucketRow = QueryResultRow & {
   total_pnl: number | null;
   sum_pnl_percent: number | null;
   pnl_percent_count: number | null;
+};
+type TradeEntryForwardOutcomeRow = QueryResultRow & {
+  window_key: string;
+  window_label: string;
+  trading_days: number;
+  sample_count: number;
+  median_strategy_return_percent: number | null;
+  win_rate: number | null;
+  median_spy_return_percent: number | null;
+  median_excess_return_percent: number | null;
+  outperform_spy_rate: number | null;
 };
 
 type AccountTradeCorporateActionScopeRow = QueryResultRow & {
@@ -1070,6 +1086,111 @@ export class TradesRepo {
         maxVolumeUsd: row.max_volume_usd === null ? null : Number(row.max_volume_usd) || 0
       }))
       .filter((row) => row.tradeCount > 0 && Number.isFinite(row.bucketOrder));
+  }
+
+  async getBacktestEntryForwardOutcomes(
+    backtestResultId: string,
+    userId: number
+  ): Promise<TradeEntryForwardOutcome[]> {
+    const rows = await this.db.all<TradeEntryForwardOutcomeRow>(
+      `
+        WITH horizons(window_key, window_label, trading_days) AS (
+          VALUES
+            ('1w', '1W', 5),
+            ('1m', '1M', 21),
+            ('3m', '3M', 63),
+            ('6m', '6M', 126)
+        ),
+        filtered_trades AS (
+          SELECT
+            UPPER(t.ticker) AS ticker,
+            t.quantity,
+            t.price,
+            t.date::date AS entry_date
+          FROM trades t
+          LEFT JOIN strategies s ON s.id = t.strategy_id
+          WHERE t.backtest_result_id = ?
+            AND t.status IN ('active', 'closed')
+            AND t.quantity != 0
+            AND t.price > 0
+            AND (COALESCE(t.user_id, s.user_id) = ? OR COALESCE(t.user_id, s.user_id) IS NULL)
+        ),
+        forward_returns AS (
+          SELECT
+            h.window_key,
+            h.window_label,
+            h.trading_days,
+            CASE
+              WHEN ft.quantity < 0 THEN ((ft.price - future_candle.close) / ft.price) * 100
+              ELSE ((future_candle.close - ft.price) / ft.price) * 100
+            END AS strategy_return_percent,
+            ((spy_future.close - spy_entry.close) / NULLIF(spy_entry.close, 0)) * 100 AS spy_return_percent
+          FROM filtered_trades ft
+          CROSS JOIN horizons h
+          LEFT JOIN LATERAL (
+            SELECT c.close
+            FROM candles c
+            WHERE c.ticker = ft.ticker
+              AND c.date >= ft.entry_date
+            ORDER BY c.date ASC
+            OFFSET h.trading_days
+            LIMIT 1
+          ) future_candle ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT c.close
+            FROM candles c
+            WHERE c.ticker = 'SPY'
+              AND c.date >= ft.entry_date
+            ORDER BY c.date ASC
+            LIMIT 1
+          ) spy_entry ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT c.close
+            FROM candles c
+            WHERE c.ticker = 'SPY'
+              AND c.date >= ft.entry_date
+            ORDER BY c.date ASC
+            OFFSET h.trading_days
+            LIMIT 1
+          ) spy_future ON TRUE
+          WHERE future_candle.close IS NOT NULL
+        )
+        SELECT
+          h.window_key,
+          h.window_label,
+          h.trading_days,
+          COUNT(fr.strategy_return_percent) AS sample_count,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY fr.strategy_return_percent)
+            FILTER (WHERE fr.strategy_return_percent IS NOT NULL) AS median_strategy_return_percent,
+          AVG(CASE WHEN fr.strategy_return_percent > 0 THEN 1.0 ELSE 0.0 END)
+            FILTER (WHERE fr.strategy_return_percent IS NOT NULL) AS win_rate,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY fr.spy_return_percent)
+            FILTER (WHERE fr.spy_return_percent IS NOT NULL) AS median_spy_return_percent,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY fr.strategy_return_percent - fr.spy_return_percent)
+            FILTER (WHERE fr.strategy_return_percent IS NOT NULL AND fr.spy_return_percent IS NOT NULL)
+            AS median_excess_return_percent,
+          AVG(CASE WHEN fr.strategy_return_percent > fr.spy_return_percent THEN 1.0 ELSE 0.0 END)
+            FILTER (WHERE fr.strategy_return_percent IS NOT NULL AND fr.spy_return_percent IS NOT NULL)
+            AS outperform_spy_rate
+        FROM horizons h
+        LEFT JOIN forward_returns fr ON fr.window_key = h.window_key
+        GROUP BY h.window_key, h.window_label, h.trading_days
+        ORDER BY h.trading_days ASC
+      `,
+      [backtestResultId, userId]
+    );
+
+    return rows.map((row) => ({
+      windowKey: row.window_key,
+      label: row.window_label,
+      tradingDays: Number(row.trading_days) || 0,
+      sampleCount: Number(row.sample_count) || 0,
+      medianStrategyReturnPercent: toNullableNumber(row.median_strategy_return_percent),
+      winRate: toNullableNumber(row.win_rate),
+      medianSpyReturnPercent: toNullableNumber(row.median_spy_return_percent),
+      medianExcessReturnPercent: toNullableNumber(row.median_excess_return_percent),
+      outperformSpyRate: toNullableNumber(row.outperform_spy_rate)
+    }));
   }
 
   async getEntryFillGapHistogramForBacktest(

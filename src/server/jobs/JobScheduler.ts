@@ -10,6 +10,7 @@ export type JobType =
   | 'export-market-data'
   | 'generate-signals'
   | 'backtest-active'
+  | 'backtest-start-timing'
   | 'reconcile-trades'
   | 'liquidate-account'
   | 'plan-operations'

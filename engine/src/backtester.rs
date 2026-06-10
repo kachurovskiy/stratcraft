@@ -2,7 +2,9 @@ use crate::config::{resolve_backtest_initial_capital, EngineRuntimeSettings};
 use crate::data_context::{MarketData, TickerScope};
 use crate::database::Database;
 use crate::engine::Engine;
-use crate::models::{AccountSignalSkip, BacktestResult, GeneratedSignal, StrategyConfig};
+use crate::models::{
+    AccountSignalSkip, BacktestResult, GeneratedSignal, StrategyConfig, StrategyStateSnapshot,
+};
 use crate::retry::retry_db_operation;
 use crate::strategy_utils::calculate_period_days_local;
 use anyhow::{anyhow, Result};
@@ -615,6 +617,128 @@ impl<'a> ActiveStrategyBacktester<'a> {
         Ok(())
     }
 
+    pub async fn run_start_timing_samples(
+        &mut self,
+        strategy_id: &str,
+        weeks: usize,
+        sample_limit: usize,
+    ) -> Result<usize> {
+        if !self.data.has_data() {
+            warn!("No market data available to run start timing backtests.");
+            return Ok(0);
+        }
+
+        let strategy = self
+            .db
+            .get_strategy_config(strategy_id)
+            .await?
+            .ok_or_else(|| anyhow!("Strategy {} not found", strategy_id))?;
+
+        let unique_dates = self.data.unique_dates().to_vec();
+        let earliest_available = *unique_dates
+            .first()
+            .expect("Checked unique_dates is not empty");
+        let latest_available = *unique_dates
+            .last()
+            .expect("Checked unique_dates is not empty");
+
+        let scope_label = format!("timing_{}", self.ticker_scope.result_label());
+        let existing_start_dates = self
+            .db
+            .get_start_timing_backtest_start_dates(strategy_id, &scope_label)
+            .await?;
+        let candidates = build_weekly_start_candidates(unique_dates.as_slice(), weeks)
+            .into_iter()
+            .filter(|date| *date >= earliest_available && *date < latest_available)
+            .filter(|date| !existing_start_dates.contains(date))
+            .take(sample_limit)
+            .collect::<Vec<_>>();
+
+        if candidates.is_empty() {
+            info!(
+                "No missing start timing samples for strategy {} in {} scope",
+                strategy_id, scope_label
+            );
+            return Ok(0);
+        }
+
+        let runtime_settings = EngineRuntimeSettings::from_settings_map(self.data.settings())?;
+        let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
+        let ticker_expense_map = self.data.ticker_expense_map_arc();
+        let mut completed = 0usize;
+
+        for start_date in candidates {
+            let signal_end = latest_available;
+            let signals = self
+                .db
+                .get_signals_for_strategy_in_range(strategy_id, start_date, signal_end)
+                .await?;
+            if signals.is_empty() {
+                warn!(
+                    "Skipping start timing sample for {} at {} because no signals were found",
+                    strategy.name, start_date
+                );
+                continue;
+            }
+
+            let mut parameters = strategy.parameters.clone();
+            parameters.insert("initialCapital".to_string(), backtest_initial_capital);
+
+            let mut engine = Engine::from_parameters(&parameters, runtime_settings.clone());
+            engine.set_ticker_expense_map(ticker_expense_map.clone());
+
+            let tickers = collect_signal_tickers(&signals);
+            let run = engine.backtest(
+                None,
+                &strategy.template_id,
+                tickers.as_slice(),
+                self.data.all_candles(),
+                unique_dates.as_slice(),
+                Some(signals.as_slice()),
+                Some(start_date),
+                None,
+            )?;
+
+            let mut result = run.result;
+            result.id = build_start_timing_backtest_id(strategy_id, &scope_label, start_date);
+            result.strategy_id = strategy.id.clone();
+            result.ticker_scope = Some(scope_label.clone());
+            result.strategy_state = Some(StrategyStateSnapshot {
+                template_id: "start_timing".to_string(),
+                data: json!({
+                    "source": "staggered_start",
+                    "requestedStart": start_date,
+                    "scope": self.ticker_scope.result_label(),
+                }),
+            });
+
+            self.db
+                .upsert_start_timing_backtest(strategy_id, &result, &scope_label)
+                .await?;
+            self.db
+                .persist_strategy_event(
+                    strategy_id,
+                    "info",
+                    "Start timing backtest sample completed",
+                    json!({
+                        "operation": "start_timing_backtest",
+                        "requestedStart": start_date,
+                        "actualStart": result.start_date,
+                        "endDate": result.end_date,
+                        "scope": scope_label,
+                        "totalTrades": result.performance.total_trades,
+                        "initialCapital": result.initial_capital,
+                        "finalPortfolioValue": result.final_portfolio_value,
+                    }),
+                )
+                .await;
+
+            completed += 1;
+        }
+
+        Ok(completed)
+    }
+
     async fn persist_backtest_success(
         &mut self,
         success: StrategyBacktestSuccess,
@@ -744,4 +868,53 @@ impl<'a> ActiveStrategyBacktester<'a> {
 
         None
     }
+}
+
+fn build_weekly_start_candidates(
+    unique_dates: &[DateTime<Utc>],
+    weeks: usize,
+) -> Vec<DateTime<Utc>> {
+    if unique_dates.is_empty() || weeks == 0 {
+        return Vec::new();
+    }
+
+    let latest = *unique_dates.last().expect("unique_dates is not empty");
+    let first_target = latest - Duration::days((weeks as i64) * 7);
+    let mut candidates = Vec::new();
+
+    for week in 0..weeks {
+        let target = first_target + Duration::days((week as i64) * 7);
+        let index = match unique_dates.binary_search(&target) {
+            Ok(idx) => idx,
+            Err(idx) => idx.min(unique_dates.len().saturating_sub(1)),
+        };
+        if let Some(candidate) = unique_dates.get(index) {
+            if candidates.last().copied() != Some(*candidate) {
+                candidates.push(*candidate);
+            }
+        }
+    }
+
+    candidates
+}
+
+fn collect_signal_tickers(signals: &[GeneratedSignal]) -> Vec<String> {
+    let mut tickers = BTreeSet::new();
+    for signal in signals {
+        tickers.insert(signal.ticker.clone());
+    }
+    tickers.into_iter().collect()
+}
+
+fn build_start_timing_backtest_id(
+    strategy_id: &str,
+    ticker_scope: &str,
+    start_date: DateTime<Utc>,
+) -> String {
+    format!(
+        "start_timing_{}_{}_{}",
+        strategy_id,
+        ticker_scope,
+        start_date.format("%Y%m%d")
+    )
 }

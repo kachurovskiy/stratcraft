@@ -379,6 +379,25 @@ CREATE TABLE IF NOT EXISTS remote_optimizer_jobs (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS start_timing_backtests (
+    id TEXT PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    start_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    period_days INTEGER NOT NULL DEFAULT 0,
+    period_months INTEGER NOT NULL DEFAULT 0,
+    initial_capital DOUBLE PRECISION NOT NULL,
+    final_portfolio_value DOUBLE PRECISION NOT NULL,
+    performance TEXT NOT NULL,
+    daily_snapshots TEXT NOT NULL,
+    tickers TEXT NOT NULL,
+    ticker_scope TEXT NOT NULL DEFAULT 'timing_validation',
+    strategy_state TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (strategy_id) REFERENCES strategies(id) ON DELETE CASCADE,
+    UNIQUE (strategy_id, start_date, ticker_scope)
+);
+
 INSERT INTO settings (setting_key, value)
 VALUES
     ('SITE_NAME', 'StratCraft'),
@@ -493,6 +512,8 @@ CREATE INDEX IF NOT EXISTS idx_account_signal_skips_created_at ON account_signal
 CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy_id ON backtest_results(strategy_id);
 CREATE INDEX IF NOT EXISTS idx_backtest_results_strategy_scope_created_at
     ON backtest_results(strategy_id, ticker_scope, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_start_timing_backtests_strategy_scope_start
+    ON start_timing_backtests(strategy_id, ticker_scope, start_date);
 CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
 CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
 CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at);

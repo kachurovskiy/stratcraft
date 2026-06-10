@@ -12,6 +12,7 @@ export type LogSource =
   | 'candle-job'
   | 'signal-job'
   | 'backtest-job'
+  | 'start-timing-backtest-job'
   | 'reconcile-trades-job'
   | 'liquidate-account-job'
   | 'plan-operations-job'
