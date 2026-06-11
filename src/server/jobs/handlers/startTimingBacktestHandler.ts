@@ -4,9 +4,7 @@ import { JobHandlerDependencies } from '../types';
 
 const START_TIMING_SOURCE = 'start-timing-backtest-job';
 const DEFAULT_WEEKS = 52;
-const DEFAULT_SAMPLE_LIMIT = 8;
 const MAX_WEEKS = 260;
-const MAX_SAMPLE_LIMIT = 20;
 
 const normalizeScope = (value: unknown): Exclude<BacktestScope, 'live'> => {
   if (value === 'training' || value === 'all') {
@@ -33,18 +31,16 @@ export function createStartTimingBacktestHandler(deps: JobHandlerDependencies): 
 
     const scope = normalizeScope(metadata.scope);
     const weeks = normalizePositiveInteger(metadata.weeks, DEFAULT_WEEKS, MAX_WEEKS);
-    const sampleLimit = normalizePositiveInteger(metadata.sampleLimit, DEFAULT_SAMPLE_LIMIT, MAX_SAMPLE_LIMIT);
     const logMetadata = {
       jobId: ctx.job.id,
       strategyId,
       scope,
-      weeks,
-      sampleLimit
+      weeks
     };
 
     ctx.loggingService.info(
       START_TIMING_SOURCE,
-      'Running staggered-start backtest samples',
+      'Running horizon-limited start timing samples',
       logMetadata
     );
 
@@ -56,9 +52,7 @@ export function createStartTimingBacktestHandler(deps: JobHandlerDependencies): 
         '--scope',
         scope,
         '--weeks',
-        String(weeks),
-        '--sample-limit',
-        String(sampleLimit)
+        String(weeks)
       ],
       ctx.abortSignal,
       logMetadata
@@ -69,8 +63,7 @@ export function createStartTimingBacktestHandler(deps: JobHandlerDependencies): 
       meta: {
         strategyId,
         scope,
-        weeks,
-        sampleLimit
+        weeks
       }
     };
   };

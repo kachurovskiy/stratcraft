@@ -6,23 +6,31 @@ function makeDate(index: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function makePortfolio(values: number[]): PortfolioValuePoint[] {
+function makePortfolio(values: number[], startIndex = 0): PortfolioValuePoint[] {
   return values.map((value, index) => ({
-    date: makeDate(index),
+    date: makeDate(startIndex + index),
     value,
     activeTrades: 0,
     missedTradesDueToCash: 0
   }));
 }
 
-function makeBenchmark(values: number[]): BenchmarkData {
+function makeBenchmark(values: number[], startIndex = 0): BenchmarkData {
   const series = values.map((value, index) => ({
-    date: makeDate(index),
+    date: makeDate(startIndex + index),
     value
   }));
   return {
     spy: series,
     qqq: series.map((point) => ({ ...point, value: point.value * 1.1 }))
+  };
+}
+
+function makeSample(startIndex: number, portfolioValues: number[], benchmarkValues: number[]) {
+  return {
+    startDate: makeDate(startIndex),
+    portfolioValueData: makePortfolio(portfolioValues, startIndex),
+    benchmarkData: makeBenchmark(benchmarkValues, startIndex)
   };
 }
 
@@ -32,27 +40,31 @@ describe('buildStartTimingAnalysis', () => {
     const benchmark = makeBenchmark(Array.from({ length: 30 }, (_, index) => 100 + index * 0.5));
 
     const analysis = buildStartTimingAnalysis({
-      portfolioValueData: portfolio,
-      benchmarkData: benchmark,
-      lookbackTradingDays: 30
+      samples: [{
+        startDate: makeDate(0),
+        portfolioValueData: portfolio,
+        benchmarkData: benchmark
+      }]
     });
 
     expect(analysis.hasData).toBe(true);
     expect(analysis.windows.map((window) => window.key)).toEqual(['1w', '1m', '3m']);
-    expect(analysis.sensitivityPoints).toHaveLength(30);
+    expect(analysis.sensitivityPoints).toHaveLength(1);
     expect(analysis.sensitivityPoints[0].returns['1w'].strategy).toBeCloseTo(5);
     expect(analysis.sensitivityPoints[0].returns['1w'].spy).toBeCloseTo(2.5);
-    expect(analysis.sensitivityPoints[29].returns['1w'].strategy).toBeNull();
-    expect(analysis.sensitivitySummary.find((row) => row.key === '1w')?.sampleCount).toBe(25);
-    expect(analysis.sensitivitySummary.find((row) => row.key === '1m')?.sampleCount).toBe(9);
+    expect(analysis.sensitivityPoints[0].returns['1m'].strategy).toBeCloseTo(21);
+    expect(analysis.sensitivitySummary.find((row) => row.key === '1w')?.sampleCount).toBe(1);
+    expect(analysis.sensitivitySummary.find((row) => row.key === '1m')?.sampleCount).toBe(1);
     expect(analysis.sensitivitySummary.find((row) => row.key === '3m')?.sampleCount).toBe(0);
   });
 
   it('groups strategy returns by SPY and QQQ forward market state', () => {
     const analysis = buildStartTimingAnalysis({
-      portfolioValueData: makePortfolio([100, 100, 100, 100, 100, 110, 95, 101]),
-      benchmarkData: makeBenchmark([100, 100, 100, 100, 100, 104, 97, 100.5]),
-      lookbackTradingDays: 8
+      samples: [
+        makeSample(0, [100, 100, 100, 100, 100, 110], [100, 100, 100, 100, 100, 104]),
+        makeSample(10, [100, 100, 100, 100, 100, 95], [100, 100, 100, 100, 100, 97]),
+        makeSample(20, [100, 100, 100, 100, 100, 101], [100, 100, 100, 100, 100, 100.5])
+      ]
     });
 
     const spyUp = analysis.marketStateSummary.find((row) =>
@@ -79,9 +91,11 @@ describe('buildStartTimingAnalysis', () => {
 
   it('calculates strategy and benchmark forward-return correlations', () => {
     const analysis = buildStartTimingAnalysis({
-      portfolioValueData: makePortfolio([100, 100, 100, 100, 100, 110, 95, 101]),
-      benchmarkData: makeBenchmark([100, 100, 100, 100, 100, 104, 97, 100.5]),
-      lookbackTradingDays: 8
+      samples: [
+        makeSample(0, [100, 100, 100, 100, 100, 110], [100, 100, 100, 100, 100, 104]),
+        makeSample(10, [100, 100, 100, 100, 100, 95], [100, 100, 100, 100, 100, 97]),
+        makeSample(20, [100, 100, 100, 100, 100, 101], [100, 100, 100, 100, 100, 100.5])
+      ]
     });
 
     const spyCorrelation = analysis.marketCorrelations.find((row) =>

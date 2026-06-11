@@ -70,7 +70,7 @@ enum Commands {
     },
     /// Backtest strategies linked to live accounts using all tickers
     BacktestAccounts,
-    /// Compute staggered-start backtest samples for one strategy
+    /// Compute horizon-limited start timing samples for one strategy
     BacktestStartTiming {
         /// Strategy ID to sample
         #[arg(long = "strategy-id")]
@@ -81,9 +81,6 @@ enum Commands {
         /// Number of weekly start dates to consider
         #[arg(long, default_value_t = 52)]
         weeks: usize,
-        /// Maximum missing samples to compute in this run
-        #[arg(long = "sample-limit", default_value_t = 8)]
-        sample_limit: usize,
     },
     /// Rebuild account operations for strategies that have both account and start date defined
     PlanOperations,
@@ -206,10 +203,8 @@ async fn main() -> anyhow::Result<()> {
             strategy_id,
             scope,
             weeks,
-            sample_limit,
         } => {
-            backtest_start_timing::run(&app_context, &strategy_id, scope, weeks, sample_limit)
-                .await?;
+            backtest_start_timing::run(&app_context, &strategy_id, scope, weeks).await?;
         }
         Commands::PlanOperations => {
             plan_operations::run(&app_context).await?;

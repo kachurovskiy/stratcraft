@@ -8,7 +8,6 @@ pub async fn run(
     strategy_id: &str,
     scope: BacktestScope,
     weeks: usize,
-    sample_limit: usize,
 ) -> Result<()> {
     let mut context = scope.build_context(app).await.map_err(|error| {
         warn!(
@@ -21,11 +20,11 @@ pub async fn run(
 
     let completed = context
         .backtester()
-        .run_start_timing_samples(strategy_id, weeks, sample_limit)
+        .run_start_timing_samples(strategy_id, weeks)
         .await?;
 
     info!(
-        "Completed {} start timing backtest sample{} for strategy {} using {} scope",
+        "Completed {} horizon-limited start timing sample{} for strategy {} using {} scope",
         completed,
         if completed == 1 { "" } else { "s" },
         strategy_id,

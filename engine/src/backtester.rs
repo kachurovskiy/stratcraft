@@ -18,6 +18,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
+const START_TIMING_MAX_HORIZON_TRADING_DAYS: usize = 63;
+
 struct StrategyBacktestTask {
     id: String,
     name: String,
@@ -43,6 +45,21 @@ struct StrategyBacktestResultMsg {
     run: StdResult<CompletedBacktestPayload, String>,
     months_filter: Option<i64>,
     account_id: Option<String>,
+}
+
+struct StartTimingBacktestTask {
+    start_date: DateTime<Utc>,
+    template_id: String,
+    parameters: HashMap<String, f64>,
+    signals: Vec<GeneratedSignal>,
+    tickers: Vec<String>,
+    sample_dates: Vec<DateTime<Utc>>,
+}
+
+struct StartTimingBacktestResultMsg {
+    start_date: DateTime<Utc>,
+    duration_minutes: f64,
+    run: StdResult<BacktestResult, String>,
 }
 
 struct StrategyBacktestSuccess {
@@ -621,7 +638,6 @@ impl<'a> ActiveStrategyBacktester<'a> {
         &mut self,
         strategy_id: &str,
         weeks: usize,
-        sample_limit: usize,
     ) -> Result<usize> {
         if !self.data.has_data() {
             warn!("No market data available to run start timing backtests.");
@@ -649,9 +665,20 @@ impl<'a> ActiveStrategyBacktester<'a> {
             .await?;
         let candidates = build_weekly_start_candidates(unique_dates.as_slice(), weeks)
             .into_iter()
-            .filter(|date| *date >= earliest_available && *date < latest_available)
-            .filter(|date| !existing_start_dates.contains(date))
-            .take(sample_limit)
+            .filter_map(|date| {
+                let start_index = unique_dates.binary_search(&date).ok()?;
+                let end_index = start_index.checked_add(START_TIMING_MAX_HORIZON_TRADING_DAYS)?;
+                if date < earliest_available
+                    || date >= latest_available
+                    || end_index >= unique_dates.len()
+                {
+                    return None;
+                }
+                if existing_start_dates.contains(&date) {
+                    return None;
+                }
+                Some((date, start_index, end_index))
+            })
             .collect::<Vec<_>>();
 
         if candidates.is_empty() {
@@ -665,10 +692,10 @@ impl<'a> ActiveStrategyBacktester<'a> {
         let runtime_settings = EngineRuntimeSettings::from_settings_map(self.data.settings())?;
         let backtest_initial_capital = resolve_backtest_initial_capital(self.data.settings());
         let ticker_expense_map = self.data.ticker_expense_map_arc();
-        let mut completed = 0usize;
+        let mut tasks = Vec::new();
 
-        for start_date in candidates {
-            let signal_end = latest_available;
+        for (start_date, start_index, end_index) in candidates {
+            let signal_end = unique_dates[end_index];
             let signals = self
                 .db
                 .get_signals_for_strategy_in_range(strategy_id, start_date, signal_end)
@@ -684,30 +711,166 @@ impl<'a> ActiveStrategyBacktester<'a> {
             let mut parameters = strategy.parameters.clone();
             parameters.insert("initialCapital".to_string(), backtest_initial_capital);
 
-            let mut engine = Engine::from_parameters(&parameters, runtime_settings.clone());
-            engine.set_ticker_expense_map(ticker_expense_map.clone());
-
             let tickers = collect_signal_tickers(&signals);
-            let run = engine.backtest(
-                None,
-                &strategy.template_id,
-                tickers.as_slice(),
-                self.data.all_candles(),
-                unique_dates.as_slice(),
-                Some(signals.as_slice()),
-                Some(start_date),
-                None,
-            )?;
+            let sample_dates = unique_dates[start_index..=end_index].to_vec();
+            tasks.push(StartTimingBacktestTask {
+                start_date,
+                template_id: strategy.template_id.clone(),
+                parameters,
+                signals,
+                tickers,
+                sample_dates,
+            });
+        }
 
-            let mut result = run.result;
+        if tasks.is_empty() {
+            info!(
+                "No start timing samples with signals for strategy {} in {} scope",
+                strategy_id, scope_label
+            );
+            return Ok(0);
+        }
+
+        let total = tasks.len();
+        let num_workers = std::cmp::min(total, std::cmp::max(1, num_cpus::get()));
+        info!(
+            "Using {} worker threads for {} start timing sample{}",
+            num_workers,
+            total,
+            if total == 1 { "" } else { "s" }
+        );
+
+        let (task_tx, task_rx): (
+            Sender<StartTimingBacktestTask>,
+            Receiver<StartTimingBacktestTask>,
+        ) = bounded(total);
+        let (result_tx, result_rx): (
+            Sender<StartTimingBacktestResultMsg>,
+            Receiver<StartTimingBacktestResultMsg>,
+        ) = bounded(total);
+
+        let all_candles = self.data.all_candles_arc();
+        let mut handles = Vec::new();
+        for _ in 0..num_workers {
+            let rx = task_rx.clone();
+            let result_tx = result_tx.clone();
+            let all_candles = all_candles.clone();
+            let ticker_expense_map = ticker_expense_map.clone();
+            let runtime_settings = runtime_settings.clone();
+
+            let handle = thread::spawn(move || {
+                while let Ok(task) = rx.recv() {
+                    let StartTimingBacktestTask {
+                        start_date,
+                        template_id,
+                        parameters,
+                        signals,
+                        tickers,
+                        sample_dates,
+                    } = task;
+                    let start = Instant::now();
+                    let run = {
+                        let mut engine =
+                            Engine::from_parameters(&parameters, runtime_settings.clone());
+                        engine.set_ticker_expense_map(ticker_expense_map.clone());
+                        engine
+                            .backtest(
+                                None,
+                                &template_id,
+                                tickers.as_slice(),
+                                all_candles.as_slice(),
+                                sample_dates.as_slice(),
+                                Some(signals.as_slice()),
+                                Some(start_date),
+                                None,
+                            )
+                            .map(|run| run.result)
+                            .map_err(|error| error.to_string())
+                    };
+                    let duration_minutes = start.elapsed().as_secs_f64() / 60.0;
+
+                    if result_tx
+                        .send(StartTimingBacktestResultMsg {
+                            start_date,
+                            duration_minutes,
+                            run,
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+            handles.push(handle);
+        }
+
+        for task in tasks {
+            task_tx.send(task)?;
+        }
+        drop(task_tx);
+
+        let mut completed_runs = 0usize;
+        let mut failures = Vec::new();
+        let mut pending_persistence: Vec<(DateTime<Utc>, f64, BacktestResult)> = Vec::new();
+
+        while completed_runs < total {
+            match result_rx.recv() {
+                Ok(message) => {
+                    completed_runs += 1;
+                    match message.run {
+                        Ok(result) => {
+                            info!(
+                                "Completed start timing sample for {} at {} ({:.1}m)",
+                                strategy.name, message.start_date, message.duration_minutes
+                            );
+                            pending_persistence.push((
+                                message.start_date,
+                                message.duration_minutes,
+                                result,
+                            ));
+                        }
+                        Err(error) => {
+                            warn!(
+                                "Start timing sample failed for {} at {}: {}",
+                                strategy.name, message.start_date, error
+                            );
+                            let error_for_log = error.clone();
+                            self.db
+                                .persist_strategy_event(
+                                    strategy_id,
+                                    "error",
+                                    "Start timing backtest sample failed",
+                                    json!({
+                                        "operation": "start_timing_backtest",
+                                        "requestedStart": message.start_date,
+                                        "scope": scope_label,
+                                        "error": error_for_log,
+                                    }),
+                                )
+                                .await;
+                            failures.push(format!("{} ({})", message.start_date, error));
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        for handle in handles {
+            let _ = handle.join();
+        }
+
+        let mut completed = 0usize;
+        for (start_date, duration_minutes, mut result) in pending_persistence {
             result.id = build_start_timing_backtest_id(strategy_id, &scope_label, start_date);
             result.strategy_id = strategy.id.clone();
             result.ticker_scope = Some(scope_label.clone());
             result.strategy_state = Some(StrategyStateSnapshot {
                 template_id: "start_timing".to_string(),
                 data: json!({
-                    "source": "staggered_start",
+                    "source": "horizon_limited_start_timing",
                     "requestedStart": start_date,
+                    "maxHorizonTradingDays": START_TIMING_MAX_HORIZON_TRADING_DAYS,
                     "scope": self.ticker_scope.result_label(),
                 }),
             });
@@ -725,15 +888,25 @@ impl<'a> ActiveStrategyBacktester<'a> {
                         "requestedStart": start_date,
                         "actualStart": result.start_date,
                         "endDate": result.end_date,
+                        "maxHorizonTradingDays": START_TIMING_MAX_HORIZON_TRADING_DAYS,
                         "scope": scope_label,
                         "totalTrades": result.performance.total_trades,
                         "initialCapital": result.initial_capital,
                         "finalPortfolioValue": result.final_portfolio_value,
+                        "durationMinutes": duration_minutes,
                     }),
                 )
                 .await;
 
             completed += 1;
+        }
+
+        if !failures.is_empty() {
+            warn!(
+                "Start timing completed with {} failure{}",
+                failures.len(),
+                if failures.len() == 1 { "" } else { "s" }
+            );
         }
 
         Ok(completed)

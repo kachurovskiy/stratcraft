@@ -36,6 +36,12 @@ type ReturnPair = {
   benchmark: number;
 };
 
+export type StartTimingSampleData = {
+  startDate: Date | string;
+  portfolioValueData: PortfolioValuePoint[];
+  benchmarkData: BenchmarkData;
+};
+
 export type StartTimingSensitivityReturn = {
   strategy: number | null;
   spy: number | null;
@@ -96,23 +102,11 @@ export type StartTimingAnalysis = {
 };
 
 export function buildStartTimingAnalysis({
-  portfolioValueData,
-  benchmarkData,
-  lookbackTradingDays
+  samples
 }: {
-  portfolioValueData: PortfolioValuePoint[];
-  benchmarkData: BenchmarkData;
-  lookbackTradingDays?: number;
+  samples: StartTimingSampleData[];
 }): StartTimingAnalysis {
-  const portfolio = normalizeSeries(portfolioValueData);
-  const spy = normalizeSeries(benchmarkData.spy);
-  const qqq = normalizeSeries(benchmarkData.qqq);
-  const lookback =
-    Number.isFinite(lookbackTradingDays) && Number(lookbackTradingDays) > 0
-      ? Math.floor(Number(lookbackTradingDays))
-      : portfolio.length;
-
-  const sensitivityPoints = buildSensitivityPoints(portfolio, spy, qqq, lookback);
+  const sensitivityPoints = buildSensitivityPoints(samples);
   const sensitivitySummary = START_TIMING_WINDOWS.map((window) =>
     buildSensitivitySummary(sensitivityPoints, window)
   );
@@ -167,35 +161,32 @@ function toDateKey(value: unknown): string | null {
   return null;
 }
 
-function buildSensitivityPoints(
-  portfolio: SeriesPoint[],
-  spy: SeriesPoint[],
-  qqq: SeriesPoint[],
-  lookbackTradingDays: number
-): StartTimingSensitivityPoint[] {
-  if (portfolio.length === 0) {
-    return [];
-  }
-
-  const startIndex = Math.max(0, portfolio.length - lookbackTradingDays);
+function buildSensitivityPoints(samples: StartTimingSampleData[]): StartTimingSensitivityPoint[] {
   const points: StartTimingSensitivityPoint[] = [];
 
-  for (let index = startIndex; index < portfolio.length; index += 1) {
-    const point = portfolio[index];
+  for (const sample of samples) {
+    const portfolio = normalizeSeries(sample.portfolioValueData);
+    const spy = normalizeSeries(sample.benchmarkData.spy);
+    const qqq = normalizeSeries(sample.benchmarkData.qqq);
+    const startDate = toDateKey(sample.startDate) ?? portfolio[0]?.date ?? null;
+    if (!startDate || portfolio.length === 0) {
+      continue;
+    }
+
     const returns = {} as Record<StartTimingWindowKey, StartTimingSensitivityReturn>;
 
     for (const window of START_TIMING_WINDOWS) {
       returns[window.key] = {
-        strategy: getForwardReturnAtIndex(portfolio, index, window.tradingDays),
-        spy: getForwardReturnFromDate(spy, point.date, window.tradingDays),
-        qqq: getForwardReturnFromDate(qqq, point.date, window.tradingDays)
+        strategy: getForwardReturnFromDate(portfolio, startDate, window.tradingDays),
+        spy: getForwardReturnFromDate(spy, startDate, window.tradingDays),
+        qqq: getForwardReturnFromDate(qqq, startDate, window.tradingDays)
       };
     }
 
-    points.push({ date: point.date, returns });
+    points.push({ date: startDate, returns });
   }
 
-  return points;
+  return points.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function buildSensitivitySummary(

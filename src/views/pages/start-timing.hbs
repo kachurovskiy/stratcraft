@@ -18,64 +18,86 @@
         </div>
     </div>
 
-    {{#unless hasBacktests}}
+    {{#unless hasStartTimingSamples}}
     <div class="alert alert-info" role="alert">
         <i class="fas fa-info-circle me-2"></i>
-        Start timing will appear after this strategy has at least one stored run with daily snapshots.
+        Queue a refresh to compute independent 3M start-timing samples. The page derives 1W, 1M, and 3M returns from those samples.
     </div>
     {{/unless}}
 
-    {{#if hasBacktests}}
     <div class="row g-4">
         <div class="col-12 col-xl-4">
             <div class="card h-100">
                 <div class="card-header">
                     <h5 class="card-title mb-0">
                         <i class="fas fa-database me-2"></i>
-                        Data Source
+                        Timing Samples
                     </h5>
                 </div>
                 <div class="card-body">
                     <form method="GET" action="/strategies/{{strategy.id}}/start-timing" class="mb-3">
-                        <label for="startTimingBacktestId" class="form-label fw-semibold">Stored Run</label>
+                        <label for="startTimingScopeView" class="form-label fw-semibold">Ticker Universe</label>
                         <div class="input-group">
-                            <select id="startTimingBacktestId" name="backtestId" class="form-select">
-                                {{#each backtestOptions}}
-                                <option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>
+                            <select id="startTimingScopeView" name="scope" class="form-select">
+                                {{#each startTimingScopeOptions}}
+                                <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
                                 {{/each}}
                             </select>
-                            <button type="submit" class="btn btn-outline-primary" title="Load run">
+                            <button type="submit" class="btn btn-outline-primary" title="Load samples">
                                 <i class="fas fa-sync-alt"></i>
                             </button>
                         </div>
                     </form>
 
-                    {{#if selectedBacktest}}
                     <div class="table-responsive">
                         <table class="table table-sm mb-0">
                             <tbody>
                                 <tr>
-                                    <td class="fw-bold text-muted">Period</td>
-                                    <td class="text-end fw-bold">{{selectedBacktest.periodLabel}}</td>
+                                    <td class="fw-bold text-muted">Scope</td>
+                                    <td class="text-end fw-bold">{{selectedScopeLabel}}</td>
                                 </tr>
                                 <tr>
-                                    <td class="fw-bold text-muted">Ticker Universe</td>
-                                    <td class="text-end">
-                                        <span class="badge {{selectedBacktest.scopeBadge}}">{{selectedBacktest.scopeLabel}}</span>
-                                    </td>
+                                    <td class="fw-bold text-muted">Samples</td>
+                                    <td class="text-end fw-bold">{{startTimingSampleStats.count}}</td>
                                 </tr>
+                                {{#if startTimingSampleStats.earliestStartDate}}
                                 <tr>
-                                    <td class="fw-bold text-muted">Start</td>
-                                    <td class="text-end fw-bold">{{formatDate selectedBacktest.startDate}}</td>
+                                    <td class="fw-bold text-muted">First Start</td>
+                                    <td class="text-end fw-bold">{{formatDate startTimingSampleStats.earliestStartDate}}</td>
                                 </tr>
+                                {{/if}}
+                                {{#if startTimingSampleStats.latestStartDate}}
                                 <tr>
-                                    <td class="fw-bold text-muted">End</td>
-                                    <td class="text-end fw-bold">{{formatDate selectedBacktest.endDate}}</td>
+                                    <td class="fw-bold text-muted">Latest Start</td>
+                                    <td class="text-end fw-bold">{{formatDate startTimingSampleStats.latestStartDate}}</td>
                                 </tr>
+                                {{/if}}
+                                {{#if startTimingSampleStats.latestCreatedAt}}
+                                <tr>
+                                    <td class="fw-bold text-muted">Refreshed</td>
+                                    <td class="text-end fw-bold">{{formatDateTime startTimingSampleStats.latestCreatedAt}}</td>
+                                </tr>
+                                {{/if}}
                             </tbody>
                         </table>
                     </div>
-                    {{/if}}
+
+                    <form method="POST" action="/strategies/{{strategy.id}}/start-timing/queue" class="border-top mt-3 pt-3">
+                        {{> csrf-field}}
+                        <input type="hidden" name="scope" value="{{selectedScope}}">
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label for="startTimingWeeks" class="form-label fw-semibold">Weeks</label>
+                                <input id="startTimingWeeks" name="weeks" type="number" min="1" max="{{startTimingDefaults.maxWeeks}}" value="{{startTimingDefaults.weeks}}" class="form-control">
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-primary w-100" {{#if pendingStartTimingJob}}disabled{{/if}}>
+                                    <i class="fas fa-play me-1"></i>
+                                    {{#if pendingStartTimingJob}}Refresh queued{{else}}Queue refresh{{/if}}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -287,12 +309,11 @@
         <div class="col-12 col-xl-8">
             <div class="alert alert-info mb-0" role="alert">
                 <i class="fas fa-info-circle me-2"></i>
-                This stored run does not have enough daily snapshots for 1W, 1M, or 3M forward-return timing.
+                Start timing samples do not yet have enough daily snapshots for 1W, 1M, or 3M forward-return timing.
             </div>
         </div>
         {{/if}}
     </div>
-    {{/if}}
 </div>
 
 <script>
