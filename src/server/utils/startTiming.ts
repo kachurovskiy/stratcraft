@@ -1,20 +1,39 @@
-import type { TradeEntryForwardOutcome } from '../database/types';
 import type { BenchmarkData, BenchmarkSeriesPoint, PortfolioValuePoint } from './backtestCharts';
 
-const TRADING_DAYS_PER_YEAR = 252;
-
 export const START_TIMING_WINDOWS = [
-  { key: '1w', label: '1W', tradingDays: 5 },
-  { key: '1m', label: '1M', tradingDays: 21 },
-  { key: '3m', label: '3M', tradingDays: 63 },
-  { key: '6m', label: '6M', tradingDays: 126 }
+  { key: '1w', label: '1W', tradingDays: 5, sidewaysThresholdPercent: 1 },
+  { key: '1m', label: '1M', tradingDays: 21, sidewaysThresholdPercent: 2 },
+  { key: '3m', label: '3M', tradingDays: 63, sidewaysThresholdPercent: 4 }
+] as const;
+
+const BENCHMARKS = [
+  { key: 'spy', symbol: 'SPY' },
+  { key: 'qqq', symbol: 'QQQ' }
+] as const;
+
+const MARKET_STATES = [
+  { key: 'down', label: 'Down', badge: 'bg-danger' },
+  { key: 'sideways', label: 'Sideways', badge: 'bg-secondary' },
+  { key: 'up', label: 'Up', badge: 'bg-success' }
 ] as const;
 
 type StartTimingWindow = (typeof START_TIMING_WINDOWS)[number];
+type StartTimingWindowKey = StartTimingWindow['key'];
+type BenchmarkConfig = (typeof BENCHMARKS)[number];
+type BenchmarkReturnKey = BenchmarkConfig['key'];
+type BenchmarkSymbol = BenchmarkConfig['symbol'];
+type MarketState = (typeof MARKET_STATES)[number];
+type MarketStateKey = MarketState['key'];
 
 type SeriesPoint = {
   date: string;
   value: number;
+};
+
+type ReturnPair = {
+  date: string;
+  strategy: number;
+  benchmark: number;
 };
 
 export type StartTimingSensitivityReturn = {
@@ -25,11 +44,11 @@ export type StartTimingSensitivityReturn = {
 
 export type StartTimingSensitivityPoint = {
   date: string;
-  returns: Record<string, StartTimingSensitivityReturn>;
+  returns: Record<StartTimingWindowKey, StartTimingSensitivityReturn>;
 };
 
 export type StartTimingSensitivitySummary = {
-  key: string;
+  key: StartTimingWindowKey;
   label: string;
   tradingDays: number;
   sampleCount: number;
@@ -40,37 +59,31 @@ export type StartTimingSensitivitySummary = {
   outperformSpyRate: number | null;
 };
 
-export type StartTimingMomentumPoint = {
-  date: string;
-  strategy: number | null;
-  spy: number | null;
-  qqq: number | null;
+export type StartTimingMarketCorrelation = {
+  benchmark: BenchmarkSymbol;
+  windowKey: StartTimingWindowKey;
+  windowLabel: string;
+  sampleCount: number;
+  correlation: number | null;
+  rSquared: number | null;
+  strategyMedianReturnPercent: number | null;
+  benchmarkMedianReturnPercent: number | null;
 };
 
-export type StartTimingRegimeCard = {
-  symbol: 'SPY' | 'QQQ';
-  latestDate: string | null;
-  return1wPercent: number | null;
-  return1mPercent: number | null;
-  return3mPercent: number | null;
-  drawdownFromHighPercent: number | null;
-  sma50DistancePercent: number | null;
-  sma200DistancePercent: number | null;
-  volatility20dPercent: number | null;
-  above50Day: boolean | null;
-  above200Day: boolean | null;
-};
-
-export type StartTimingDeploymentContext = {
-  label: string;
-  badge: string;
-  reasons: string[];
-  strategy1mReturnPercent: number | null;
-  spy1mReturnPercent: number | null;
-  excess1mReturnPercent: number | null;
-  strategy3mReturnPercent: number | null;
-  spy3mReturnPercent: number | null;
-  excess3mReturnPercent: number | null;
+export type StartTimingMarketStateSummary = {
+  benchmark: BenchmarkSymbol;
+  windowKey: StartTimingWindowKey;
+  windowLabel: string;
+  state: MarketStateKey;
+  stateLabel: string;
+  stateBadge: string;
+  thresholdPercent: number;
+  sampleCount: number;
+  strategyMedianReturnPercent: number | null;
+  strategyAverageReturnPercent: number | null;
+  benchmarkMedianReturnPercent: number | null;
+  strategyPositiveRate: number | null;
+  outperformBenchmarkRate: number | null;
 };
 
 export type StartTimingAnalysis = {
@@ -78,50 +91,47 @@ export type StartTimingAnalysis = {
   windows: typeof START_TIMING_WINDOWS;
   sensitivityPoints: StartTimingSensitivityPoint[];
   sensitivitySummary: StartTimingSensitivitySummary[];
-  momentumPoints: StartTimingMomentumPoint[];
-  regimeCards: StartTimingRegimeCard[];
-  entryOutcomes: TradeEntryForwardOutcome[];
-  deploymentContext: StartTimingDeploymentContext;
+  marketCorrelations: StartTimingMarketCorrelation[];
+  marketStateSummary: StartTimingMarketStateSummary[];
 };
 
 export function buildStartTimingAnalysis({
   portfolioValueData,
   benchmarkData,
-  entryForwardOutcomes = [],
-  lookbackTradingDays = TRADING_DAYS_PER_YEAR
+  lookbackTradingDays
 }: {
   portfolioValueData: PortfolioValuePoint[];
   benchmarkData: BenchmarkData;
-  entryForwardOutcomes?: TradeEntryForwardOutcome[];
   lookbackTradingDays?: number;
 }): StartTimingAnalysis {
   const portfolio = normalizeSeries(portfolioValueData);
   const spy = normalizeSeries(benchmarkData.spy);
   const qqq = normalizeSeries(benchmarkData.qqq);
-  const lookback = Number.isFinite(lookbackTradingDays) && lookbackTradingDays > 0
-    ? Math.floor(lookbackTradingDays)
-    : TRADING_DAYS_PER_YEAR;
+  const lookback =
+    Number.isFinite(lookbackTradingDays) && Number(lookbackTradingDays) > 0
+      ? Math.floor(Number(lookbackTradingDays))
+      : portfolio.length;
 
   const sensitivityPoints = buildSensitivityPoints(portfolio, spy, qqq, lookback);
   const sensitivitySummary = START_TIMING_WINDOWS.map((window) =>
     buildSensitivitySummary(sensitivityPoints, window)
   );
-  const momentumPoints = buildMomentumPoints(portfolio, spy, qqq, lookback);
-  const regimeCards: StartTimingRegimeCard[] = [
-    buildRegimeCard('SPY', spy),
-    buildRegimeCard('QQQ', qqq)
-  ];
-  const deploymentContext = buildDeploymentContext(portfolio, spy, regimeCards[0]);
+  const marketCorrelations = START_TIMING_WINDOWS.flatMap((window) =>
+    BENCHMARKS.map((benchmark) => buildMarketCorrelation(sensitivityPoints, window, benchmark))
+  );
+  const marketStateSummary = START_TIMING_WINDOWS.flatMap((window) =>
+    BENCHMARKS.flatMap((benchmark) =>
+      MARKET_STATES.map((state) => buildMarketStateSummary(sensitivityPoints, window, benchmark, state))
+    )
+  );
 
   return {
-    hasData: portfolio.length >= 2,
+    hasData: sensitivitySummary.some((summary) => summary.sampleCount > 0),
     windows: START_TIMING_WINDOWS,
     sensitivityPoints,
     sensitivitySummary,
-    momentumPoints,
-    regimeCards,
-    entryOutcomes: normalizeEntryOutcomes(entryForwardOutcomes),
-    deploymentContext
+    marketCorrelations,
+    marketStateSummary
   };
 }
 
@@ -172,7 +182,7 @@ function buildSensitivityPoints(
 
   for (let index = startIndex; index < portfolio.length; index += 1) {
     const point = portfolio[index];
-    const returns: Record<string, StartTimingSensitivityReturn> = {};
+    const returns = {} as Record<StartTimingWindowKey, StartTimingSensitivityReturn>;
 
     for (const window of START_TIMING_WINDOWS) {
       returns[window.key] = {
@@ -195,19 +205,15 @@ function buildSensitivitySummary(
   const rows = points.map((point) => point.returns[window.key]).filter(Boolean);
   const strategyValues = rows
     .map((row) => row.strategy)
-    .filter((value): value is number => value !== null && Number.isFinite(value));
+    .filter(isFiniteNumber);
   const spyValues = rows
     .map((row) => row.spy)
-    .filter((value): value is number => value !== null && Number.isFinite(value));
+    .filter(isFiniteNumber);
   const qqqValues = rows
     .map((row) => row.qqq)
-    .filter((value): value is number => value !== null && Number.isFinite(value));
+    .filter(isFiniteNumber);
   const pairedSpyRows = rows.filter(
-    (row) =>
-      row.strategy !== null &&
-      Number.isFinite(row.strategy) &&
-      row.spy !== null &&
-      Number.isFinite(row.spy)
+    (row) => isFiniteNumber(row.strategy) && isFiniteNumber(row.spy)
   );
 
   return {
@@ -226,178 +232,88 @@ function buildSensitivitySummary(
   };
 }
 
-function buildMomentumPoints(
-  portfolio: SeriesPoint[],
-  spy: SeriesPoint[],
-  qqq: SeriesPoint[],
-  lookbackTradingDays: number
-): StartTimingMomentumPoint[] {
-  if (portfolio.length === 0) {
-    return [];
-  }
-
-  const startIndex = Math.max(0, portfolio.length - lookbackTradingDays);
-  const recentPortfolio = portfolio.slice(startIndex);
-  const baseDate = recentPortfolio[0]?.date;
-  if (!baseDate) {
-    return [];
-  }
-
-  const strategyBase = recentPortfolio[0].value;
-  const spyBase = getValueAtOrAfter(spy, baseDate);
-  const qqqBase = getValueAtOrAfter(qqq, baseDate);
-
-  return recentPortfolio.map((point) => ({
-    date: point.date,
-    strategy: rebase(point.value, strategyBase),
-    spy: rebase(getValueOnOrBefore(spy, point.date), spyBase),
-    qqq: rebase(getValueOnOrBefore(qqq, point.date), qqqBase)
-  }));
-}
-
-function buildRegimeCard(symbol: 'SPY' | 'QQQ', series: SeriesPoint[]): StartTimingRegimeCard {
-  const latest = series[series.length - 1] ?? null;
-  if (!latest) {
-    return {
-      symbol,
-      latestDate: null,
-      return1wPercent: null,
-      return1mPercent: null,
-      return3mPercent: null,
-      drawdownFromHighPercent: null,
-      sma50DistancePercent: null,
-      sma200DistancePercent: null,
-      volatility20dPercent: null,
-      above50Day: null,
-      above200Day: null
-    };
-  }
-
-  const recent = series.slice(Math.max(0, series.length - TRADING_DAYS_PER_YEAR));
-  const peak = recent.reduce((max, point) => Math.max(max, point.value), latest.value);
-  const sma50 = average(series.slice(Math.max(0, series.length - 50)).map((point) => point.value));
-  const sma200 = average(series.slice(Math.max(0, series.length - 200)).map((point) => point.value));
-  const sma50Distance = distanceFromAverage(latest.value, sma50);
-  const sma200Distance = distanceFromAverage(latest.value, sma200);
+function buildMarketCorrelation(
+  points: StartTimingSensitivityPoint[],
+  window: StartTimingWindow,
+  benchmark: BenchmarkConfig
+): StartTimingMarketCorrelation {
+  const pairs = getReturnPairs(points, window, benchmark.key);
+  const correlation = pearsonCorrelation(pairs);
 
   return {
-    symbol,
-    latestDate: latest.date,
-    return1wPercent: getTrailingReturn(series, 5),
-    return1mPercent: getTrailingReturn(series, 21),
-    return3mPercent: getTrailingReturn(series, 63),
-    drawdownFromHighPercent: peak > 0 ? ((latest.value - peak) / peak) * 100 : null,
-    sma50DistancePercent: sma50Distance,
-    sma200DistancePercent: sma200Distance,
-    volatility20dPercent: annualizedVolatility(series, 20),
-    above50Day: sma50Distance === null ? null : sma50Distance >= 0,
-    above200Day: sma200Distance === null ? null : sma200Distance >= 0
+    benchmark: benchmark.symbol,
+    windowKey: window.key,
+    windowLabel: window.label,
+    sampleCount: pairs.length,
+    correlation,
+    rSquared: correlation === null ? null : correlation * correlation,
+    strategyMedianReturnPercent: median(pairs.map((pair) => pair.strategy)),
+    benchmarkMedianReturnPercent: median(pairs.map((pair) => pair.benchmark))
   };
 }
 
-function buildDeploymentContext(
-  portfolio: SeriesPoint[],
-  spy: SeriesPoint[],
-  spyRegime: StartTimingRegimeCard
-): StartTimingDeploymentContext {
-  const strategy1m = getTrailingReturn(portfolio, 21);
-  const spy1m = getTrailingReturn(spy, 21);
-  const strategy3m = getTrailingReturn(portfolio, 63);
-  const spy3m = getTrailingReturn(spy, 63);
-  const excess1m = strategy1m !== null && spy1m !== null ? strategy1m - spy1m : null;
-  const excess3m = strategy3m !== null && spy3m !== null ? strategy3m - spy3m : null;
-
-  const reasons: string[] = [];
-  let cautionFlags = 0;
-  let supportiveFlags = 0;
-
-  if (portfolio.length < 64 || spy.length < 64) {
-    reasons.push('Not enough recent data for a stable 3-month context.');
-  }
-
-  if (spyRegime.sma200DistancePercent !== null) {
-    if (spyRegime.sma200DistancePercent < 0) {
-      cautionFlags += 1;
-      reasons.push('SPY is below its 200-day average.');
-    } else {
-      supportiveFlags += 1;
-      reasons.push('SPY is above its 200-day average.');
-    }
-  }
-
-  if (spyRegime.drawdownFromHighPercent !== null && spyRegime.drawdownFromHighPercent <= -10) {
-    cautionFlags += 1;
-    reasons.push('SPY is more than 10% below its 1-year high.');
-  }
-
-  if (excess1m !== null) {
-    if (excess1m < -3) {
-      cautionFlags += 1;
-      reasons.push('The strategy has lagged SPY by more than 3 percentage points over 1 month.');
-    } else if (excess1m >= 0) {
-      supportiveFlags += 1;
-      reasons.push('The strategy has kept pace with or exceeded SPY over 1 month.');
-    }
-  }
-
-  if (strategy3m !== null && strategy3m > 0) {
-    supportiveFlags += 1;
-    reasons.push('The strategy has positive 3-month momentum.');
-  }
-
-  let label = 'Observe context';
-  let badge = 'bg-secondary';
-  if (cautionFlags >= 2) {
-    label = 'Cautious context';
-    badge = 'bg-warning text-dark';
-  } else if (cautionFlags === 0 && supportiveFlags >= 2) {
-    label = 'Normal context';
-    badge = 'bg-success';
-  }
-
-  if (reasons.length === 0) {
-    reasons.push('Recent strategy and benchmark context is mixed or incomplete.');
-  }
+function buildMarketStateSummary(
+  points: StartTimingSensitivityPoint[],
+  window: StartTimingWindow,
+  benchmark: BenchmarkConfig,
+  state: MarketState
+): StartTimingMarketStateSummary {
+  const pairs = getReturnPairs(points, window, benchmark.key)
+    .filter((pair) => getMarketState(pair.benchmark, window.sidewaysThresholdPercent) === state.key);
+  const strategyValues = pairs.map((pair) => pair.strategy);
+  const benchmarkValues = pairs.map((pair) => pair.benchmark);
 
   return {
-    label,
-    badge,
-    reasons,
-    strategy1mReturnPercent: strategy1m,
-    spy1mReturnPercent: spy1m,
-    excess1mReturnPercent: excess1m,
-    strategy3mReturnPercent: strategy3m,
-    spy3mReturnPercent: spy3m,
-    excess3mReturnPercent: excess3m
+    benchmark: benchmark.symbol,
+    windowKey: window.key,
+    windowLabel: window.label,
+    state: state.key,
+    stateLabel: state.label,
+    stateBadge: state.badge,
+    thresholdPercent: window.sidewaysThresholdPercent,
+    sampleCount: pairs.length,
+    strategyMedianReturnPercent: median(strategyValues),
+    strategyAverageReturnPercent: average(strategyValues),
+    benchmarkMedianReturnPercent: median(benchmarkValues),
+    strategyPositiveRate: ratio(strategyValues.filter((value) => value > 0).length, strategyValues.length),
+    outperformBenchmarkRate: ratio(
+      pairs.filter((pair) => pair.strategy > pair.benchmark).length,
+      pairs.length
+    )
   };
 }
 
-function normalizeEntryOutcomes(outcomes: TradeEntryForwardOutcome[]): TradeEntryForwardOutcome[] {
-  const byKey = new Map(outcomes.map((outcome) => [outcome.windowKey, outcome]));
+function getReturnPairs(
+  points: StartTimingSensitivityPoint[],
+  window: StartTimingWindow,
+  benchmarkKey: BenchmarkReturnKey
+): ReturnPair[] {
+  const pairs: ReturnPair[] = [];
 
-  return START_TIMING_WINDOWS.map((window) => {
-    const existing = byKey.get(window.key);
-    if (existing) {
-      return {
-        ...existing,
-        label: existing.label || window.label,
-        tradingDays: Number.isFinite(existing.tradingDays) ? existing.tradingDays : window.tradingDays,
-        sampleCount: Math.max(0, Math.floor(Number(existing.sampleCount) || 0))
-      };
+  for (const point of points) {
+    const returns = point.returns[window.key];
+    const strategy = returns?.strategy;
+    const benchmark = returns?.[benchmarkKey];
+    if (isFiniteNumber(strategy) && isFiniteNumber(benchmark)) {
+      pairs.push({
+        date: point.date,
+        strategy,
+        benchmark
+      });
     }
+  }
 
-    return {
-      windowKey: window.key,
-      label: window.label,
-      tradingDays: window.tradingDays,
-      sampleCount: 0,
-      medianStrategyReturnPercent: null,
-      winRate: null,
-      medianSpyReturnPercent: null,
-      medianExcessReturnPercent: null,
-      outperformSpyRate: null
-    };
-  });
+  return pairs;
+}
+
+function getMarketState(returnPercent: number, sidewaysThresholdPercent: number): MarketStateKey {
+  if (returnPercent < -sidewaysThresholdPercent) {
+    return 'down';
+  }
+  if (returnPercent > sidewaysThresholdPercent) {
+    return 'up';
+  }
+  return 'sideways';
 }
 
 function getForwardReturnAtIndex(series: SeriesPoint[], startIndex: number, tradingDays: number): number | null {
@@ -417,13 +333,6 @@ function getForwardReturnFromDate(series: SeriesPoint[], date: string, tradingDa
   return getForwardReturnAtIndex(series, startIndex, tradingDays);
 }
 
-function getTrailingReturn(series: SeriesPoint[], tradingDays: number): number | null {
-  if (series.length <= tradingDays) {
-    return null;
-  }
-  return getForwardReturnAtIndex(series, series.length - tradingDays - 1, tradingDays);
-}
-
 function findIndexAtOrAfter(series: SeriesPoint[], date: string): number {
   let low = 0;
   let high = series.length - 1;
@@ -440,41 +349,6 @@ function findIndexAtOrAfter(series: SeriesPoint[], date: string): number {
   }
 
   return result;
-}
-
-function findIndexOnOrBefore(series: SeriesPoint[], date: string): number {
-  let low = 0;
-  let high = series.length - 1;
-  let result = -1;
-
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    if (series[middle].date <= date) {
-      result = middle;
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-
-  return result;
-}
-
-function getValueAtOrAfter(series: SeriesPoint[], date: string): number | null {
-  const index = findIndexAtOrAfter(series, date);
-  return index >= 0 ? series[index].value : null;
-}
-
-function getValueOnOrBefore(series: SeriesPoint[], date: string): number | null {
-  const index = findIndexOnOrBefore(series, date);
-  return index >= 0 ? series[index].value : null;
-}
-
-function rebase(value: number | null, base: number | null): number | null {
-  if (value === null || base === null || !Number.isFinite(value) || !Number.isFinite(base) || base <= 0) {
-    return null;
-  }
-  return (value / base) * 100;
 }
 
 function median(values: number[]): number | null {
@@ -501,34 +375,33 @@ function ratio(numerator: number, denominator: number): number | null {
   return denominator > 0 ? numerator / denominator : null;
 }
 
-function distanceFromAverage(value: number, averageValue: number | null): number | null {
-  if (averageValue === null || !Number.isFinite(averageValue) || averageValue <= 0) {
+function pearsonCorrelation(pairs: ReturnPair[]): number | null {
+  if (pairs.length < 2) {
     return null;
   }
-  return ((value - averageValue) / averageValue) * 100;
+
+  const strategyMean = average(pairs.map((pair) => pair.strategy));
+  const benchmarkMean = average(pairs.map((pair) => pair.benchmark));
+  if (strategyMean === null || benchmarkMean === null) {
+    return null;
+  }
+
+  let covariance = 0;
+  let strategyVariance = 0;
+  let benchmarkVariance = 0;
+
+  for (const pair of pairs) {
+    const strategyDelta = pair.strategy - strategyMean;
+    const benchmarkDelta = pair.benchmark - benchmarkMean;
+    covariance += strategyDelta * benchmarkDelta;
+    strategyVariance += strategyDelta * strategyDelta;
+    benchmarkVariance += benchmarkDelta * benchmarkDelta;
+  }
+
+  const denominator = Math.sqrt(strategyVariance * benchmarkVariance);
+  return denominator > 0 ? covariance / denominator : null;
 }
 
-function annualizedVolatility(series: SeriesPoint[], tradingDays: number): number | null {
-  if (series.length <= 2) {
-    return null;
-  }
-
-  const returns: number[] = [];
-  const startIndex = Math.max(1, series.length - tradingDays);
-  for (let index = startIndex; index < series.length; index += 1) {
-    const previous = series[index - 1];
-    const current = series[index];
-    if (previous.value > 0 && current.value > 0) {
-      returns.push((current.value - previous.value) / previous.value);
-    }
-  }
-
-  if (returns.length < 2) {
-    return null;
-  }
-
-  const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
-  const variance =
-    returns.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / (returns.length - 1);
-  return Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR) * 100;
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
