@@ -651,35 +651,17 @@ impl<'a> ActiveStrategyBacktester<'a> {
             .ok_or_else(|| anyhow!("Strategy {} not found", strategy_id))?;
 
         let unique_dates = self.data.unique_dates().to_vec();
-        let earliest_available = *unique_dates
-            .first()
-            .expect("Checked unique_dates is not empty");
-        let latest_available = *unique_dates
-            .last()
-            .expect("Checked unique_dates is not empty");
 
         let scope_label = format!("timing_{}", self.ticker_scope.result_label());
-        let existing_start_dates = self
+        let existing_sample_ranges = self
             .db
-            .get_start_timing_backtest_start_dates(strategy_id, &scope_label)
+            .get_start_timing_backtest_ranges(strategy_id, &scope_label)
             .await?;
-        let candidates = build_weekly_start_candidates(unique_dates.as_slice(), weeks)
-            .into_iter()
-            .filter_map(|date| {
-                let start_index = unique_dates.binary_search(&date).ok()?;
-                let end_index = start_index.checked_add(START_TIMING_MAX_HORIZON_TRADING_DAYS)?;
-                if date < earliest_available
-                    || date >= latest_available
-                    || end_index >= unique_dates.len()
-                {
-                    return None;
-                }
-                if existing_start_dates.contains(&date) {
-                    return None;
-                }
-                Some((date, start_index, end_index))
-            })
-            .collect::<Vec<_>>();
+        let candidates = build_start_timing_sample_candidates(
+            unique_dates.as_slice(),
+            weeks,
+            &existing_sample_ranges,
+        );
 
         if candidates.is_empty() {
             info!(
@@ -1071,6 +1053,48 @@ fn build_weekly_start_candidates(
     candidates
 }
 
+fn build_start_timing_sample_candidates(
+    unique_dates: &[DateTime<Utc>],
+    weeks: usize,
+    existing_sample_ranges: &HashMap<DateTime<Utc>, DateTime<Utc>>,
+) -> Vec<(DateTime<Utc>, usize, usize)> {
+    if unique_dates.len() < 2 || weeks == 0 {
+        return Vec::new();
+    }
+
+    let earliest_available = *unique_dates.first().expect("unique_dates is not empty");
+    let latest_available = *unique_dates.last().expect("unique_dates is not empty");
+    let latest_index = unique_dates.len() - 1;
+
+    build_weekly_start_candidates(unique_dates, weeks)
+        .into_iter()
+        .filter_map(|date| {
+            let start_index = unique_dates.binary_search(&date).ok()?;
+            if date < earliest_available || date >= latest_available {
+                return None;
+            }
+
+            let desired_end_index = start_index
+                .saturating_add(START_TIMING_MAX_HORIZON_TRADING_DAYS)
+                .min(latest_index);
+            if desired_end_index <= start_index {
+                return None;
+            }
+
+            let desired_end = unique_dates[desired_end_index];
+            if existing_sample_ranges
+                .get(&date)
+                .map(|existing_end| *existing_end >= desired_end)
+                .unwrap_or(false)
+            {
+                return None;
+            }
+
+            Some((date, start_index, desired_end_index))
+        })
+        .collect()
+}
+
 fn collect_signal_tickers(signals: &[GeneratedSignal]) -> Vec<String> {
     let mut tickers = BTreeSet::new();
     for signal in signals {
@@ -1090,4 +1114,49 @@ fn build_start_timing_backtest_id(
         ticker_scope,
         start_date.format("%Y%m%d")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_date(day_offset: i64) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .expect("valid test date")
+            .with_timezone(&Utc)
+            + Duration::days(day_offset)
+    }
+
+    fn test_dates(count: i64) -> Vec<DateTime<Utc>> {
+        (0..count).map(test_date).collect()
+    }
+
+    #[test]
+    fn includes_recent_partial_start_timing_candidates() {
+        let dates = test_dates(160);
+        let candidates = build_start_timing_sample_candidates(&dates, 13, &HashMap::new());
+
+        let last = candidates.last().expect("expected recent candidate");
+        assert_eq!(last.0, test_date(152));
+        assert_eq!(last.1, 152);
+        assert_eq!(last.2, 159);
+    }
+
+    #[test]
+    fn reruns_recent_partial_start_timing_candidates_until_current() {
+        let dates = test_dates(160);
+        let mut existing_sample_ranges = HashMap::new();
+        existing_sample_ranges.insert(test_date(152), test_date(158));
+
+        let candidates = build_start_timing_sample_candidates(&dates, 13, &existing_sample_ranges);
+        assert!(candidates
+            .iter()
+            .any(|(date, _, _)| *date == test_date(152)));
+
+        existing_sample_ranges.insert(test_date(152), test_date(159));
+        let candidates = build_start_timing_sample_candidates(&dates, 13, &existing_sample_ranges);
+        assert!(!candidates
+            .iter()
+            .any(|(date, _, _)| *date == test_date(152)));
+    }
 }

@@ -3,7 +3,7 @@ import { JobHandler } from '../JobScheduler';
 import { JobHandlerDependencies } from '../types';
 
 const START_TIMING_SOURCE = 'start-timing-backtest-job';
-const DEFAULT_WEEKS = 52;
+const DEFAULT_WEEKS = 104;
 const MAX_WEEKS = 260;
 
 const normalizeScope = (value: unknown): Exclude<BacktestScope, 'live'> => {

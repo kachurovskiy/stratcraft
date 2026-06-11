@@ -651,7 +651,7 @@ const renderBacktestLoadError = (res: Response, error: unknown): boolean => {
 const START_TIMING_SCOPE_VALUES = ['validation', 'training', 'all'] as const;
 type StartTimingScope = (typeof START_TIMING_SCOPE_VALUES)[number];
 
-const START_TIMING_DEFAULT_WEEKS = 52;
+const START_TIMING_DEFAULT_WEEKS = 104;
 const START_TIMING_MAX_WEEKS = 260;
 const START_TIMING_VIEW_SAMPLE_LIMIT = 260;
 

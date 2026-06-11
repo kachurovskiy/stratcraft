@@ -934,22 +934,25 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_start_timing_backtest_start_dates(
+    pub async fn get_start_timing_backtest_ranges(
         &self,
         strategy_id: &str,
         ticker_scope: &str,
-    ) -> Result<HashSet<DateTime<Utc>>> {
+    ) -> Result<HashMap<DateTime<Utc>, DateTime<Utc>>> {
         let rows = self
             .client
             .query(
-                "SELECT start_date
+                "SELECT start_date, end_date
                  FROM start_timing_backtests
                  WHERE strategy_id = $1 AND ticker_scope = $2",
                 &[&strategy_id, &ticker_scope],
             )
             .await?;
 
-        Ok(rows.into_iter().map(|row| row.get(0)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.get(0), row.get(1)))
+            .collect())
     }
 
     pub async fn upsert_start_timing_backtest(

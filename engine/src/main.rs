@@ -79,7 +79,7 @@ enum Commands {
         #[arg(long, value_enum, default_value = "validation")]
         scope: backtest_active::BacktestScope,
         /// Number of weekly start dates to consider
-        #[arg(long, default_value_t = 52)]
+        #[arg(long, default_value_t = 104)]
         weeks: usize,
     },
     /// Rebuild account operations for strategies that have both account and start date defined
