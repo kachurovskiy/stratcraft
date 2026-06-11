@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_LOCAL_API_PORT: u16 = 3000;
 const MAX_ERROR_BODY_CHARS: usize = 2048;
+const DISABLE_LOCAL_CACHE_API_ENV: &str = "STRATCRAFT_DISABLE_LOCAL_CACHE_API";
 
 #[derive(Clone)]
 pub struct CacheManager {
@@ -119,7 +120,7 @@ impl CacheManager {
             return Some(result.clone());
         }
 
-        let use_local_api = self.has_db && std::env::var("SERVER_PORT").is_ok();
+        let use_local_api = should_use_local_api(self.has_db);
         let api_base_url = if use_local_api {
             resolve_local_api_base_url()
         } else {
@@ -143,7 +144,7 @@ impl CacheManager {
     }
 
     pub fn store_cache(&self, params: CacheStoreParams) {
-        let use_local_api = self.has_db && std::env::var("SERVER_PORT").is_ok();
+        let use_local_api = should_use_local_api(self.has_db);
         let api_base_url = if use_local_api {
             resolve_local_api_base_url()
         } else {
@@ -307,4 +308,10 @@ fn resolve_local_api_base_url() -> String {
         .filter(|value| *value != 0)
         .unwrap_or(DEFAULT_LOCAL_API_PORT);
     format!("http://localhost:{}/api", parsed_port)
+}
+
+fn should_use_local_api(has_db: bool) -> bool {
+    has_db
+        && std::env::var(DISABLE_LOCAL_CACHE_API_ENV).is_err()
+        && std::env::var("SERVER_PORT").is_ok()
 }

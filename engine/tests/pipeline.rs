@@ -18,10 +18,9 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write as IoWrite};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc, Once, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, Once, OnceLock};
 use std::thread;
 use std::time::Duration;
-use tokio::sync::Mutex;
 use tokio_postgres::Client;
 
 const DEFAULT_TEST_DB_NAME: &str = "stratcraft_test_pipeline";
@@ -48,17 +47,18 @@ fn ensure_test_env() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         std::env::set_var("DOMAIN", "");
+        std::env::set_var("STRATCRAFT_DISABLE_LOCAL_CACHE_API", "1");
         let _ = env_logger::builder().is_test(true).try_init();
     });
 }
 
 static PIPELINE_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-async fn acquire_pipeline_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
+fn acquire_pipeline_test_lock() -> std::sync::MutexGuard<'static, ()> {
     PIPELINE_TEST_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
-        .await
+        .expect("pipeline test lock should not be poisoned")
 }
 
 async fn wait_for_alpaca_stub(base_url: &str) -> Result<()> {
@@ -96,7 +96,7 @@ impl Default for PipelineRunConfig {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pipeline_smoke_small_dataset() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(SMOKE_TEST_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -155,7 +155,7 @@ async fn pipeline_smoke_small_dataset() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn backtest_accounts_smoke() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(BACKTEST_ACCOUNTS_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -224,7 +224,7 @@ async fn backtest_accounts_smoke() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn export_market_data_smoke() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(EXPORT_MARKET_DATA_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -274,7 +274,7 @@ async fn export_market_data_smoke() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn optimize_smoke() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(OPTIMIZE_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -344,7 +344,7 @@ async fn optimize_smoke() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn plan_operations_smoke() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(PLAN_OPERATIONS_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -403,7 +403,7 @@ async fn plan_operations_smoke() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn order_lifecycle_end_to_end() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(ORDER_LIFECYCLE_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -492,7 +492,7 @@ async fn order_lifecycle_end_to_end() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn plan_operations_allows_consecutive_day_buy_after_previous_fill() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db =
         TestDatabase::create_with_name(PLAN_OPERATIONS_CONSECUTIVE_SIGNAL_DB_NAME).await?;
@@ -599,7 +599,7 @@ async fn plan_operations_allows_consecutive_day_buy_after_previous_fill() -> Res
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn reconcile_trades_smoke() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(RECONCILE_TRADES_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -661,7 +661,7 @@ async fn reconcile_trades_smoke() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn verify_balance_smoke() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(VERIFY_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -772,7 +772,7 @@ async fn verify_balance_smoke() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn full_pipeline_snapshot() -> Result<()> {
     ensure_test_env();
-    let _guard = acquire_pipeline_test_lock().await;
+    let _guard = acquire_pipeline_test_lock();
     run_pipeline_snapshot(PipelineRunConfig::default()).await?;
     run_pipeline_snapshot(PipelineRunConfig {
         snapshot_dir: "snapshots_allow_short",
