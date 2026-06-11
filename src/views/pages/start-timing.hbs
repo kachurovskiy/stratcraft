@@ -163,6 +163,7 @@
                     </div>
                 </div>
                 <div class="card-body">
+                    <div id="startTimingReturnLegend" class="d-flex flex-wrap gap-3 small mb-3"></div>
                     <div style="position: relative; height: 460px; width: 100%;">
                         <canvas id="startTimingSensitivityChart"></canvas>
                     </div>
@@ -319,6 +320,7 @@
 <script>
     (() => {
         const startTiming = {{{ json startTiming }}};
+        const benchmarkChartData = startTiming?.benchmarkChartData || { spy: [], qqq: [] };
         let sensitivityChart = null;
         let scatterChart = null;
         let activeScatterBenchmark = 'SPY';
@@ -334,6 +336,14 @@
             up: { label: 'Up', color: '#198754' }
         };
 
+        const returnBucketMeta = [
+            { key: 'veryNegative', label: 'Very negative', color: '#842029' },
+            { key: 'negative', label: 'Somewhat negative', color: '#dc3545' },
+            { key: 'flat', label: 'Flat', color: '#6c757d' },
+            { key: 'positive', label: 'Somewhat positive', color: '#198754' },
+            { key: 'veryPositive', label: 'Very positive', color: '#0f5132' }
+        ];
+
         function isFiniteNumber(value) {
             return typeof value === 'number' && Number.isFinite(value);
         }
@@ -342,6 +352,11 @@
             if (!isFiniteNumber(value)) return 'N/A';
             const sign = value > 0 ? '+' : '';
             return `${sign}${value.toFixed(2)}%`;
+        }
+
+        function formatPrice(value) {
+            if (!isFiniteNumber(value)) return 'N/A';
+            return `$${value.toFixed(value >= 100 ? 0 : 2)}`;
         }
 
         function getWindowConfig(windowKey) {
@@ -364,36 +379,193 @@
             return 'sideways';
         }
 
-        function getSensitivityDatasets(windowKey) {
-            return [
-                {
-                    label: 'Strategy',
-                    data: startTiming.sensitivityPoints.map((point) => point.returns?.[windowKey]?.strategy ?? null),
+        function normalizeDateKey(value) {
+            if (typeof value !== 'string') return null;
+            const trimmed = value.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+            const parsed = new Date(trimmed);
+            return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+        }
+
+        function normalizeBenchmarkSeries(series) {
+            if (!Array.isArray(series)) return [];
+
+            const valueByDate = new Map();
+            series.forEach((point) => {
+                const date = normalizeDateKey(point?.date);
+                const value = Number(point?.value);
+                if (date && Number.isFinite(value) && value > 0) {
+                    valueByDate.set(date, value);
+                }
+            });
+
+            return Array.from(valueByDate.entries())
+                .map(([date, value]) => ({ date, value }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        function getBenchmarkChartLabels() {
+            return Array.from(new Set([
+                ...normalizeBenchmarkSeries(benchmarkChartData.spy).map((point) => point.date),
+                ...normalizeBenchmarkSeries(benchmarkChartData.qqq).map((point) => point.date)
+            ])).sort((a, b) => a.localeCompare(b));
+        }
+
+        function findPointAtOrAfter(series, date) {
+            let low = 0;
+            let high = series.length - 1;
+            let result = null;
+
+            while (low <= high) {
+                const middle = Math.floor((low + high) / 2);
+                if (series[middle].date >= date) {
+                    result = series[middle];
+                    high = middle - 1;
+                } else {
+                    low = middle + 1;
+                }
+            }
+
+            return result;
+        }
+
+        function classifyStrategyReturn(returnPercent, thresholdPercent) {
+            if (returnPercent <= thresholdPercent * -2) return returnBucketMeta[0];
+            if (returnPercent < thresholdPercent * -1) return returnBucketMeta[1];
+            if (returnPercent >= thresholdPercent * 2) return returnBucketMeta[4];
+            if (returnPercent > thresholdPercent) return returnBucketMeta[3];
+            return returnBucketMeta[2];
+        }
+
+        function getReturnBucketDescription(bucket, thresholdPercent) {
+            if (bucket.key === 'veryNegative') return `<= ${formatPercent(-2 * thresholdPercent)}`;
+            if (bucket.key === 'negative') return `${formatPercent(-2 * thresholdPercent)} to ${formatPercent(-thresholdPercent)}`;
+            if (bucket.key === 'positive') return `${formatPercent(thresholdPercent)} to ${formatPercent(2 * thresholdPercent)}`;
+            if (bucket.key === 'veryPositive') return `>= ${formatPercent(2 * thresholdPercent)}`;
+            return `${formatPercent(-thresholdPercent)} to ${formatPercent(thresholdPercent)}`;
+        }
+
+        function renderReturnLegend(windowKey) {
+            const legend = document.getElementById('startTimingReturnLegend');
+            const windowConfig = getWindowConfig(windowKey);
+            if (!legend || !windowConfig) return;
+
+            legend.replaceChildren();
+            returnBucketMeta.forEach((bucket) => {
+                const item = document.createElement('span');
+                item.className = 'd-inline-flex align-items-center gap-1 text-muted';
+
+                const swatch = document.createElement('span');
+                swatch.style.display = 'inline-block';
+                swatch.style.width = '0.75rem';
+                swatch.style.height = '0.75rem';
+                swatch.style.borderRadius = '50%';
+                swatch.style.backgroundColor = bucket.color;
+
+                const label = document.createElement('span');
+                label.textContent = `${bucket.label} (${getReturnBucketDescription(bucket, windowConfig.sidewaysThresholdPercent)})`;
+
+                item.appendChild(swatch);
+                item.appendChild(label);
+                legend.appendChild(item);
+            });
+        }
+
+        function getTimingMarkerData(windowKey, benchmarkKey, benchmarkLabel) {
+            const windowConfig = getWindowConfig(windowKey);
+            const priceSeries = normalizeBenchmarkSeries(benchmarkChartData[benchmarkKey]);
+            if (!windowConfig || priceSeries.length === 0) return [];
+
+            return startTiming.sensitivityPoints
+                .map((point) => {
+                    const startDate = normalizeDateKey(point.date);
+                    const strategyReturn = point.returns?.[windowKey]?.strategy;
+                    if (!startDate || !isFiniteNumber(strategyReturn)) return null;
+
+                    const pricePoint = findPointAtOrAfter(priceSeries, startDate);
+                    if (!pricePoint) return null;
+
+                    const bucket = classifyStrategyReturn(strategyReturn, windowConfig.sidewaysThresholdPercent);
+                    return {
+                        x: pricePoint.date,
+                        y: pricePoint.value,
+                        benchmark: benchmarkLabel,
+                        startDate,
+                        priceDate: pricePoint.date,
+                        strategyReturn,
+                        bucketKey: bucket.key,
+                        bucketLabel: bucket.label,
+                        bucketColor: bucket.color,
+                        radius: bucket.key === 'veryNegative' || bucket.key === 'veryPositive' ? 5 : 4
+                    };
+                })
+                .filter(Boolean);
+        }
+
+        function getBenchmarkTimingDatasets(windowKey) {
+            const spySeries = normalizeBenchmarkSeries(benchmarkChartData.spy);
+            const qqqSeries = normalizeBenchmarkSeries(benchmarkChartData.qqq);
+            const spyMarkers = getTimingMarkerData(windowKey, 'spy', 'SPY');
+            const qqqMarkers = getTimingMarkerData(windowKey, 'qqq', 'QQQ');
+            const datasets = [];
+
+            if (spySeries.length > 0) {
+                datasets.push({
+                    label: 'SPY Close',
+                    data: spySeries.map((point) => ({ x: point.date, y: point.value })),
                     borderColor: '#0d6efd',
                     backgroundColor: 'rgba(13, 110, 253, 0.08)',
                     borderWidth: 2,
+                    fill: false,
                     tension: 0.2,
-                    pointRadius: 0
-                },
-                {
-                    label: 'SPY',
-                    data: startTiming.sensitivityPoints.map((point) => point.returns?.[windowKey]?.spy ?? null),
-                    borderColor: '#198754',
-                    backgroundColor: 'rgba(25, 135, 84, 0.08)',
-                    borderWidth: 2,
-                    tension: 0.2,
-                    pointRadius: 0
-                },
-                {
-                    label: 'QQQ',
-                    data: startTiming.sensitivityPoints.map((point) => point.returns?.[windowKey]?.qqq ?? null),
+                    pointRadius: 0,
+                    pointHoverRadius: 3
+                });
+            }
+
+            if (qqqSeries.length > 0) {
+                datasets.push({
+                    label: 'QQQ Close',
+                    data: qqqSeries.map((point) => ({ x: point.date, y: point.value })),
                     borderColor: '#fd7e14',
                     backgroundColor: 'rgba(253, 126, 20, 0.08)',
                     borderWidth: 2,
+                    fill: false,
                     tension: 0.2,
-                    pointRadius: 0
-                }
-            ];
+                    pointRadius: 0,
+                    pointHoverRadius: 3
+                });
+            }
+
+            if (spyMarkers.length > 0) {
+                datasets.push({
+                    label: 'SPY start weeks',
+                    data: spyMarkers,
+                    showLine: false,
+                    pointStyle: 'circle',
+                    pointRadius: spyMarkers.map((point) => point.radius),
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: spyMarkers.map((point) => point.bucketColor),
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1.5
+                });
+            }
+
+            if (qqqMarkers.length > 0) {
+                datasets.push({
+                    label: 'QQQ start weeks',
+                    data: qqqMarkers,
+                    showLine: false,
+                    pointStyle: 'rectRot',
+                    pointRadius: qqqMarkers.map((point) => point.radius),
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: qqqMarkers.map((point) => point.bucketColor),
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 1.5
+                });
+            }
+
+            return datasets;
         }
 
         function renderSensitivityChart(windowKey) {
@@ -402,8 +574,9 @@
                 return;
             }
 
-            const labels = startTiming.sensitivityPoints.map((point) => point.date);
-            const datasets = getSensitivityDatasets(windowKey);
+            renderReturnLegend(windowKey);
+            const labels = getBenchmarkChartLabels();
+            const datasets = getBenchmarkTimingDatasets(windowKey);
 
             if (sensitivityChart) {
                 sensitivityChart.data.labels = labels;
@@ -418,14 +591,14 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    spanGaps: false,
+                    interaction: { mode: 'nearest', intersect: false },
+                    spanGaps: true,
                     scales: {
-                        x: { title: { display: true, text: 'Start Date' } },
+                        x: { type: 'category', title: { display: true, text: 'Start Date' } },
                         y: {
-                            title: { display: true, text: 'Forward Return' },
+                            title: { display: true, text: 'Close Price' },
                             ticks: {
-                                callback: (value) => formatPercent(Number(value))
+                                callback: (value) => formatPrice(Number(value))
                             }
                         }
                     },
@@ -433,7 +606,22 @@
                         legend: { display: true, position: 'top' },
                         tooltip: {
                             callbacks: {
-                                label: (context) => `${context.dataset.label}: ${formatPercent(context.parsed.y)}`
+                                label: (context) => {
+                                    const point = context.raw || {};
+                                    if (isFiniteNumber(point.strategyReturn)) {
+                                        const lines = [
+                                            `${point.benchmark}: ${formatPrice(point.y)}`,
+                                            `Start: ${point.startDate}`,
+                                            `Strategy: ${formatPercent(point.strategyReturn)}`,
+                                            `Bucket: ${point.bucketLabel}`
+                                        ];
+                                        if (point.priceDate && point.priceDate !== point.startDate) {
+                                            lines.splice(2, 0, `Price date: ${point.priceDate}`);
+                                        }
+                                        return lines;
+                                    }
+                                    return `${context.dataset.label}: ${formatPrice(context.parsed.y)}`;
+                                }
                             }
                         }
                     }

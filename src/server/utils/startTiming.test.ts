@@ -49,6 +49,8 @@ describe('buildStartTimingAnalysis', () => {
 
     expect(analysis.hasData).toBe(true);
     expect(analysis.windows.map((window) => window.key)).toEqual(['1w', '1m', '3m']);
+    expect(analysis.benchmarkChartData.spy).toHaveLength(30);
+    expect(analysis.benchmarkChartData.spy[0]).toEqual({ date: makeDate(0), value: 100 });
     expect(analysis.sensitivityPoints).toHaveLength(1);
     expect(analysis.sensitivityPoints[0].returns['1w'].strategy).toBeCloseTo(5);
     expect(analysis.sensitivityPoints[0].returns['1w'].spy).toBeCloseTo(2.5);

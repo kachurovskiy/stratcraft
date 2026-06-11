@@ -95,6 +95,7 @@ export type StartTimingMarketStateSummary = {
 export type StartTimingAnalysis = {
   hasData: boolean;
   windows: typeof START_TIMING_WINDOWS;
+  benchmarkChartData: BenchmarkData;
   sensitivityPoints: StartTimingSensitivityPoint[];
   sensitivitySummary: StartTimingSensitivitySummary[];
   marketCorrelations: StartTimingMarketCorrelation[];
@@ -106,6 +107,7 @@ export function buildStartTimingAnalysis({
 }: {
   samples: StartTimingSampleData[];
 }): StartTimingAnalysis {
+  const benchmarkChartData = buildBenchmarkChartData(samples);
   const sensitivityPoints = buildSensitivityPoints(samples);
   const sensitivitySummary = START_TIMING_WINDOWS.map((window) =>
     buildSensitivitySummary(sensitivityPoints, window)
@@ -122,11 +124,33 @@ export function buildStartTimingAnalysis({
   return {
     hasData: sensitivitySummary.some((summary) => summary.sampleCount > 0),
     windows: START_TIMING_WINDOWS,
+    benchmarkChartData,
     sensitivityPoints,
     sensitivitySummary,
     marketCorrelations,
     marketStateSummary
   };
+}
+
+function buildBenchmarkChartData(samples: StartTimingSampleData[]): BenchmarkData {
+  return {
+    spy: mergeSeries(samples.map((sample) => sample.benchmarkData.spy)),
+    qqq: mergeSeries(samples.map((sample) => sample.benchmarkData.qqq))
+  };
+}
+
+function mergeSeries(seriesGroups: BenchmarkSeriesPoint[][]): BenchmarkSeriesPoint[] {
+  const byDate = new Map<string, number>();
+
+  for (const series of seriesGroups) {
+    for (const point of normalizeSeries(series)) {
+      byDate.set(point.date, point.value);
+    }
+  }
+
+  return Array.from(byDate.entries())
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function normalizeSeries(points: Array<PortfolioValuePoint | BenchmarkSeriesPoint>): SeriesPoint[] {
