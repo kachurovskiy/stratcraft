@@ -3,7 +3,8 @@ import type { BenchmarkData, BenchmarkSeriesPoint, PortfolioValuePoint } from '.
 export const START_TIMING_WINDOWS = [
   { key: '1w', label: '1W', tradingDays: 5, sidewaysThresholdPercent: 1 },
   { key: '1m', label: '1M', tradingDays: 21, sidewaysThresholdPercent: 2 },
-  { key: '3m', label: '3M', tradingDays: 63, sidewaysThresholdPercent: 4 }
+  { key: '3m', label: '3M', tradingDays: 63, sidewaysThresholdPercent: 4 },
+  { key: '6m', label: '6M', tradingDays: 126, sidewaysThresholdPercent: 6 }
 ] as const;
 
 const BENCHMARKS = [

@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
-const START_TIMING_MAX_HORIZON_TRADING_DAYS: usize = 63;
+const START_TIMING_MAX_HORIZON_TRADING_DAYS: usize = 126;
 
 struct StrategyBacktestTask {
     id: String,

@@ -36,8 +36,8 @@ function makeSample(startIndex: number, portfolioValues: number[], benchmarkValu
 
 describe('buildStartTimingAnalysis', () => {
   it('builds forward start-date returns with trading-day horizons', () => {
-    const portfolio = makePortfolio(Array.from({ length: 30 }, (_, index) => 100 + index));
-    const benchmark = makeBenchmark(Array.from({ length: 30 }, (_, index) => 100 + index * 0.5));
+    const portfolio = makePortfolio(Array.from({ length: 130 }, (_, index) => 100 + index));
+    const benchmark = makeBenchmark(Array.from({ length: 130 }, (_, index) => 100 + index * 0.5));
 
     const analysis = buildStartTimingAnalysis({
       samples: [{
@@ -48,16 +48,18 @@ describe('buildStartTimingAnalysis', () => {
     });
 
     expect(analysis.hasData).toBe(true);
-    expect(analysis.windows.map((window) => window.key)).toEqual(['1w', '1m', '3m']);
-    expect(analysis.benchmarkChartData.spy).toHaveLength(30);
+    expect(analysis.windows.map((window) => window.key)).toEqual(['1w', '1m', '3m', '6m']);
+    expect(analysis.benchmarkChartData.spy).toHaveLength(130);
     expect(analysis.benchmarkChartData.spy[0]).toEqual({ date: makeDate(0), value: 100 });
     expect(analysis.sensitivityPoints).toHaveLength(1);
     expect(analysis.sensitivityPoints[0].returns['1w'].strategy).toBeCloseTo(5);
     expect(analysis.sensitivityPoints[0].returns['1w'].spy).toBeCloseTo(2.5);
     expect(analysis.sensitivityPoints[0].returns['1m'].strategy).toBeCloseTo(21);
+    expect(analysis.sensitivityPoints[0].returns['6m'].strategy).toBeCloseTo(126);
     expect(analysis.sensitivitySummary.find((row) => row.key === '1w')?.sampleCount).toBe(1);
     expect(analysis.sensitivitySummary.find((row) => row.key === '1m')?.sampleCount).toBe(1);
-    expect(analysis.sensitivitySummary.find((row) => row.key === '3m')?.sampleCount).toBe(0);
+    expect(analysis.sensitivitySummary.find((row) => row.key === '3m')?.sampleCount).toBe(1);
+    expect(analysis.sensitivitySummary.find((row) => row.key === '6m')?.sampleCount).toBe(1);
   });
 
   it('groups strategy returns by SPY and QQQ forward market state', () => {
