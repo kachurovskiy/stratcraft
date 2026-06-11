@@ -337,11 +337,11 @@
         };
 
         const returnBucketMeta = [
-            { key: 'veryNegative', label: 'Very negative', color: '#842029' },
-            { key: 'negative', label: 'Somewhat negative', color: '#dc3545' },
-            { key: 'flat', label: 'Flat', color: '#6c757d' },
-            { key: 'positive', label: 'Somewhat positive', color: '#198754' },
-            { key: 'veryPositive', label: 'Very positive', color: '#0f5132' }
+            { key: 'veryNegative', label: 'Very negative', color: '#842029', fillColor: 'rgba(132, 32, 41, 0.78)' },
+            { key: 'negative', label: 'Somewhat negative', color: '#dc3545', fillColor: 'rgba(220, 53, 69, 0.62)' },
+            { key: 'flat', label: 'Flat', color: '#6c757d', fillColor: 'rgba(108, 117, 125, 0.45)' },
+            { key: 'positive', label: 'Somewhat positive', color: '#198754', fillColor: 'rgba(25, 135, 84, 0.62)' },
+            { key: 'veryPositive', label: 'Very positive', color: '#0f5132', fillColor: 'rgba(15, 81, 50, 0.78)' }
         ];
 
         function isFiniteNumber(value) {
@@ -411,15 +411,15 @@
             ])).sort((a, b) => a.localeCompare(b));
         }
 
-        function findPointAtOrAfter(series, date) {
+        function findDateAtOrAfter(dates, date) {
             let low = 0;
-            let high = series.length - 1;
+            let high = dates.length - 1;
             let result = null;
 
             while (low <= high) {
                 const middle = Math.floor((low + high) / 2);
-                if (series[middle].date >= date) {
-                    result = series[middle];
+                if (dates[middle] >= date) {
+                    result = dates[middle];
                     high = middle - 1;
                 } else {
                     low = middle + 1;
@@ -458,8 +458,8 @@
                 const swatch = document.createElement('span');
                 swatch.style.display = 'inline-block';
                 swatch.style.width = '0.75rem';
-                swatch.style.height = '0.75rem';
-                swatch.style.borderRadius = '50%';
+                swatch.style.height = '0.5rem';
+                swatch.style.borderRadius = '2px';
                 swatch.style.backgroundColor = bucket.color;
 
                 const label = document.createElement('span');
@@ -471,10 +471,9 @@
             });
         }
 
-        function getTimingMarkerData(windowKey, benchmarkKey, benchmarkLabel) {
+        function getStrategyReturnBarData(windowKey, labels) {
             const windowConfig = getWindowConfig(windowKey);
-            const priceSeries = normalizeBenchmarkSeries(benchmarkChartData[benchmarkKey]);
-            if (!windowConfig || priceSeries.length === 0) return [];
+            if (!windowConfig || labels.length === 0) return [];
 
             return startTiming.sensitivityPoints
                 .map((point) => {
@@ -482,86 +481,79 @@
                     const strategyReturn = point.returns?.[windowKey]?.strategy;
                     if (!startDate || !isFiniteNumber(strategyReturn)) return null;
 
-                    const pricePoint = findPointAtOrAfter(priceSeries, startDate);
-                    if (!pricePoint) return null;
+                    const barDate = findDateAtOrAfter(labels, startDate);
+                    if (!barDate) return null;
 
                     const bucket = classifyStrategyReturn(strategyReturn, windowConfig.sidewaysThresholdPercent);
                     return {
-                        x: pricePoint.date,
-                        y: pricePoint.value,
-                        benchmark: benchmarkLabel,
+                        x: barDate,
+                        y: strategyReturn,
                         startDate,
-                        priceDate: pricePoint.date,
+                        barDate,
                         strategyReturn,
                         bucketKey: bucket.key,
                         bucketLabel: bucket.label,
                         bucketColor: bucket.color,
-                        radius: bucket.key === 'veryNegative' || bucket.key === 'veryPositive' ? 5 : 4
+                        bucketFillColor: bucket.fillColor
                     };
                 })
                 .filter(Boolean);
         }
 
-        function getBenchmarkTimingDatasets(windowKey) {
+        function getBenchmarkTimingDatasets(windowKey, labels) {
             const spySeries = normalizeBenchmarkSeries(benchmarkChartData.spy);
             const qqqSeries = normalizeBenchmarkSeries(benchmarkChartData.qqq);
-            const spyMarkers = getTimingMarkerData(windowKey, 'spy', 'SPY');
-            const qqqMarkers = getTimingMarkerData(windowKey, 'qqq', 'QQQ');
+            const strategyBars = getStrategyReturnBarData(windowKey, labels);
+            const windowConfig = getWindowConfig(windowKey);
             const datasets = [];
+
+            if (strategyBars.length > 0) {
+                datasets.push({
+                    type: 'bar',
+                    label: `Strategy ${windowConfig?.label || ''} return`,
+                    data: strategyBars,
+                    yAxisID: 'return',
+                    backgroundColor: strategyBars.map((point) => point.bucketFillColor),
+                    borderColor: strategyBars.map((point) => point.bucketColor),
+                    borderWidth: 1,
+                    barThickness: 6,
+                    maxBarThickness: 10,
+                    minBarLength: 2,
+                    order: 3
+                });
+            }
 
             if (spySeries.length > 0) {
                 datasets.push({
+                    type: 'line',
                     label: 'SPY Close',
                     data: spySeries.map((point) => ({ x: point.date, y: point.value })),
+                    yAxisID: 'y',
                     borderColor: '#0d6efd',
                     backgroundColor: 'rgba(13, 110, 253, 0.08)',
                     borderWidth: 2,
                     fill: false,
                     tension: 0.2,
                     pointRadius: 0,
-                    pointHoverRadius: 3
+                    pointHoverRadius: 3,
+                    order: 1
                 });
             }
 
             if (qqqSeries.length > 0) {
                 datasets.push({
+                    type: 'line',
                     label: 'QQQ Close',
                     data: qqqSeries.map((point) => ({ x: point.date, y: point.value })),
+                    yAxisID: 'y',
                     borderColor: '#fd7e14',
                     backgroundColor: 'rgba(253, 126, 20, 0.08)',
                     borderWidth: 2,
                     fill: false,
                     tension: 0.2,
                     pointRadius: 0,
-                    pointHoverRadius: 3
-                });
-            }
-
-            if (spyMarkers.length > 0) {
-                datasets.push({
-                    label: 'SPY start weeks',
-                    data: spyMarkers,
-                    showLine: false,
-                    pointStyle: 'circle',
-                    pointRadius: spyMarkers.map((point) => point.radius),
-                    pointHoverRadius: 7,
-                    pointBackgroundColor: spyMarkers.map((point) => point.bucketColor),
-                    pointBorderColor: '#ffffff',
-                    pointBorderWidth: 1.5
-                });
-            }
-
-            if (qqqMarkers.length > 0) {
-                datasets.push({
-                    label: 'QQQ start weeks',
-                    data: qqqMarkers,
-                    showLine: false,
-                    pointStyle: 'rectRot',
-                    pointRadius: qqqMarkers.map((point) => point.radius),
-                    pointHoverRadius: 7,
-                    pointBackgroundColor: qqqMarkers.map((point) => point.bucketColor),
-                    pointBorderColor: '#ffffff',
-                    pointBorderWidth: 1.5
+                    pointHoverRadius: 3,
+                    order: 1
                 });
             }
 
@@ -576,7 +568,7 @@
 
             renderReturnLegend(windowKey);
             const labels = getBenchmarkChartLabels();
-            const datasets = getBenchmarkTimingDatasets(windowKey);
+            const datasets = getBenchmarkTimingDatasets(windowKey, labels);
 
             if (sensitivityChart) {
                 sensitivityChart.data.labels = labels;
@@ -600,6 +592,15 @@
                             ticks: {
                                 callback: (value) => formatPrice(Number(value))
                             }
+                        },
+                        return: {
+                            position: 'right',
+                            title: { display: true, text: 'Strategy Forward Return' },
+                            beginAtZero: true,
+                            grid: { drawOnChartArea: false },
+                            ticks: {
+                                callback: (value) => formatPercent(Number(value))
+                            }
                         }
                     },
                     plugins: {
@@ -610,13 +611,12 @@
                                     const point = context.raw || {};
                                     if (isFiniteNumber(point.strategyReturn)) {
                                         const lines = [
-                                            `${point.benchmark}: ${formatPrice(point.y)}`,
                                             `Start: ${point.startDate}`,
                                             `Strategy: ${formatPercent(point.strategyReturn)}`,
                                             `Bucket: ${point.bucketLabel}`
                                         ];
-                                        if (point.priceDate && point.priceDate !== point.startDate) {
-                                            lines.splice(2, 0, `Price date: ${point.priceDate}`);
+                                        if (point.barDate && point.barDate !== point.startDate) {
+                                            lines.splice(1, 0, `Bar date: ${point.barDate}`);
                                         }
                                         return lines;
                                     }
