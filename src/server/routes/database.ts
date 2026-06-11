@@ -360,6 +360,18 @@ router.post('/clear-all-backtests', requireAuth, requireAdmin, async (req: Reque
   }
 });
 
+// Clear start timing backtests (admin only)
+router.post('/clear-start-timing-backtests', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const deletedCount = await req.db.maintenance.clearStartTimingBacktests();
+    const message = `Successfully cleared ${deletedCount} start timing backtest${deletedCount === 1 ? '' : 's'} from the database`;
+    res.redirect(`/admin/database?success=${encodeURIComponent(message)}`);
+  } catch (error) {
+    console.error('Error clearing start timing backtests:', error);
+    res.redirect('/admin/database?error=Failed to clear start timing backtests from database');
+  }
+});
+
 // Clear all trades (admin only)
 router.post('/clear-all-trades', requireAuth, requireAdmin, async (req: Request, res: Response) => {
   try {

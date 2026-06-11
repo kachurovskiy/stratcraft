@@ -28,6 +28,7 @@ type AdminEntityCounts = {
   templates: number;
   strategies: number;
   backtests: number;
+  startTimingBacktests: number;
   trades: number;
   accounts: number;
   accountOperations: number;
@@ -73,6 +74,7 @@ export class AdminRepo {
       templates: 0,
       strategies: 0,
       backtests: 0,
+      startTimingBacktests: 0,
       trades: 0,
       accounts: 0,
       accountOperations: 0,
@@ -86,6 +88,7 @@ export class AdminRepo {
       { key: 'templates', sql: 'SELECT COUNT(*) AS count FROM templates' },
       { key: 'strategies', sql: 'SELECT COUNT(*) AS count FROM strategies' },
       { key: 'backtests', sql: 'SELECT COUNT(*) AS count FROM backtest_results' },
+      { key: 'startTimingBacktests', sql: 'SELECT COUNT(*) AS count FROM start_timing_backtests' },
       { key: 'trades', sql: 'SELECT COUNT(*) AS count FROM trades' },
       { key: 'accounts', sql: 'SELECT COUNT(*) AS count FROM accounts' },
       { key: 'accountOperations', sql: 'SELECT COUNT(*) AS count FROM account_operations' },

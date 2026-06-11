@@ -58,6 +58,16 @@ export class MaintenanceRepo {
     }
   }
 
+  async clearStartTimingBacktests(): Promise<number> {
+    try {
+      const result = await this.db.run('DELETE FROM start_timing_backtests');
+      return result.changes || 0;
+    } catch (error) {
+      console.error('Failed to clear start timing backtests:', error);
+      throw error;
+    }
+  }
+
   async clearAllTrades(): Promise<{ tradesDeleted: number; backtestResultsDeleted: number }> {
     try {
       const tradesResult = await this.db.run('DELETE FROM trades');
@@ -151,6 +161,7 @@ export class MaintenanceRepo {
       'lightgbm_models',
       'remote_optimizer_jobs',
       'signals',
+      'start_timing_backtests',
       'strategies',
       'system_logs',
       'templates',
