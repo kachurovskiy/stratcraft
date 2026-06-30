@@ -95,7 +95,12 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       ]);
     }
 
-    const backtestScopeOptions = buildBacktestScopeOptions(req, selectedBacktestScope, availableBacktestScopes);
+    const backtestScopeOptions = buildBacktestScopeOptions(
+      req,
+      selectedBacktestScope,
+      availableBacktestScopes,
+      selectedBacktestPeriod
+    );
     const backtestPeriodOptions = buildBacktestPeriodOptions(
       req,
       availableBacktestPeriods,
@@ -299,9 +304,13 @@ function buildDashboardUrl(params: URLSearchParams): string {
 function buildBacktestScopeOptions(
   req: Request,
   selectedScope: DashboardBacktestScope,
-  availableScopes: DashboardBacktestScope[]
+  availableScopes: DashboardBacktestScope[],
+  selectedPeriod: string | null
 ) {
   const baseParams = buildDashboardQueryParams(req, ['backtestScope', 'backtestPeriod']);
+  if (selectedPeriod) {
+    baseParams.set('backtestPeriod', selectedPeriod);
+  }
   const available = new Set<DashboardBacktestScope>(availableScopes);
 
   return DASHBOARD_BACKTEST_SCOPE_OPTIONS
