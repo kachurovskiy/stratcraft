@@ -138,8 +138,10 @@ export const viewHelpers = {
   formatPrice(value: number) {
     return priceFormatter.format(value);
   },
-  formatRateAsPercent(value: number) {
-    return percentFormatter.format(value);
+  formatRateAsPercent(value: number | null | undefined) {
+    return typeof value === 'number' && Number.isFinite(value)
+      ? percentFormatter.format(value)
+      : 'N/A';
   },
   formatPercentAsPercent(value: number | null | undefined) {
     const numericValue = typeof value === 'number' ? value : null;

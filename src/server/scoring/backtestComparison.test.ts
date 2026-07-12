@@ -56,6 +56,7 @@ describe('buildBacktestComparisonView', () => {
   test('matches Friday signal skips to Tuesday entries after a holiday weekend', async () => {
     const liveTrade = createTrade();
     const getSkips = jest.fn().mockResolvedValue([createSkip()]);
+    const getTickersBySymbols = jest.fn().mockResolvedValue([]);
     const db = {
       trades: {
         getTrades: jest.fn()
@@ -69,7 +70,7 @@ describe('buildBacktestComparisonView', () => {
         getAccountSignalSkipsForStrategyInRange: getSkips
       },
       tickers: {
-        getTicker: jest.fn().mockResolvedValue({ expenseRatio: null })
+        getTickersBySymbols
       },
       settings: {
         value: {
@@ -93,11 +94,55 @@ describe('buildBacktestComparisonView', () => {
     });
 
     expect(getSkips).toHaveBeenCalledTimes(1);
+    expect(getTickersBySymbols).toHaveBeenCalledWith(['CETX']);
+    expect(view.hasComparisonData).toBe(true);
     expect(dateKey(getSkips.mock.calls[0][1])).toBe('2026-05-22');
     expect(view.sampleDays).toHaveLength(1);
     expect(view.sampleDays[0].rows[0].engine.reasons[0]).toMatchObject({
       label: 'Limit price not reached',
       detail: 'Skipped in Engine backtest | Candle low stayed above the limit price.'
     });
+  });
+
+  test('normalizes non-finite comparison settings', async () => {
+    const db = {
+      trades: {
+        getTrades: jest.fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([])
+      },
+      strategies: {
+        getStrategy: jest.fn().mockResolvedValue({ parameters: {} })
+      },
+      accountSignalSkips: {
+        getAccountSignalSkipsForStrategyInRange: jest.fn()
+      },
+      tickers: {
+        getTickersBySymbols: jest.fn()
+      },
+      settings: {
+        value: {
+          engine: {
+            tradeSlippageRate: Number.NaN,
+            limitBuyPenetrationRatio: Number.POSITIVE_INFINITY
+          }
+        }
+      }
+    } as any;
+
+    const view = await buildBacktestComparisonView({
+      db,
+      strategyId: STRATEGY_ID,
+      userId: USER_ID,
+      backtests: [
+        createBacktest('engine-backtest', 'training'),
+        createBacktest('live-backtest', 'live')
+      ],
+      isEligible: true
+    });
+
+    expect(view.hasComparisonData).toBe(true);
+    expect(view.slippage?.setting).toBeNull();
+    expect(view.penetration?.setting).toBeNull();
   });
 });

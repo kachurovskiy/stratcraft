@@ -83,6 +83,7 @@ export type BacktestComparisonView = {
   isEligible: boolean;
   hasEngine: boolean;
   hasLive: boolean;
+  hasComparisonData: boolean;
   notice?: string;
   engine?: BacktestComparisonSummary;
   live?: BacktestComparisonSummary;
@@ -1012,13 +1013,18 @@ const computeExpenseRatioAverage = (
 
 const loadExpenseRatioMap = async (db: Database, tickers: string[]): Promise<Map<string, number | null>> => {
   const unique = Array.from(new Set(tickers));
-  const results = await Promise.all(unique.map((ticker) => db.tickers.getTicker(ticker)));
+  if (unique.length === 0) {
+    return new Map();
+  }
+
+  const results = await db.tickers.getTickersBySymbols(unique);
+  const resultBySymbol = new Map(results.map((result) => [result.symbol, result]));
   const expenseMap = new Map<string, number | null>();
-  unique.forEach((ticker, index) => {
-    const row = results[index];
+  for (const ticker of unique) {
+    const row = resultBySymbol.get(ticker);
     const ratio = row?.expenseRatio;
     expenseMap.set(ticker, typeof ratio === 'number' && Number.isFinite(ratio) ? ratio : null);
-  });
+  }
   return expenseMap;
 };
 
@@ -1055,6 +1061,7 @@ export const buildBacktestComparisonView = async ({
       isEligible: false,
       hasEngine: false,
       hasLive: false,
+      hasComparisonData: false,
       sampleDays: []
     };
   }
@@ -1072,6 +1079,7 @@ export const buildBacktestComparisonView = async ({
       isEligible: true,
       hasEngine,
       hasLive,
+      hasComparisonData: false,
       notice: missing.length > 0
         ? `Need ${missing.join(' and ')} results to compare entries.`
         : 'Need live and engine backtests to compare entries.',
@@ -1085,8 +1093,8 @@ export const buildBacktestComparisonView = async ({
     db.strategies.getStrategy(strategyId, userId)
   ]);
 
-  const slippageSetting = db.settings.value.engine.tradeSlippageRate;
-  const penetrationSetting = db.settings.value.engine.limitBuyPenetrationRatio;
+  const slippageSetting = parseNumericValue(db.settings.value.engine.tradeSlippageRate);
+  const penetrationSetting = parseNumericValue(db.settings.value.engine.limitBuyPenetrationRatio);
   const engineTrades = engineTradesRaw.filter(isEntryTrade);
   const liveTrades = liveTradesRaw.filter(isEntryTrade);
   const engineCancelledTrades = engineTradesRaw.filter(isCancelledTrade);
@@ -1203,6 +1211,7 @@ export const buildBacktestComparisonView = async ({
     isEligible: true,
     hasEngine,
     hasLive,
+    hasComparisonData: true,
     engine: buildSummary(engineBacktest!, 'Engine backtest'),
     live: buildSummary(liveBacktest!, 'Live trades backtest'),
     slippage,

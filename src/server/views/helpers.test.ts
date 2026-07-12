@@ -1,5 +1,18 @@
 import { viewHelpers } from './helpers';
 
+describe('viewHelpers.formatRateAsPercent', () => {
+  it('formats finite rate values as percents', () => {
+    expect(viewHelpers.formatRateAsPercent(0.123456)).toBe('12.35%');
+  });
+
+  it('returns N/A for missing and non-finite rate values', () => {
+    expect(viewHelpers.formatRateAsPercent(null)).toBe('N/A');
+    expect(viewHelpers.formatRateAsPercent(undefined)).toBe('N/A');
+    expect(viewHelpers.formatRateAsPercent(Number.NaN)).toBe('N/A');
+    expect(viewHelpers.formatRateAsPercent(Number.POSITIVE_INFINITY)).toBe('N/A');
+  });
+});
+
 describe('viewHelpers.formatPercentAsPercent', () => {
   it('formats finite percent values with two decimals', () => {
     expect(viewHelpers.formatPercentAsPercent(12.3456)).toBe('12.35%');

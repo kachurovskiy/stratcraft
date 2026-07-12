@@ -46,9 +46,9 @@ const getSnapshotBadgeMeta = (snapshot?: AccountSnapshot) => {
   }
 };
 
-const STRATEGY_OPTIONAL_SECTION_TIMEOUT_MS = 3_000;
-const STRATEGY_ACCOUNT_TIMEOUT_MS = 4_000;
-const STRATEGY_BACKTEST_COMPARISON_TIMEOUT_MS = 4_000;
+const STRATEGY_OPTIONAL_SECTION_TIMEOUT_MS = 10_000;
+const STRATEGY_ACCOUNT_TIMEOUT_MS = 10_000;
+const STRATEGY_BACKTEST_COMPARISON_TIMEOUT_MS = 10_000;
 
 const ACCOUNT_OPERATION_STATUS_ORDER: AccountOperationStatus[] = ['pending', 'sent', 'skipped', 'failed'];
 
@@ -1420,6 +1420,7 @@ router.get<StrategyIdParams>('/strategies/:strategyId', requireAuth, async (req,
           isEligible: true,
           hasEngine,
           hasLive,
+          hasComparisonData: false,
           notice: 'Backtest comparison is taking too long to load. Try refreshing in a moment.',
           sampleDays: []
         },
