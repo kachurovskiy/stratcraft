@@ -2265,6 +2265,37 @@ impl Engine {
         existing_buy_operations_today: usize,
         ticker_metadata: &HashMap<String, TickerInfo>,
     ) -> PlannedOperations {
+        self.plan_account_operations_with_locks(
+            strategy_id,
+            account_id,
+            signals,
+            candles,
+            target_date,
+            account_state,
+            strategy_allocated_cash,
+            excluded_tickers,
+            &HashMap::new(),
+            existing_trades,
+            existing_buy_operations_today,
+            ticker_metadata,
+        )
+    }
+
+    pub fn plan_account_operations_with_locks(
+        &self,
+        strategy_id: &str,
+        account_id: &str,
+        signals: &[GeneratedSignal],
+        candles: &[Candle],
+        target_date: DateTime<Utc>,
+        account_state: &AccountStateSnapshot,
+        strategy_allocated_cash: Option<f64>,
+        excluded_tickers: &HashSet<String>,
+        account_ticker_locks: &HashMap<String, String>,
+        existing_trades: &[Trade],
+        existing_buy_operations_today: usize,
+        ticker_metadata: &HashMap<String, TickerInfo>,
+    ) -> PlannedOperations {
         let mut notes = Vec::new();
         let mut skipped_signals: Vec<AccountSignalSkip> = Vec::new();
         if candles.is_empty() {
@@ -2328,6 +2359,8 @@ impl Engine {
                 })
                 .or_insert(trade.date);
         }
+        let strategy_owned_tickers: HashSet<String> =
+            latest_live_trade_dates.keys().cloned().collect();
 
         let mut sell_signals: HashMap<String, &GeneratedSignal> = HashMap::new();
         for signal in signals.iter().filter(|signal| {
@@ -2376,6 +2409,37 @@ impl Engine {
                     notes.push(format!("signal_{}_excluded", ticker));
                     record_skip(&ticker, SignalAction::Buy, "signal_excluded", None);
                     continue;
+                }
+
+                if let Some(lock_reason) = account_ticker_locks.get(&ticker) {
+                    notes.push(format!("signal_{}_account_ticker_locked", ticker));
+                    record_skip(
+                        &ticker,
+                        SignalAction::Buy,
+                        "account_ticker_locked",
+                        Some(lock_reason.clone()),
+                    );
+                    continue;
+                }
+
+                if !strategy_owned_tickers.contains(&ticker) {
+                    let broker_lock_reason = if account_state.held_tickers.contains(&ticker) {
+                        Some("broker_position_exists")
+                    } else if account_state.open_buy_orders.contains(&ticker) {
+                        Some("broker_buy_order_open")
+                    } else {
+                        None
+                    };
+                    if let Some(reason) = broker_lock_reason {
+                        notes.push(format!("signal_{}_account_ticker_locked", ticker));
+                        record_skip(
+                            &ticker,
+                            SignalAction::Buy,
+                            "account_ticker_locked",
+                            Some(reason.to_string()),
+                        );
+                        continue;
+                    }
                 }
 
                 if let Some(metadata) = ticker_metadata.get(&ticker) {
@@ -4581,6 +4645,85 @@ mod tests {
             .find(|op| op.operation_type == AccountOperationType::OpenPosition)
             .expect("expected capped buy op");
         assert_eq!(buy.quantity, Some(25));
+    }
+
+    #[test]
+    fn test_plan_account_operations_skips_account_ticker_lock() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.buy_discount_ratio = 0.0;
+
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("LOCK", vec![100.0, 100.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "LOCK".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+        let state = sample_account_state(50_000.0);
+        let mut locks = HashMap::new();
+        locks.insert("LOCK".to_string(), "live_trade:other_strategy".to_string());
+
+        let plan = engine.plan_account_operations_with_locks(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            None,
+            &HashSet::new(),
+            &locks,
+            &[],
+            0,
+            &HashMap::new(),
+        );
+
+        assert!(plan.operations.is_empty());
+        assert!(plan
+            .skipped_signals
+            .iter()
+            .any(|skip| skip.ticker == "LOCK" && skip.reason == "account_ticker_locked"));
+    }
+
+    #[test]
+    fn test_plan_account_operations_skips_unowned_broker_position() {
+        let mut engine = Engine::new(test_runtime_settings());
+        engine.config.buy_discount_ratio = 0.0;
+
+        let (candles, dates, history_offset) =
+            generate_candles_with_history("HELD", vec![100.0, 100.0]);
+        let signal_date = dates[history_offset + 1];
+        let signals = vec![GeneratedSignal {
+            date: signal_date,
+            ticker: "HELD".to_string(),
+            action: SignalAction::Buy,
+            confidence: Some(1.0),
+        }];
+        let state = sample_account_state_with_holdings(50_000.0, &[("HELD", 10, 100.0)], None);
+
+        let plan = engine.plan_account_operations_with_locks(
+            "strategy",
+            "acct",
+            &signals,
+            &candles,
+            signal_date,
+            &state,
+            None,
+            &HashSet::new(),
+            &HashMap::new(),
+            &[],
+            0,
+            &HashMap::new(),
+        );
+
+        assert!(plan.operations.is_empty());
+        assert!(plan.skipped_signals.iter().any(|skip| {
+            skip.ticker == "HELD"
+                && skip.reason == "account_ticker_locked"
+                && skip.details.as_deref() == Some("broker_position_exists")
+        }));
     }
 
     #[test]

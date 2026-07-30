@@ -1107,6 +1107,72 @@ impl Database {
         Ok(trades)
     }
 
+    pub async fn get_account_ticker_locks(
+        &self,
+        account_id: &str,
+        exclude_strategy_id: &str,
+    ) -> Result<HashMap<String, String>> {
+        let rows = self
+            .client
+            .query(
+                "SELECT ticker, reason
+                 FROM (
+                   SELECT UPPER(t.ticker) AS ticker,
+                          'live_trade:' || t.strategy_id AS reason
+                   FROM trades t
+                   INNER JOIN strategies s ON s.id = t.strategy_id
+                   WHERE s.account_id = $1
+                     AND t.strategy_id <> $2
+                     AND t.entry_order_id IS NOT NULL
+                     AND t.status IN ('pending', 'active')
+
+                   UNION ALL
+
+                   SELECT UPPER(ao.ticker) AS ticker,
+                          'pending_open_operation:' || ao.strategy_id AS reason
+                   FROM account_operations ao
+                   WHERE ao.account_id = $1
+                     AND ao.strategy_id <> $2
+                     AND ao.operation_type = 'open_position'
+                     AND ao.status = 'pending'
+                 ) locked
+                 ORDER BY ticker, reason",
+                &[&account_id, &exclude_strategy_id],
+            )
+            .await?;
+
+        let mut locks = HashMap::new();
+        for row in rows {
+            let ticker: String = row.get(0);
+            let reason: String = row.get(1);
+            locks.entry(ticker).or_insert(reason);
+        }
+        Ok(locks)
+    }
+
+    pub async fn get_account_pending_open_operation_value(
+        &self,
+        account_id: &str,
+        exclude_strategy_id: &str,
+    ) -> Result<f64> {
+        let row = self
+            .client
+            .query_one(
+                "SELECT COALESCE(SUM(ABS(quantity)::DOUBLE PRECISION * price), 0.0)::DOUBLE PRECISION
+                 FROM account_operations
+                 WHERE account_id = $1
+                   AND strategy_id <> $2
+                   AND operation_type = 'open_position'
+                   AND status = 'pending'
+                   AND quantity IS NOT NULL
+                   AND price IS NOT NULL",
+                &[&account_id, &exclude_strategy_id],
+            )
+            .await?;
+
+        Ok(row.get::<_, f64>(0).max(0.0))
+    }
+
     pub async fn get_strategy_first_filled_trade_date(
         &self,
         strategy_id: &str,

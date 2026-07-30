@@ -1,13 +1,13 @@
 use crate::alpaca::AlpacaClient;
 use crate::config::EngineRuntimeSettings;
 use crate::context::AppContext;
-use crate::engine::Engine;
+use crate::engine::{AccountStateSnapshot, Engine};
 use crate::models::{AccountSignalSkip, SignalAction};
 use anyhow::{Context, Result};
 use log::{info, warn};
 use reqwest::Client;
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 pub async fn run(app: &AppContext) -> Result<()> {
@@ -27,11 +27,50 @@ pub async fn run(app: &AppContext) -> Result<()> {
 
     let mut processed = 0usize;
     let mut skipped = 0usize;
+    let mut strategies_by_account: HashMap<String, usize> = HashMap::new();
+    for strategy in strategies.iter().filter(|s| s.account_id.is_some()) {
+        if let Some(account_id) = strategy.account_id.as_deref() {
+            *strategies_by_account
+                .entry(account_id.to_string())
+                .or_insert(0) += 1;
+        }
+    }
+    let mut account_state_cache: HashMap<String, AccountStateSnapshot> = HashMap::new();
 
     for strategy in strategies.into_iter().filter(|s| s.account_id.is_some()) {
         let Some(account_id) = strategy.account_id.clone() else {
             continue;
         };
+
+        let shared_account_strategy_count =
+            strategies_by_account.get(&account_id).copied().unwrap_or(1);
+        let has_strategy_allocation = strategy
+            .allocated_cash
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .is_some();
+        if shared_account_strategy_count > 1 && !has_strategy_allocation {
+            skipped += 1;
+            warn!(
+                "Skipping strategy {} - shared account {} requires a positive live allocation",
+                strategy.name, account_id
+            );
+            let metadata = json!({
+                "strategyId": strategy.id,
+                "accountId": account_id,
+                "sharedAccountStrategyCount": shared_account_strategy_count,
+            });
+            db.insert_system_log(
+                "plan-operations-job",
+                "warn",
+                &format!(
+                    "Skipped strategy {} because shared account strategies require live allocations",
+                    strategy.name
+                ),
+                Some(metadata),
+            )
+            .await?;
+            continue;
+        }
 
         let creds = match db.get_account_credentials(&account_id).await? {
             Some(creds) => creds,
@@ -65,15 +104,22 @@ pub async fn run(app: &AppContext) -> Result<()> {
                 continue;
             }
         };
-        let account_state = match alpaca_client.fetch_account_state().await {
-            Ok(state) => state,
-            Err(err) => {
-                skipped += 1;
-                warn!(
-                    "Skipping strategy {} - failed to fetch account state: {}",
-                    strategy.name, err
-                );
-                continue;
+        let account_state = if let Some(cached) = account_state_cache.get(&account_id) {
+            cached.clone()
+        } else {
+            match alpaca_client.fetch_account_state().await {
+                Ok(state) => {
+                    account_state_cache.insert(account_id.clone(), state.clone());
+                    state
+                }
+                Err(err) => {
+                    skipped += 1;
+                    warn!(
+                        "Skipping strategy {} - failed to fetch account state: {}",
+                        strategy.name, err
+                    );
+                    continue;
+                }
             }
         };
 
@@ -176,16 +222,25 @@ pub async fn run(app: &AppContext) -> Result<()> {
             .count_buy_operations_for_day(&strategy.id, target_date)
             .await?
             .max(0) as usize;
+        let account_ticker_locks = db
+            .get_account_ticker_locks(&account_id, &strategy.id)
+            .await?;
+        let reserved_open_value = db
+            .get_account_pending_open_operation_value(&account_id, &strategy.id)
+            .await?;
+        let effective_account_state =
+            account_state_after_pending_reservations(&account_state, reserved_open_value);
 
-        let plan = engine.plan_account_operations(
+        let plan = engine.plan_account_operations_with_locks(
             &strategy.id,
             &account_id,
             &signals,
             &candles,
             target_date,
-            &account_state,
+            &effective_account_state,
             strategy.allocated_cash,
             &excluded_tickers,
+            &account_ticker_locks,
             &existing_trades,
             existing_buy_operations_today,
             &ticker_metadata,
@@ -264,4 +319,25 @@ pub async fn run(app: &AppContext) -> Result<()> {
         skipped
     );
     Ok(())
+}
+
+fn account_state_after_pending_reservations(
+    account_state: &AccountStateSnapshot,
+    reserved_open_value: f64,
+) -> AccountStateSnapshot {
+    let reserved = if reserved_open_value.is_finite() && reserved_open_value > 0.0 {
+        reserved_open_value
+    } else {
+        0.0
+    };
+    if reserved <= 0.0 {
+        return account_state.clone();
+    }
+
+    let mut adjusted = account_state.clone();
+    adjusted.available_cash = (account_state.available_cash - reserved).max(0.0);
+    adjusted.buying_power = account_state
+        .buying_power
+        .map(|buying_power| (buying_power - reserved).max(0.0));
+    adjusted
 }
