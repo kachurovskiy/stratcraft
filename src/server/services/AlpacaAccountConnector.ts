@@ -189,6 +189,20 @@ export class AlpacaAccountConnector implements AccountConnector {
       throw new Error('missing_ticker');
     }
 
+    if (operation.operationType === 'open_position') {
+      const preflightResult = await this.preflightOpenPosition(
+        account,
+        operation,
+        baseUrl,
+        headers,
+        ticker,
+        abortSignal
+      );
+      if (preflightResult) {
+        return preflightResult;
+      }
+    }
+
     if (operation.operationType === 'close_position' || operation.operationType === 'update_stop_loss') {
       const positionExists = await this.hasOpenPosition(baseUrl, headers, ticker, abortSignal);
       if (!positionExists) {
@@ -266,6 +280,72 @@ export class AlpacaAccountConnector implements AccountConnector {
       payload,
       cancelAfter
     };
+  }
+
+  private async preflightOpenPosition(
+    account: TradingAccount,
+    operation: AccountOperation,
+    baseUrl: string,
+    headers: Record<string, string>,
+    ticker: string,
+    abortSignal: AbortSignal
+  ): Promise<DispatchResult | null> {
+    const blockingLiveTrade = await this.db.trades.hasBlockingLiveTradeForAccount(
+      account.id,
+      operation.strategyId,
+      ticker
+    );
+    if (blockingLiveTrade) {
+      return {
+        status: 'skipped',
+        reason: `${ticker} is already owned by another strategy on this account`
+      };
+    }
+
+    const blockingOpenOperation = await this.db.accountOperations.hasBlockingOpenOperationForAccount(
+      account.id,
+      operation.strategyId,
+      ticker,
+      operation.id
+    );
+    if (blockingOpenOperation) {
+      return {
+        status: 'skipped',
+        reason: `${ticker} already has a pending open operation on this account`
+      };
+    }
+
+    const ownLiveTrade = await this.db.trades.hasLiveTradeForStrategyTicker(operation.strategyId, ticker);
+    if (!ownLiveTrade) {
+      const brokerPositionExists = await this.hasOpenPosition(baseUrl, headers, ticker, abortSignal);
+      if (brokerPositionExists) {
+        return {
+          status: 'skipped',
+          reason: `${ticker} position already exists on Alpaca`
+        };
+      }
+    }
+
+    const brokerBuyOrderOpen = await this.hasOpenOrder(baseUrl, headers, ticker, 'buy', abortSignal);
+    if (brokerBuyOrderOpen) {
+      return {
+        status: 'skipped',
+        reason: `${ticker} already has an open buy order on Alpaca`
+      };
+    }
+
+    const estimatedValue = this.estimateOpenOrderValue(operation);
+    if (estimatedValue !== null) {
+      const buyingPower = await this.fetchTradingBuyingPower(baseUrl, headers, abortSignal);
+      if (buyingPower !== null && estimatedValue > buyingPower + 0.01) {
+        return {
+          status: 'skipped',
+          reason: `${ticker} needs ${estimatedValue.toFixed(2)} buying power, only ${buyingPower.toFixed(2)} available`
+        };
+      }
+    }
+
+    return null;
   }
 
   async liquidatePositions(
@@ -616,6 +696,72 @@ export class AlpacaAccountConnector implements AccountConnector {
       }
       throw error;
     }
+  }
+
+  private async hasOpenOrder(
+    baseUrl: string,
+    headers: Record<string, string>,
+    ticker: string,
+    side: 'buy' | 'sell',
+    abortSignal?: AbortSignal
+  ): Promise<boolean> {
+    const response = await axios.get(`${baseUrl}/orders`, {
+      headers,
+      timeout: this.requestTimeout,
+      signal: abortSignal,
+      params: {
+        status: 'open',
+        limit: 50,
+        nested: false,
+        symbols: ticker,
+        side
+      }
+    });
+
+    const orders = Array.isArray(response.data)
+      ? response.data
+      : Array.isArray(response.data?.orders)
+        ? response.data.orders
+        : [];
+
+    return orders.some((order: AlpacaOrder) => {
+      const symbol = normalizeNullableUppercaseString(order?.symbol);
+      const orderSide = typeof order?.side === 'string' ? order.side.trim().toLowerCase() : null;
+      return symbol === ticker && orderSide === side;
+    });
+  }
+
+  private async fetchTradingBuyingPower(
+    baseUrl: string,
+    headers: Record<string, string>,
+    abortSignal?: AbortSignal
+  ): Promise<number | null> {
+    const response = await axios.get(`${baseUrl}/account`, {
+      headers,
+      timeout: this.requestTimeout,
+      signal: abortSignal
+    });
+    const accountData = response.data ?? {};
+    const buyingPower =
+      this.toNumber(accountData?.buying_power) ??
+      this.toNumber(accountData?.regt_buying_power) ??
+      this.toNumber(accountData?.cash);
+    return buyingPower !== null ? Math.max(0, buyingPower) : null;
+  }
+
+  private estimateOpenOrderValue(operation: AccountOperation): number | null {
+    const quantity =
+      typeof operation.quantity === 'number' && Number.isFinite(operation.quantity)
+        ? Math.abs(operation.quantity)
+        : null;
+    const price =
+      typeof operation.price === 'number' && Number.isFinite(operation.price) && operation.price > 0
+        ? operation.price
+        : null;
+    if (quantity === null || quantity <= 0 || price === null) {
+      return null;
+    }
+    return quantity * price;
   }
 
   private toNumber(value: any): number | null {

@@ -633,6 +633,49 @@ export class TradesRepo {
     return rows.map((row) => this.mapTradeRow(row));
   }
 
+  async hasLiveTradeForStrategyTicker(strategyId: string, ticker: string): Promise<boolean> {
+    const normalizedStrategyId = typeof strategyId === 'string' ? strategyId.trim() : '';
+    const normalizedTicker = normalizeUppercaseString(ticker);
+    if (!normalizedStrategyId || !normalizedTicker) {
+      return false;
+    }
+
+    const row = await this.db.get<CountRow>(
+      `SELECT COUNT(*) AS total
+         FROM trades
+        WHERE strategy_id = ?
+          AND UPPER(ticker) = ?
+          AND entry_order_id IS NOT NULL
+          AND status IN ('pending', 'active')`,
+      [normalizedStrategyId, normalizedTicker]
+    );
+
+    return Number(row?.total ?? 0) > 0;
+  }
+
+  async hasBlockingLiveTradeForAccount(accountId: string, strategyId: string, ticker: string): Promise<boolean> {
+    const normalizedAccountId = typeof accountId === 'string' ? accountId.trim() : '';
+    const normalizedStrategyId = typeof strategyId === 'string' ? strategyId.trim() : '';
+    const normalizedTicker = normalizeUppercaseString(ticker);
+    if (!normalizedAccountId || !normalizedStrategyId || !normalizedTicker) {
+      return false;
+    }
+
+    const row = await this.db.get<CountRow>(
+      `SELECT COUNT(*) AS total
+         FROM trades t
+         INNER JOIN strategies s ON s.id = t.strategy_id
+        WHERE s.account_id = ?
+          AND t.strategy_id <> ?
+          AND UPPER(t.ticker) = ?
+          AND t.entry_order_id IS NOT NULL
+          AND t.status IN ('pending', 'active')`,
+      [normalizedAccountId, normalizedStrategyId, normalizedTicker]
+    );
+
+    return Number(row?.total ?? 0) > 0;
+  }
+
   async getLiveTradesForAccounts(
     accountIds: string[],
     userId: number

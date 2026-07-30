@@ -474,6 +474,41 @@ export class AccountOperationsRepo {
     return this.getAccountOperationStatusCounts('strategy_id = ?', [strategyId], options);
   }
 
+  async hasBlockingOpenOperationForAccount(
+    accountId: string,
+    strategyId: string,
+    ticker: string,
+    operationId?: string | null
+  ): Promise<boolean> {
+    const normalizedAccountId = typeof accountId === 'string' ? accountId.trim() : '';
+    const normalizedStrategyId = typeof strategyId === 'string' ? strategyId.trim() : '';
+    const normalizedTicker = normalizeUppercaseString(ticker);
+    if (!normalizedAccountId || !normalizedStrategyId || !normalizedTicker) {
+      return false;
+    }
+
+    const normalizedOperationId = typeof operationId === 'string' && operationId.trim() ? operationId.trim() : null;
+    const row = await this.db.get<CountRow>(
+      `SELECT COUNT(*) AS count
+         FROM account_operations
+        WHERE account_id = ?
+          AND strategy_id <> ?
+          AND UPPER(ticker) = ?
+          AND operation_type = 'open_position'
+          AND status = 'pending'
+          AND (?::text IS NULL OR id <> ?)`,
+      [
+        normalizedAccountId,
+        normalizedStrategyId,
+        normalizedTicker,
+        normalizedOperationId,
+        normalizedOperationId
+      ]
+    );
+
+    return Number(row?.count ?? 0) > 0;
+  }
+
   async getPendingAccountOperationsForDispatch(): Promise<AccountOperationDispatchCandidate[]> {
     const rows = await this.db.all<PendingDispatchRow>(
       `SELECT
