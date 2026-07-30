@@ -46,6 +46,18 @@
     </div>
 </div>
 
+{{#if allocationWarning}}
+<div class="alert alert-warning d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2" role="alert">
+    <div>{{allocationWarning}}</div>
+    <div class="small text-nowrap">
+        Allocated: {{formatCurrency allocatedCashTotal}}
+        {{#if (defined allocatedCashRemaining)}}
+        &middot; Remaining: {{formatCurrency allocatedCashRemaining}}
+        {{/if}}
+    </div>
+</div>
+{{/if}}
+
 <section class="mb-4">
     <div class="card h-100">
         <div class="card-header">

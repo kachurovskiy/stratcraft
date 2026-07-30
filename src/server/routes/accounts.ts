@@ -207,7 +207,13 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
     const snapshot = snapshotMap[tradingAccount.id];
     const balance =
       typeof snapshot?.balance === 'number' && Number.isFinite(snapshot.balance) ? snapshot.balance : null;
-    const strategyPrefillParams = balance !== null ? JSON.stringify({ initialCapital: balance }) : null;
+    const baseStrategiesForAccount = strategiesByAccount[tradingAccount.id] ? [...strategiesByAccount[tradingAccount.id]] : [];
+    const activeStrategiesForAccount = baseStrategiesForAccount.filter(strategy => strategy.status === 'active');
+    const allocatedCashTotal = activeStrategiesForAccount.reduce((sum, strategy) => sum + (strategy.allocatedCash ?? 0), 0);
+    const fullAccountCashStrategyCount = activeStrategiesForAccount.filter(strategy => strategy.usesFullAccountCash).length;
+    const strategyPrefillAllocation = balance !== null ? Math.max(0, balance - allocatedCashTotal) : null;
+    const strategyPrefillParams =
+      strategyPrefillAllocation !== null ? JSON.stringify({ initialCapital: strategyPrefillAllocation }) : null;
     const accountOperations = operationsByAccount[tradingAccount.id] ? [...operationsByAccount[tradingAccount.id]] : [];
     const strategyOperationsLookup = new Map<string, { total: number; pending: number }>();
     accountOperations.forEach(operation => {
@@ -273,7 +279,7 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
         return valueB - valueA;
       });
     const liquidationDiscountPercent = req.db.settings.value.alpaca.accountLiquidationDiscountPercent;
-    const strategiesForAccount = (strategiesByAccount[tradingAccount.id] ? [...strategiesByAccount[tradingAccount.id]] : []).map(
+    const strategiesForAccount = baseStrategiesForAccount.map(
       (strategySummary) => {
         const operationsStats = strategyOperationsLookup.get(strategySummary.id);
         const liveTradeStats = strategyLiveTradesLookup.get(strategySummary.id);
@@ -287,6 +293,14 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
         };
       }
     );
+    let allocationWarning: string | null = null;
+    if (activeStrategiesForAccount.length > 1 && fullAccountCashStrategyCount > 0) {
+      allocationWarning =
+        'Multiple active strategies share this account, and at least one is using full account cash. Plan operations will skip shared-account strategies without a positive live allocation.';
+    } else if (balance !== null && allocatedCashTotal > balance + 0.01) {
+      allocationWarning =
+        'Live allocations exceed current account cash. New open orders may be skipped until allocations or cash are adjusted.';
+    }
     const account =
     {
       id: tradingAccount.id,
@@ -305,6 +319,10 @@ router.get<AccountParams>('/:id', requireAuth, async (req, res) => {
       snapshotMessage: snapshot?.message ?? null,
       strategyPrefillParams,
       strategies: strategiesForAccount,
+      allocatedCashTotal,
+      allocatedCashRemaining: strategyPrefillAllocation,
+      fullAccountCashStrategyCount,
+      allocationWarning,
       uncoveredPositions,
       liquidationDiscountPercent
     };
