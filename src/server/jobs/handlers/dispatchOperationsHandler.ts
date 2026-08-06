@@ -61,11 +61,11 @@ export function createDispatchOperationsHandler(deps: JobHandlerDependencies): J
 
       if (result.status === 'sent') {
         try {
-          if (result.orderId) {
-            await deps.db.trades.updateTradeOrderIdForOperation(candidate.operation, result.orderId);
-          }
           if (candidate.operation.operationType === 'open_position') {
             await deps.db.trades.ensureLiveTradeForOperation(candidate.operation, candidate.userId ?? null);
+            if (result.orderId) {
+              await deps.db.trades.updateTradeOrderIdForOperation(candidate.operation, result.orderId);
+            }
             const cancelAfter = normalizeDate(result.cancelAfter);
             if (cancelAfter) {
               await deps.db.trades.updateTradeEntryCancelAfter(candidate.operation.tradeId, cancelAfter);
@@ -73,10 +73,12 @@ export function createDispatchOperationsHandler(deps: JobHandlerDependencies): J
             if (result.stopOrderId) {
               await deps.db.trades.updateTradeStopOrderId(candidate.operation.tradeId, result.stopOrderId);
             }
-          } else if (candidate.operation.operationType === 'update_stop_loss') {
-            await deps.db.trades.updateTradeStopLossFromOperation(candidate.operation);
+          } else {
             if (result.orderId) {
-              await deps.db.trades.updateTradeStopOrderId(candidate.operation.tradeId, result.orderId);
+              await deps.db.trades.updateTradeOrderIdForOperation(candidate.operation, result.orderId);
+            }
+            if (candidate.operation.operationType === 'update_stop_loss') {
+              await deps.db.trades.updateTradeStopLossFromOperation(candidate.operation);
             }
           }
         } catch (error) {

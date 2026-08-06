@@ -37,6 +37,11 @@ const REASON_LABELS: Record<string, string> = {
 
 const isCodeLike = (value: string): boolean => /^[a-z0-9_]+$/i.test(value);
 
+const DETAIL_LABELS: Record<string, string> = {
+  broker_buy_order_open: 'Broker buy order was open at planning time.',
+  broker_position_exists: 'Broker position existed at planning time.'
+};
+
 const humanizeCode = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -56,6 +61,17 @@ const maybeHumanizeDetail = (detail?: string | null): string | null => {
   const trimmed = detail.trim();
   if (!trimmed) {
     return null;
+  }
+  const normalized = trimmed.toLowerCase();
+  const mappedDetail = DETAIL_LABELS[normalized];
+  if (mappedDetail) {
+    return mappedDetail;
+  }
+  if (normalized.startsWith('live_trade:')) {
+    return `Ticker was locked by live trade ${trimmed.slice('live_trade:'.length)} at planning time.`;
+  }
+  if (normalized.startsWith('pending_open_operation:')) {
+    return `Ticker had pending open operation ${trimmed.slice('pending_open_operation:'.length)} at planning time.`;
   }
   return isCodeLike(trimmed) ? humanizeCode(trimmed) : trimmed;
 };
