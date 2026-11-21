@@ -97,9 +97,6 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let Cli { command } = cli;
 
-    // Pin Rayon to 16 logical processors for consistent parallelism during heavy workloads.
-    env::set_var("RAYON_NUM_THREADS", "16");
-
     let database_url = env::var("DATABASE_URL").ok();
     if database_url.is_none() && command_requires_database(&command) {
         return Err(anyhow!(

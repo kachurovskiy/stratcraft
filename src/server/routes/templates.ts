@@ -11,7 +11,6 @@ import {
   type BacktestCacheRow,
   type ScoreAvailabilityResult
 } from '../scoring/paramScore';
-import { SETTING_KEYS } from '../constants';
 import type { BacktestCachePerformancePoint } from '../database/types';
 import {
   computeTemplateScores,

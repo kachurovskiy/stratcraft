@@ -96,7 +96,6 @@ impl Default for PipelineRunConfig {
 async fn pipeline_smoke_small_dataset() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(SMOKE_TEST_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -155,7 +154,6 @@ async fn pipeline_smoke_small_dataset() -> Result<()> {
 async fn backtest_accounts_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(BACKTEST_ACCOUNTS_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -224,7 +222,6 @@ async fn backtest_accounts_smoke() -> Result<()> {
 async fn export_market_data_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(EXPORT_MARKET_DATA_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -274,7 +271,6 @@ async fn export_market_data_smoke() -> Result<()> {
 async fn optimize_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(OPTIMIZE_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -344,7 +340,6 @@ async fn optimize_smoke() -> Result<()> {
 async fn plan_operations_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(PLAN_OPERATIONS_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -403,7 +398,6 @@ async fn plan_operations_smoke() -> Result<()> {
 async fn order_lifecycle_end_to_end() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(ORDER_LIFECYCLE_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -492,7 +486,6 @@ async fn order_lifecycle_end_to_end() -> Result<()> {
 async fn plan_operations_allows_consecutive_day_buy_after_previous_fill() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db =
         TestDatabase::create_with_name(PLAN_OPERATIONS_CONSECUTIVE_SIGNAL_DB_NAME).await?;
     test_db.apply_schema().await?;
@@ -599,7 +592,6 @@ async fn plan_operations_allows_consecutive_day_buy_after_previous_fill() -> Res
 async fn reconcile_trades_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(RECONCILE_TRADES_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -661,7 +653,6 @@ async fn reconcile_trades_smoke() -> Result<()> {
 async fn verify_balance_smoke() -> Result<()> {
     ensure_test_env();
     let _guard = acquire_pipeline_test_lock();
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create_with_name(VERIFY_DB_NAME).await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data_for_days(SMOKE_TEST_DAYS).await?;
@@ -781,7 +772,6 @@ async fn full_pipeline_snapshot() -> Result<()> {
 }
 
 async fn run_pipeline_snapshot(config: PipelineRunConfig) -> Result<()> {
-    std::env::set_var("RAYON_NUM_THREADS", "2");
     let test_db = TestDatabase::create().await?;
     test_db.apply_schema().await?;
     test_db.seed_market_data().await?;

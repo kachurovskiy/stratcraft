@@ -463,20 +463,6 @@ export class EmailService {
     await this.sendEmailWithKey(context.fromEmail, context.apiKey, { to: email, subject, html });
   }
 
-  async sendAdhocEmail(options: EmailOptions): Promise<boolean> {
-    const context = await this.resolveSendContext();
-    if (!context) {
-      return false;
-    }
-    await this.sendEmailWithKey(context.fromEmail, context.apiKey, options);
-    return true;
-  }
-
-  async sendAdhocEmailRequired(options: EmailOptions): Promise<void> {
-    const context = await this.resolveSendContextRequired();
-    await this.sendEmailWithKey(context.fromEmail, context.apiKey, options);
-  }
-
   async sendClientCertificateLockdownEnabledEmailToAllUsers(params: {
     certificateBundle: Buffer;
   }): Promise<{ sent: number; adminCount: number; }> {

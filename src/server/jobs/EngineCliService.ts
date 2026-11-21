@@ -143,19 +143,6 @@ export class EngineCliService {
     await this.spawnProcess(this.binaryPath, [mode, ...args], abortSignal, logMetadata);
   }
 
-  async runWithOutput(
-    mode: string,
-    args: string[] = [],
-    abortSignal?: AbortSignal,
-    logMetadata?: Record<string, unknown>
-  ): Promise<{ stdout: string; stderr: string }> {
-    if (!this.isCompiled()) {
-      throw new Error('Engine binary is not available. Compile the engine before running CLI commands.');
-    }
-
-    return this.spawnProcessWithOutput(this.binaryPath, [mode, ...args], abortSignal, logMetadata);
-  }
-
   forceTerminateActiveProcess(reason: string = 'force-terminate', logMetadata?: Record<string, unknown>): void {
     this.requestProcessTermination(reason, logMetadata);
   }
@@ -247,104 +234,6 @@ export class EngineCliService {
         finalize();
         if (code === 0) {
           resolveOnce();
-        } else {
-          rejectOnce(new Error(`Engine CLI exited with code ${code}\n${dataParts.join('\n')}`));
-        }
-      });
-    });
-  }
-
-  private spawnProcessWithOutput(
-    command: string,
-    args: string[],
-    abortSignal?: AbortSignal,
-    logMetadata?: Record<string, unknown>
-  ): Promise<{ stdout: string; stderr: string }> {
-    return new Promise((resolve, reject) => {
-      const commandLabel = `${command} ${args.join(' ')}`.trim();
-      this.loggingService.info(
-        ENGINE_SOURCE,
-        `Executing ${commandLabel}`,
-        this.mergeLogMetadata(logMetadata, { command: commandLabel })
-      );
-
-      const child: ChildProcess = spawn(command, args, {
-        cwd: this.engineDir,
-        env: process.env,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-
-      this.currentProcess = child;
-      this.currentProcessLabel = commandLabel;
-
-      let settled = false;
-      const resolveOnce = (result: { stdout: string; stderr: string }) => {
-        if (!settled) {
-          settled = true;
-          resolve(result);
-        }
-      };
-      const rejectOnce = (error: Error) => {
-        if (!settled) {
-          settled = true;
-          reject(error);
-        }
-      };
-
-      const detachAbortListener = () => {
-        abortSignal?.removeEventListener('abort', onAbort);
-      };
-
-      const finalize = () => {
-        detachAbortListener();
-        this.clearForceKillTimer();
-        this.currentProcess = null;
-        this.currentProcessLabel = null;
-      };
-
-      const onAbort = () => {
-        this.loggingService.warn(
-          ENGINE_SOURCE,
-          'Abort requested for engine command',
-          this.mergeLogMetadata(logMetadata, { command: commandLabel })
-        );
-        this.requestProcessTermination('abort-signal', logMetadata);
-        detachAbortListener();
-        rejectOnce(new Error('Engine command aborted'));
-      };
-
-      if (abortSignal) {
-        if (abortSignal.aborted) {
-          onAbort();
-          return;
-        }
-        abortSignal.addEventListener('abort', onAbort);
-      }
-
-      let stdout = '';
-      let stderr = '';
-      const dataParts: string[] = [];
-      child.stdout?.on('data', chunk => {
-        const raw = chunk.toString();
-        stdout += raw;
-        dataParts.push(...this.logEngineOutput(raw, 'info', logMetadata));
-      });
-
-      child.stderr?.on('data', chunk => {
-        const raw = chunk.toString();
-        stderr += raw;
-        dataParts.push(...this.logEngineOutput(raw, 'warn', logMetadata));
-      });
-
-      child.on('error', error => {
-        finalize();
-        rejectOnce(error);
-      });
-
-      child.on('exit', code => {
-        finalize();
-        if (code === 0) {
-          resolveOnce({ stdout, stderr });
         } else {
           rejectOnce(new Error(`Engine CLI exited with code ${code}\n${dataParts.join('\n')}`));
         }
