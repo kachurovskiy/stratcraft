@@ -450,57 +450,6 @@ install_postgres() {
     print_success "PostgreSQL service is available"
 }
 
-install_lightgbm() {
-    print_status "Installing LightGBM CLI..."
-
-    if command_exists lightgbm; then
-        print_success "LightGBM CLI already installed"
-        return
-    fi
-
-    if apt install -y lightgbm libgomp1; then
-        if command_exists lightgbm; then
-            print_success "LightGBM CLI installed via apt"
-            return
-        fi
-    fi
-
-    print_warning "LightGBM apt package unavailable; building from source"
-    apt install -y build-essential cmake git libgomp1
-
-    local tmp_dir="/tmp/lightgbm-src"
-    rm -rf "$tmp_dir"
-    git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/microsoft/LightGBM.git "$tmp_dir"
-    cmake -S "$tmp_dir" -B "$tmp_dir/build" -DUSE_GPU=0
-    cmake --build "$tmp_dir/build" --target lightgbm -j"$(nproc)"
-    local built_bin=""
-    if [[ -f "$tmp_dir/build/lightgbm" ]]; then
-        built_bin="$tmp_dir/build/lightgbm"
-    elif [[ -f "$tmp_dir/lightgbm" ]]; then
-        built_bin="$tmp_dir/lightgbm"
-    else
-        built_bin=$(find "$tmp_dir" -maxdepth 3 -type f -name lightgbm -perm -u+x 2>/dev/null | head -n 1 || true)
-    fi
-
-    if [[ -z "$built_bin" || ! -f "$built_bin" ]]; then
-        print_error "LightGBM build succeeded but binary was not found"
-        rm -rf "$tmp_dir"
-        exit 1
-    fi
-
-    cp "$built_bin" /usr/local/bin/lightgbm
-    chmod +x /usr/local/bin/lightgbm
-    rm -rf "$tmp_dir"
-
-    if command_exists lightgbm; then
-        print_success "LightGBM CLI installed from source"
-        return
-    fi
-
-    print_error "Failed to install LightGBM CLI"
-    exit 1
-}
-
 generate_random_password() {
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -hex 24
@@ -1869,7 +1818,6 @@ deploy() {
     install_nginx
     install_certbot
     install_postgres
-    install_lightgbm
     create_app_user
     install_rust_toolchain
     setup_pm2_user

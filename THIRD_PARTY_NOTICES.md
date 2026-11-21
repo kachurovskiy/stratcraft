@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-This project redistributes third-party assets and prebuilt binaries. The following list captures
-vendored assets present in `src/public/vendor` and the prebuilt LightGBM artifacts in `engine/vendor`.
+This project redistributes third-party assets. The following list captures
+vendored assets present in `src/public/vendor`.
 
 ## Vendored Assets
 
@@ -13,12 +13,6 @@ vendored assets present in `src/public/vendor` and the prebuilt LightGBM artifac
   - Files: `src/public/vendor/plotly/plotly-2.27.0.min.js`
 - Font Awesome Free 6.0.0 (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
   - Files: `src/public/vendor/fontawesome/css/all.min.css`, `src/public/vendor/fontawesome/webfonts/*`
-- LightGBM (MIT License)
-  - Upstream: https://github.com/microsoft/LightGBM
-  - Copyright: Microsoft Corporation
-  - Files: `engine/vendor/lightgbm.exe`, `engine/vendor/lib_lightgbm.dll`, `engine/vendor/*.lib`, `engine/vendor/*.exp`, `engine/vendor/*.pdb`
-  - License text: `LICENSE-LightGBM-MIT.txt`
-
 ## MIT License (Bootstrap)
 
 Copyright (c) 2011-2023 The Bootstrap Authors

@@ -186,7 +186,7 @@ Start here:
 - this README
 - [scripts/DEPLOYMENT.md](scripts/DEPLOYMENT.md) for the recommended Hetzner deployment path with HTTPS
 - [CORE_IDEAS.md](CORE_IDEAS.md) for the project's working assumptions and observations
-- [ADVANCED.md](ADVANCED.md) for advanced local setup, engine details, LightGBM, customization, architecture, licensing, and contribution policy
+- [ADVANCED.md](ADVANCED.md) for advanced local setup, engine details, customization, architecture, licensing, and contribution policy
 
 Related references:
 

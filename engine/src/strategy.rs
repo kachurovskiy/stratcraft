@@ -49,11 +49,6 @@ pub mod atr;
 
 pub use atr::ATRStrategy;
 
-#[path = "strategies/lightgbm.rs"]
-pub mod lightgbm;
-
-pub use lightgbm::LightGBMStrategy;
-
 #[path = "strategies/weighted_momentum.rs"]
 pub mod weighted_momentum;
 
@@ -73,13 +68,6 @@ pub fn create_strategy(
     template_id: &str,
     parameters: HashMap<String, f64>,
 ) -> Result<Box<dyn Strategy + Send + Sync>> {
-    if template_id.starts_with("lightgbm_") {
-        return Ok(Box::new(LightGBMStrategy::new(
-            template_id.to_string(),
-            parameters,
-        )));
-    }
-
     match template_id {
         "rsi" => Ok(Box::new(RSIStrategy::new(parameters))),
         "macd" => Ok(Box::new(MACDStrategy::new(parameters))),
@@ -87,10 +75,6 @@ pub fn create_strategy(
         "adx" => Ok(Box::new(ADXStrategy::new(parameters))),
         "atr" => Ok(Box::new(ATRStrategy::new(parameters))),
         "buy_and_hold" => Ok(Box::new(BuyAndHoldStrategy::new(parameters))),
-        "lightgbm" => Ok(Box::new(LightGBMStrategy::new(
-            template_id.to_string(),
-            parameters,
-        ))),
         "psar" => Ok(Box::new(PSARStrategy::new(parameters))),
         "weighted_momentum" => Ok(Box::new(WeightedMomentumStrategy::new(parameters))),
         _ => Err(anyhow::anyhow!(

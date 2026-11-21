@@ -115,7 +115,6 @@ impl<'a> SignalManager<'a> {
 
         let mut total_inserted = 0usize;
         let mut signal_jobs = Vec::new();
-        let mut cached_lightgbm_refs: Option<HashMap<String, Vec<&Candle>>> = None;
 
         for strategy in strategies {
             let StrategyConfig {
@@ -138,17 +137,6 @@ impl<'a> SignalManager<'a> {
                     continue;
                 }
             };
-
-            if strategy_instance.get_template_id().starts_with("lightgbm") {
-                let ref_map = cached_lightgbm_refs.get_or_insert_with(|| {
-                    let mut map: HashMap<String, Vec<&Candle>> = HashMap::new();
-                    for (ticker, candle_list) in shared_candles.iter() {
-                        map.insert(ticker.clone(), candle_list.iter().collect());
-                    }
-                    map
-                });
-                crate::strategy::lightgbm::prime_cross_sectional_context_from_ref_map(ref_map);
-            }
 
             let latest_signal_date = self.db.get_latest_signal_date(&id).await?;
             let mut start_date = latest_signal_date.unwrap_or(earliest_candle_date);

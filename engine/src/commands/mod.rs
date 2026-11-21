@@ -9,5 +9,4 @@ pub mod market_data_snapshot;
 pub mod optimize;
 pub mod plan_operations;
 pub mod reconcile_trades;
-pub mod train_lightgbm;
 pub mod verify;

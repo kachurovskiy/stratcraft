@@ -44,12 +44,6 @@ pub struct BacktestCacheEntry {
     pub balance_validation_complete: bool,
 }
 
-pub struct LightgbmModelRecord {
-    pub id: String,
-    pub name: String,
-    pub tree_text: String,
-}
-
 pub struct Database {
     client: Client,
 }
@@ -95,26 +89,6 @@ impl Database {
             settings.insert(key, value);
         }
         Ok(settings)
-    }
-
-    pub async fn get_lightgbm_models(&self) -> Result<Vec<LightgbmModelRecord>> {
-        let rows = self
-            .client
-            .query(
-                "SELECT id, name, tree_text
-                 FROM lightgbm_models
-                 ORDER BY updated_at DESC",
-                &[],
-            )
-            .await?;
-        Ok(rows
-            .into_iter()
-            .map(|row| LightgbmModelRecord {
-                id: row.get(0),
-                name: row.get(1),
-                tree_text: row.get(2),
-            })
-            .collect())
     }
 
     pub async fn insert_system_log(

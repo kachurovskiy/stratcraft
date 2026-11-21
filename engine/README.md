@@ -70,15 +70,3 @@ Export a market data snapshot (default `../data/market-data.bin`):
 ./target/release/engine export-market-data
 ./target/release/engine export-market-data --output ..\\data\\market-data.bin
 ```
-
-Train the LightGBM model:
-```bash
-./target/release/engine train-lightgbm
-./target/release/engine train-lightgbm --output engine\\src\\models\\lightgbm_model.txt
-./target/release/engine train-lightgbm --num-iterations 800 --learning-rate 0.05
-```
-
-Notes:
-- Training requires the LightGBM CLI (`lightgbm`).
-- On Windows, StratCraft uses the vendored binary at `engine/vendor/lightgbm.exe` (no `PATH` changes needed).
-- On Linux/macOS, install `lightgbm` via your package manager (or put it on `PATH`).

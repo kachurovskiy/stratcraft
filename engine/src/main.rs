@@ -1,15 +1,13 @@
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use engine::{
     commands::{
         backtest_accounts, backtest_active, backtest_start_timing, balance, explore,
-        export_market_data, generate_signals, optimize, plan_operations, reconcile_trades,
-        train_lightgbm, verify,
+        export_market_data, generate_signals, optimize, plan_operations, reconcile_trades, verify,
     },
     context::AppContext,
-    strategy,
 };
-use log::{info, warn};
+use log::info;
 use std::env;
 use std::path::PathBuf;
 
@@ -92,48 +90,6 @@ enum Commands {
         #[arg(short, long = "output", value_name = "PATH")]
         output: Option<PathBuf>,
     },
-    /// Train the LightGBM model using in-database market data
-    TrainLightgbm {
-        /// Destination for the trained model
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-        /// Number of boosting iterations
-        #[arg(long)]
-        num_iterations: Option<u32>,
-        /// Learning rate
-        #[arg(long)]
-        learning_rate: Option<f64>,
-        /// Number of leaves in one tree
-        #[arg(long)]
-        num_leaves: Option<u32>,
-        /// Maximum tree depth (-1 means no limit)
-        #[arg(long)]
-        max_depth: Option<i32>,
-        /// Minimum number of observations in one leaf
-        #[arg(long)]
-        min_data_in_leaf: Option<u32>,
-        /// Minimum gain to split
-        #[arg(long)]
-        min_gain_to_split: Option<f64>,
-        /// L1 regularization
-        #[arg(long)]
-        lambda_l1: Option<f64>,
-        /// L2 regularization
-        #[arg(long)]
-        lambda_l2: Option<f64>,
-        /// Feature fraction (0..=1)
-        #[arg(long)]
-        feature_fraction: Option<f64>,
-        /// Bagging fraction (0..=1)
-        #[arg(long)]
-        bagging_fraction: Option<f64>,
-        /// Bagging frequency (0 disables bagging)
-        #[arg(long)]
-        bagging_freq: Option<u32>,
-        /// Early stopping rounds (0 disables early stopping)
-        #[arg(long)]
-        early_stopping_round: Option<u32>,
-    },
 }
 
 #[tokio::main]
@@ -154,12 +110,6 @@ async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     info!("Starting engine. Not financial advice. Most retail traders lose money. Use at your own risk.");
-
-    if !matches!(command, Commands::TrainLightgbm { .. }) {
-        if let Err(err) = load_lightgbm_model(&app_context).await {
-            warn!("LightGBM model load skipped: {err}");
-        }
-    }
 
     match command {
         Commands::Optimize {
@@ -216,55 +166,8 @@ async fn main() -> anyhow::Result<()> {
             let output_path = resolve_market_data_path(output);
             export_market_data::run(&app_context, &output_path).await?;
         }
-        Commands::TrainLightgbm {
-            output,
-            num_iterations,
-            learning_rate,
-            num_leaves,
-            max_depth,
-            min_data_in_leaf,
-            min_gain_to_split,
-            lambda_l1,
-            lambda_l2,
-            feature_fraction,
-            bagging_fraction,
-            bagging_freq,
-            early_stopping_round,
-        } => {
-            train_lightgbm::run(
-                &app_context,
-                output,
-                num_iterations,
-                learning_rate,
-                num_leaves,
-                max_depth,
-                min_data_in_leaf,
-                min_gain_to_split,
-                lambda_l1,
-                lambda_l2,
-                feature_fraction,
-                bagging_fraction,
-                bagging_freq,
-                early_stopping_round,
-            )
-            .await?;
-        }
     }
 
-    Ok(())
-}
-
-async fn load_lightgbm_model(app_context: &AppContext) -> Result<()> {
-    let db = app_context.database().await?;
-    let models = db.get_lightgbm_models().await?;
-    if models.is_empty() {
-        return Ok(());
-    }
-
-    for (idx, model) in models.iter().enumerate() {
-        strategy::lightgbm::register_model_text(&model.id, &model.tree_text, idx == 0)?;
-    }
-    info!("Loaded {} LightGBM model(s) from database", models.len());
     Ok(())
 }
 
@@ -288,7 +191,6 @@ fn command_requires_database(command: &Commands) -> bool {
         | Commands::BacktestStartTiming { .. }
         | Commands::PlanOperations
         | Commands::ReconcileTrades
-        | Commands::ExportMarketData { .. }
-        | Commands::TrainLightgbm { .. } => true,
+        | Commands::ExportMarketData { .. } => true,
     }
 }

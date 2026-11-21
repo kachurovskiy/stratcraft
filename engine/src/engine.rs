@@ -194,13 +194,6 @@ impl Engine {
         }
 
         let candles_by_ticker = group_candles_for_tickers(&tickers_for_run, all_candles);
-        if let Some(strategy_ref) = strategy {
-            if strategy_ref.get_template_id().starts_with("lightgbm") {
-                crate::strategy::lightgbm::prime_cross_sectional_context_from_ref_map(
-                    &candles_by_ticker,
-                );
-            }
-        }
         let mut resume_state = if let Some(existing) = existing_backtest {
             self.prepare_resume_state(existing, unique_dates, &candles_by_ticker)?
         } else {
