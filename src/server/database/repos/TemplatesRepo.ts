@@ -95,12 +95,6 @@ export class TemplatesRepo {
               WHERE bc.template_id = t.id
             )
           )
-          AND NOT EXISTS (
-            SELECT 1
-            FROM remote_optimizer_jobs roj
-            WHERE roj.template_id = t.id
-              AND roj.status IN ('queued', 'running', 'handoff')
-          )
         GROUP BY t.id
       )
       SELECT t.*
@@ -115,12 +109,6 @@ export class TemplatesRepo {
             FROM backtest_cache bc
             WHERE bc.template_id = t.id
           )
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM remote_optimizer_jobs roj
-          WHERE roj.template_id = t.id
-            AND roj.status IN ('queued', 'running', 'handoff')
         )
       ORDER BY COALESCE(tm.best_sharpe_ratio, -999999) DESC, t.created_at ASC
       LIMIT 1
@@ -327,7 +315,6 @@ export class TemplatesRepo {
 
       await this.db.run(`DELETE FROM backtest_cache WHERE template_id IN (${tpl})`, normalized, client);
       await this.db.run(`DELETE FROM backtest_best_params WHERE template_id IN (${tpl})`, normalized, client);
-      await this.db.run(`DELETE FROM remote_optimizer_jobs WHERE template_id IN (${tpl})`, normalized, client);
       await this.db.run(`DELETE FROM templates WHERE id IN (${tpl})`, normalized, client);
       return normalized;
     });

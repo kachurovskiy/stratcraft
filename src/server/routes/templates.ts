@@ -6,10 +6,6 @@ import {
   StrategyTemplate
 } from '../types/StrategyTemplate';
 import { getReqUserId, getCurrentUrl, formatBacktestPeriodLabel } from './utils';
-import type {
-  RemoteOptimizationJobSnapshot,
-  RemoteOptimizationStatus
-} from '../types/RemoteOptimization';
 import {
   scoreBacktestParameters,
   type BacktestCacheRow,
@@ -24,19 +20,6 @@ import {
 } from '../scoring/templateScore';
 
 const router = express.Router();
-const ACTIVE_REMOTE_JOB_STATUSES: RemoteOptimizationStatus[] = ['queued', 'running', 'handoff'];
-const REMOTE_OPTIMIZATION_UNSUPPORTED_TEMPLATE_IDS = new Set(['buy_and_hold']);
-const REMOTE_STATUS_LABELS: Record<RemoteOptimizationStatus, string> = {
-  queued: 'Queued',
-  running: 'Provisioning',
-  handoff: 'Remote Server Running',
-  succeeded: 'Succeeded',
-  failed: 'Failed'
-};
-
-const canTriggerRemoteOptimization = (templateId: string): boolean =>
-  !REMOTE_OPTIMIZATION_UNSUPPORTED_TEMPLATE_IDS.has(templateId);
-
 // Authentication middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAuth(req, res, next);
@@ -51,21 +34,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const isAdmin = req.user?.role === 'admin';
     const templates = req.strategyRegistry.getTemplates({ includeDisabled: isAdmin });
-    const remoteOptimizerService = req.remoteOptimizerService;
-    const remoteOptimizationJobsByTemplate = new Map<string, RemoteOptimizationJobSnapshot[]>();
     const templateIds = templates.map((template: StrategyTemplate) => template.id);
-
-    if (remoteOptimizerService?.listJobs) {
-      const remoteJobs: RemoteOptimizationJobSnapshot[] = await remoteOptimizerService.listJobs();
-      remoteJobs.forEach(job => {
-        const existing = remoteOptimizationJobsByTemplate.get(job.templateId);
-        if (existing) {
-          existing.push(job);
-        } else {
-          remoteOptimizationJobsByTemplate.set(job.templateId, [job]);
-        }
-      });
-    }
 
     const userId = getReqUserId(req);
     const [
@@ -169,26 +138,6 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       const localOptimizationVersion = typeof localOptimizationVersions[template.id] === 'number'
         ? localOptimizationVersions[template.id]
         : 0;
-      const templateJobs = remoteOptimizationJobsByTemplate.get(template.id) ?? [];
-      const activeJob = templateJobs.find(job => ACTIVE_REMOTE_JOB_STATUSES.includes(job.status));
-      const activeStatusLabel = activeJob ? REMOTE_STATUS_LABELS[activeJob.status] ?? activeJob.status : null;
-      const canTrigger = canTriggerRemoteOptimization(template.id);
-      const tooltip = activeJob
-        ? `Remote optimizer job ${activeJob.id} (${activeJob.hetznerServerId ? `Hetzner #${activeJob.hetznerServerId}` : 'awaiting server'}) is ${(
-            activeStatusLabel ?? activeJob.status
-          ).toLowerCase()}.`
-        : null;
-      const remoteOptimization: TemplateRemoteOptimizationState = {
-        canTrigger,
-        hasRemoteOptimizer: Boolean(remoteOptimizerService),
-        isActive: Boolean(activeJob),
-        activeJobId: activeJob?.id ?? null,
-        activeStatus: activeJob?.status ?? null,
-        activeStatusLabel,
-        activeServerId: activeJob?.hetznerServerId ?? null,
-        activeServerIp: activeJob?.remoteServerIp ?? null,
-        tooltip
-      };
       const rawTemplateScore = templateScoreById.get(template.id);
       const breakdown = templateScoreBreakdowns.get(template.id);
       const templateScore = breakdown
@@ -223,8 +172,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
         templateScoreBreakdown,
         topAbsoluteGainTicker: resolvedTopAbsoluteGainTicker,
         topRelativeGainTicker: resolvedTopRelativeGainTicker,
-        hasTopTickers: hasTopTickerInsights,
-        remoteOptimization
+        hasTopTickers: hasTopTickerInsights
       };
     });
 
@@ -330,18 +278,6 @@ type TemplateBacktestCacheRow = BacktestCacheRow & {
   createdAt: Date;
 };
 
-type TemplateRemoteOptimizationState = {
-  canTrigger: boolean;
-  hasRemoteOptimizer: boolean;
-  isActive: boolean;
-  activeJobId: string | null;
-  activeStatus: RemoteOptimizationStatus | null;
-  activeStatusLabel: string | null;
-  activeServerId: number | null;
-  activeServerIp: string | null;
-  tooltip: string | null;
-};
-
 type TemplateListItem = StrategyTemplate & {
   enabled: boolean;
   bestSharpe: number | null;
@@ -372,7 +308,6 @@ type TemplateListItem = StrategyTemplate & {
   topAbsoluteGainTicker: string | null;
   topRelativeGainTicker: string | null;
   hasTopTickers: boolean;
-  remoteOptimization: TemplateRemoteOptimizationState;
 };
 
 const formatParameterDisplayValue = (value: unknown): string => {
@@ -821,15 +756,6 @@ router.post<TemplateParams>('/:templateId/delete', requireAuth, requireAdmin, as
       return res.redirect(`/templates?error=${encodeURIComponent(`Template ${templateId} not found`)}`);
     }
 
-    const hasActiveRemoteJob = await req.db.remoteOptimizerJobs.hasActiveRemoteOptimizerJob(templateId);
-    if (hasActiveRemoteJob) {
-      return res.redirect(
-        `/templates/${encodeURIComponent(templateId)}?error=${encodeURIComponent(
-          'Stop remote optimization before deleting this template.'
-        )}`
-      );
-    }
-
     if (isLightgbmModelTemplate) {
       const modelId = templateId.slice('lightgbm_'.length).trim();
       if (!modelId) {
@@ -867,123 +793,6 @@ router.post<TemplateParams>('/:templateId/delete', requireAuth, requireAdmin, as
     return res.redirect(
       `/templates/${encodeURIComponent(templateId)}?error=${encodeURIComponent(message)}`
     );
-  }
-});
-
-router.post<TemplateParams>('/:templateId/remote-optimize', requireAuth, requireAdmin, async (req, res) => {
-  const { templateId } = req.params;
-  const acceptsHeader = req.headers?.accept;
-  const acceptsJsonHeader = Array.isArray(acceptsHeader)
-    ? acceptsHeader.some(header => typeof header === 'string' && header.includes('application/json'))
-    : typeof acceptsHeader === 'string' && acceptsHeader.includes('application/json');
-  const expectsJson = acceptsJsonHeader || Boolean(req.is('application/json'));
-  const respondError = (status: number, message: string) => {
-    if (expectsJson) {
-      return res.status(status).json({ error: message });
-    }
-    return res.redirect(`/templates?error=${encodeURIComponent(message)}`);
-  };
-
-  try {
-    const template = req.strategyRegistry.getTemplate(templateId, { includeDisabled: false });
-
-    if (!template) {
-      return respondError(404, `Template ${templateId} not found`);
-    }
-
-    if (!canTriggerRemoteOptimization(template.id)) {
-      return respondError(400, `Remote optimization is not available for template ${template.name}.`);
-    }
-
-    if (!req.remoteOptimizerService) {
-      return respondError(503, 'Remote optimization service is unavailable');
-    }
-
-    const job = await req.remoteOptimizerService.triggerOptimization({
-      templateId,
-      templateName: template.name ?? template.id,
-      triggeredBy: {
-        userId: req.user?.id ?? 'unknown',
-        email: req.user?.email ?? 'unknown'
-      }
-    });
-
-    if (expectsJson) {
-      return res.json({
-        ok: true,
-        jobId: job.id,
-        status: job.status,
-        templateId: job.templateId
-      });
-    }
-
-    const sshKeyName = req.db.settings.value.optimizer.hetznerSshKeyName;
-    const publicKey = req.db.settings.value.optimizer.hetznerPublicKey;
-    const successMessage = `Remote optimizer queued (job ${job.id}). You'll receive an email when the server finishes. Ensure that public key "${publicKey}" is in "Hetzner -> Projects -> Security" with name "${sshKeyName}" before starting optimizers.`;
-    return res.redirect(`/templates?success=${encodeURIComponent(successMessage)}`);
-  } catch (error) {
-    req.loggingService?.error?.('templates', 'Failed to trigger remote optimization', {
-      templateId: req.params?.templateId,
-      error: error instanceof Error ? error.message : String(error)
-    });
-    const message = error instanceof Error ? error.message : 'Failed to trigger remote optimization';
-    return respondError(500, message);
-  }
-});
-
-router.post<TemplateParams>('/:templateId/remote-optimize/stop', requireAuth, requireAdmin, async (req, res) => {
-  const { templateId } = req.params;
-  const { jobId } = req.body ?? {};
-  const acceptsHeader = req.headers?.accept;
-  const acceptsJsonHeader = Array.isArray(acceptsHeader)
-    ? acceptsHeader.some(header => typeof header === 'string' && header.includes('application/json'))
-    : typeof acceptsHeader === 'string' && acceptsHeader.includes('application/json');
-  const expectsJson = acceptsJsonHeader || Boolean(req.is('application/json'));
-
-  const respondError = (status: number, message: string) => {
-    if (expectsJson) {
-      return res.status(status).json({ error: message });
-    }
-    return res.redirect(`/templates?error=${encodeURIComponent(message)}`);
-  };
-
-  try {
-    if (!req.remoteOptimizerService || typeof req.remoteOptimizerService.stopOptimization !== 'function') {
-      return respondError(503, 'Remote optimization service is unavailable');
-    }
-
-    if (typeof jobId !== 'string' || jobId.trim().length === 0) {
-      return respondError(400, 'A valid remote optimization job ID is required to stop optimization');
-    }
-
-    const jobSnapshot: RemoteOptimizationJobSnapshot | undefined = await req.remoteOptimizerService.getJob(jobId);
-    if (!jobSnapshot || jobSnapshot.templateId !== templateId) {
-      return respondError(404, `Remote optimization job ${jobId} not found for template ${templateId}`);
-    }
-
-    const result = await req.remoteOptimizerService.stopOptimization(jobId);
-
-    if (expectsJson) {
-      return res.json({
-        ok: true,
-        jobId: result.job.id,
-        templateId: result.job.templateId,
-        serverDeleted: result.serverDeleted
-      });
-    }
-
-    const successMessage = result.serverDeleted
-      ? `Remote optimization server terminated (job ${result.job.id}).`
-      : `Remote optimization job ${result.job.id} marked as stopped.`;
-    return res.redirect(`/templates?success=${encodeURIComponent(successMessage)}`);
-  } catch (error) {
-    req.loggingService?.error?.('templates', 'Failed to stop remote optimization', {
-      templateId: req.params?.templateId,
-      jobId,
-      error: error instanceof Error ? error.message : String(error)
-    });
-    const message = error instanceof Error ? error.message : 'Failed to stop remote optimization';
-    return respondError(500, message);
   }
 });
 

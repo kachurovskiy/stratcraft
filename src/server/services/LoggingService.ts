@@ -18,7 +18,6 @@ export type LogSource =
   | 'plan-operations-job'
   | 'dispatch-operations-job'
   | 'optimize-job'
-  | 'remote-optimize'
   | 'admin'
   | 'StrategyManager'
   | 'auth'

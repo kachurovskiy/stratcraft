@@ -62,14 +62,10 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
       isCancellable: job.status === 'queued' || job.status === 'running',
       lightgbmTrainParams: job.type === 'train-lightgbm' ? buildLightgbmTrainParamString(job.metadata) : null
     }));
-    const remoteOptimizerJobs = [...await req.remoteOptimizerService.listJobs()].sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-    );
     res.render('pages/jobs', {
       title: 'Jobs',
       page: 'jobs',
       jobTimeline,
-      remoteOptimizerJobs,
       jobTypeOptions: JOB_TYPE_OPTIONS,
       user: req.user,
       success: req.query.success as string,
@@ -132,38 +128,6 @@ router.get('/:jobId/logs', (req: Request, res: Response, next: NextFunction) => 
     res.status(500).render('pages/error', {
       title: 'Error',
       error: 'Failed to load job logs'
-    });
-  }
-});
-
-// Remote optimizer log viewer (admin only)
-router.get('/remote-optimizer-jobs/:jobId/logs', (req: Request, res: Response, next: NextFunction) => {
-  req.authMiddleware.requireAuth(req, res, next);
-}, (req: Request, res: Response, next: NextFunction) => {
-  req.authMiddleware.requireAdmin(req, res, next);
-}, async (req: Request, res: Response) => {
-  try {
-    const jobId = typeof req.params.jobId === 'string' ? req.params.jobId.trim() : '';
-    if (!jobId) {
-      return res.redirect(`${JOBS_PAGE_PATH}?error=${encodeURIComponent('Job ID is required.')}`);
-    }
-
-    const { job, log, tailLines } = await req.remoteOptimizerService.getRemoteOptimizerLog(jobId);
-    res.render('pages/remote-optimizer-logs', {
-      title: 'Remote Optimizer Logs',
-      page: 'jobs',
-      user: req.user,
-      job,
-      log,
-      tailLines,
-      fetchedAt: new Date()
-    });
-  } catch (error) {
-    console.error('Error loading remote optimizer logs:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to load remote optimizer logs';
-    res.status(500).render('pages/error', {
-      title: 'Error',
-      error: errorMessage
     });
   }
 });
@@ -237,27 +201,6 @@ router.post('/cancel', (req: Request, res: Response, next: NextFunction) => {
   } catch (error) {
     console.error('Error cancelling job:', error);
     const errorMessage = error instanceof Error ? error.message : 'Failed to cancel job';
-    res.redirect(`${JOBS_PAGE_PATH}?error=${encodeURIComponent(errorMessage)}`);
-  }
-});
-
-// Delete finished remote optimization jobs (admin only)
-router.post('/remote-optimizer-jobs/delete-finished', (req: Request, res: Response, next: NextFunction) => {
-  req.authMiddleware.requireAuth(req, res, next);
-}, (req: Request, res: Response, next: NextFunction) => {
-  req.authMiddleware.requireAdmin(req, res, next);
-}, async (req: Request, res: Response) => {
-  try {
-    const deletedCount = await req.db.remoteOptimizerJobs.deleteFinishedRemoteOptimizerJobs();
-    const message = deletedCount === 0
-      ? 'No finished remote optimization jobs to delete'
-      : `Deleted ${deletedCount} finished remote optimization job${deletedCount === 1 ? '' : 's'}`;
-    res.redirect(`${JOBS_PAGE_PATH}?success=${encodeURIComponent(message)}`);
-  } catch (error) {
-    console.error('Error deleting finished remote optimization jobs:', error);
-    const errorMessage = error instanceof Error
-      ? error.message
-      : 'Failed to delete finished remote optimization jobs';
     res.redirect(`${JOBS_PAGE_PATH}?error=${encodeURIComponent(errorMessage)}`);
   }
 });

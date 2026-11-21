@@ -17,7 +17,6 @@ import { CorporateActionsRepo } from './repos/CorporateActionsRepo';
 import { LightgbmModelsRepo } from './repos/LightgbmModelsRepo';
 import { AdminRepo } from './repos/AdminRepo';
 import { MaintenanceRepo } from './repos/MaintenanceRepo';
-import { RemoteOptimizerJobsRepo } from './repos/RemoteOptimizerJobsRepo';
 import { StrategiesRepo } from './repos/StrategiesRepo';
 import { TickersRepo } from './repos/TickersRepo';
 import { TradesRepo } from './repos/TradesRepo';
@@ -48,7 +47,6 @@ export type {
   OptimizerSettingsValue,
   ParamScoringSettingsValue,
   RawUserRow,
-  RemoteOptimizerJobEntity,
   RequestQuotaAction,
   RequestQuotaCheckResult,
   RequestQuotaIdentifierType,
@@ -94,7 +92,6 @@ export class Database {
   readonly backtestResults: BacktestResultsRepo;
   readonly backtestCache: BacktestCacheRepo;
   readonly backtestBestParams: BacktestBestParamsRepo;
-  readonly remoteOptimizerJobs: RemoteOptimizerJobsRepo;
   readonly lightgbmModels: LightgbmModelsRepo;
 
   constructor() {
@@ -126,7 +123,6 @@ export class Database {
     this.backtestResults = new BacktestResultsRepo(this.core);
     this.backtestCache = new BacktestCacheRepo(this.core, this.settings);
     this.backtestBestParams = new BacktestBestParamsRepo(this.core);
-    this.remoteOptimizerJobs = new RemoteOptimizerJobsRepo(this.core);
     this.lightgbmModels = new LightgbmModelsRepo(this.core);
 
     this.pool.on('error', (err) => {

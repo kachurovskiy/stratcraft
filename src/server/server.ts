@@ -18,7 +18,6 @@ import { EmailService } from './services/EmailService';
 import { CpuMetricsService } from './services/CpuMetricsService';
 import { LoggingService } from './services/LoggingService';
 import { MtlsLockdownService } from './services/MtlsLockdownService';
-import { RemoteOptimizationService } from './services/RemoteOptimizationService';
 import { AccountDataService } from './services/AccountDataService';
 import { AlpacaAssetService } from './services/AlpacaAssetService';
 import { JobScheduler } from './jobs/JobScheduler';
@@ -65,7 +64,6 @@ export class Server {
   private alpacaAssetService: AlpacaAssetService;
   private engineCliService: EngineCliService;
   private jobScheduler: JobScheduler;
-  private remoteOptimizationService: RemoteOptimizationService;
   private mtlsLockdownService: MtlsLockdownService;
   private server: HttpServer | null = null;
 
@@ -99,13 +97,6 @@ export class Server {
       this.db
     );
     this.strategyRegistry.setJobScheduler(this.jobScheduler);
-    this.remoteOptimizationService = new RemoteOptimizationService(
-      this.loggingService,
-      this.emailService,
-      this.db,
-      this.jobScheduler,
-      this.mtlsLockdownService
-    );
   }
 
   private async ensureBacktestApiSecret(): Promise<void> {
@@ -118,7 +109,7 @@ export class Server {
     await this.db.settings.upsertSettings({
       [SETTING_KEYS.BACKTEST_API_SECRET]: generated
     });
-    this.loggingService.info('system', 'Generated backtest API secret for remote cache endpoints.');
+    this.loggingService.info('system', 'Generated backtest API secret for local cache endpoints.');
   }
 
   private async ensureEmailSecurityEmoji(): Promise<void> {
@@ -156,14 +147,6 @@ export class Server {
     await this.ensureEmailSecurityEmoji();
     await this.jobScheduler.refreshAutoOptimizationSettings();
     this.cpuMetricsService.start();
-    try {
-      await this.remoteOptimizationService.ensureHetznerSshKeys();
-    } catch (error) {
-      this.loggingService.warn('system', 'Failed to ensure Hetzner SSH keys', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-
     // Initialize strategy registry
     await this.strategyRegistry.initialize();
 
@@ -232,7 +215,6 @@ export class Server {
       req.loggingService = this.loggingService;
       req.accountDataService = this.accountDataService;
       req.jobScheduler = this.jobScheduler;
-      req.remoteOptimizerService = this.remoteOptimizationService;
       req.mtlsLockdownService = this.mtlsLockdownService;
       next();
     });

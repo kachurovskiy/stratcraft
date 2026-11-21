@@ -652,57 +652,6 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     inputType: 'text'
   },
   {
-    key: SETTING_KEYS.HETZNER_API_TOKEN,
-    group: 'optimizer',
-    label: 'Hetzner API Token',
-    description: 'API token for provisioning remote optimization servers. Must have read and write access; see https://docs.hetzner.com/cloud/api/getting-started/generating-api-token/.',
-    placeholder: 'Enter your Hetzner API token',
-    inputType: 'password'
-  },
-  {
-    key: SETTING_KEYS.HETZNER_SERVER_TYPE,
-    group: 'optimizer',
-    label: 'Hetzner Server Type',
-    description: 'Hetzner Cloud server type for remote optimizers (e.g. cpx62).',
-    placeholder: 'cpx62',
-    inputType: 'text'
-  },
-  {
-    key: SETTING_KEYS.HETZNER_SERVER_LOCATION,
-    group: 'optimizer',
-    label: 'Hetzner Server Location',
-    description: 'Hetzner Cloud location code for remote optimizers (e.g. hel1).',
-    placeholder: 'hel1',
-    inputType: 'text'
-  },
-  {
-    key: SETTING_KEYS.HETZNER_SSH_KEY_NAME,
-    group: 'optimizer',
-    label: 'Hetzner SSH Key Name',
-    description: 'Name of the SSH key registered in Hetzner -> Projects -> Security.',
-    placeholder: 'hetzner-node',
-    inputType: 'text'
-  },
-  {
-    key: SETTING_KEYS.HETZNER_PUBLIC_KEY,
-    group: 'optimizer',
-    label: 'Hetzner SSH Public Key',
-    description: 'Public key to add in Hetzner -> Projects -> Security so remote optimizers can connect.',
-    placeholder: 'ssh-ed25519 AAAA...',
-    isTextarea: true,
-    rows: 3
-  },
-  {
-    key: SETTING_KEYS.HETZNER_PRIVATE_KEY,
-    group: 'optimizer',
-    label: 'Hetzner SSH Private Key',
-    description: 'Private key paired with the Hetzner SSH public key used for remote optimizer access.',
-    placeholder: '-----BEGIN PRIVATE KEY-----',
-    inputType: 'password',
-    isTextarea: true,
-    rows: 6
-  },
-  {
     key: SETTING_KEYS.LOCAL_OPTIMIZATION_STEP_MULTIPLIERS,
     group: 'optimizer',
     label: 'Local Optimization Step Multipliers',
@@ -731,7 +680,7 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     key: SETTING_KEYS.BACKTEST_API_SECRET,
     group: 'optimizer',
     label: 'Backtest API Secret',
-    description: 'Shared secret required for /api/backtest/* endpoints (remote optimizer cache).',
+    description: 'Shared secret required for /api/backtest/* endpoints (local optimizer cache).',
     placeholder: 'Auto-generated on server start',
     inputType: 'password'
   },

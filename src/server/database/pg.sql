@@ -366,19 +366,6 @@ CREATE TABLE IF NOT EXISTS signals (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
-CREATE TABLE IF NOT EXISTS remote_optimizer_jobs (
-    id UUID PRIMARY KEY,
-    template_id TEXT NOT NULL,
-    template_name TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    started_at TIMESTAMPTZ,
-    finished_at TIMESTAMPTZ,
-    hetzner_server_id INTEGER,
-    remote_server_ip TEXT,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS start_timing_backtests (
     id TEXT PRIMARY KEY,
     strategy_id TEXT NOT NULL,
@@ -434,9 +421,6 @@ VALUES
     ('AUTO_OPTIMIZATION_DELAY_SECONDS', '300'),
     ('ALLOW_SHORT_SELLING_OPTIMIZATION_ENABLED', 'false'),
     ('OPTIMIZER_EXPLORE_ENABLED', 'true'),
-    ('HETZNER_SERVER_TYPE', 'cpx62'),
-    ('HETZNER_SERVER_LOCATION', 'hel1'),
-    ('HETZNER_SSH_KEY_NAME', 'hetzner-node'),
     ('LOCAL_OPTIMIZATION_STEP_MULTIPLIERS', '-4,-3,-2,-1,1,2,3,4'),
     ('LOCAL_OPTIMIZATION_MAX_UNADJUSTED_PRICE_VALUES', '3,5,7,10,15,20'),
     ('MAX_ALLOWED_DRAWDOWN_RATIO', '0.30'),
@@ -529,8 +513,6 @@ CREATE INDEX IF NOT EXISTS idx_signals_strategy_date_ticker ON signals(strategy_
 CREATE INDEX IF NOT EXISTS idx_signals_user_id ON signals(user_id);
 CREATE INDEX IF NOT EXISTS idx_signals_user_date_ticker ON signals(user_id, date, ticker);
 CREATE INDEX IF NOT EXISTS idx_trades_strategy_backtest_date ON trades(strategy_id, backtest_result_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_remote_optimizer_jobs_template_id ON remote_optimizer_jobs(template_id);
-CREATE INDEX IF NOT EXISTS idx_remote_optimizer_jobs_status ON remote_optimizer_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_corporate_actions_primary_symbol_process_date
     ON corporate_actions(primary_symbol, process_date DESC);
 CREATE INDEX IF NOT EXISTS idx_corporate_actions_process_date ON corporate_actions(process_date DESC);

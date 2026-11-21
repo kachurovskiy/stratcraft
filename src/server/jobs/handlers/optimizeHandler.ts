@@ -42,16 +42,6 @@ export function createOptimizeHandler(deps: JobHandlerDependencies): JobHandler 
           ctx.loggingService.info(OPTIMIZE_SOURCE, 'No templates need optimization', logMetadata);
           break;
         }
-        const remoteActive = await deps.db.remoteOptimizerJobs.hasActiveRemoteOptimizerJob(template.id);
-        if (remoteActive) {
-          ctx.loggingService.info(
-            OPTIMIZE_SOURCE,
-            `Skipping template ${template.name} (${template.id}) because a remote optimizer job is active`,
-            logMetadata
-          );
-          continue;
-        }
-
         ctx.loggingService.info(OPTIMIZE_SOURCE, `Optimizing template ${template.name} (${template.id})`, logMetadata);
         try {
           await deps.engineCli.run('optimize', [template.id], ctx.abortSignal, logMetadata);

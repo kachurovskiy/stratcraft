@@ -144,42 +144,6 @@
                       </a>
                     {{/if}}
                     {{#if ../isAdmin}}
-                      {{#if remoteOptimization.isActive}}
-                        <form
-                          method="POST"
-                          action="/templates/{{id}}/remote-optimize/stop"
-                          class="d-inline"
-                        >
-                            {{> csrf-field}}
-                          <input type="hidden" name="jobId" value="{{remoteOptimization.activeJobId}}">
-                          <button
-                            type="submit"
-                            class="btn btn-danger btn-sm"
-                            {{#unless remoteOptimization.activeJobId}}disabled{{/unless}}
-                            title="Status: {{#if remoteOptimization.activeStatusLabel}}{{remoteOptimization.activeStatusLabel}}{{else}}In Progress{{/if}}{{#if remoteOptimization.activeServerId}} (Hetzner #{{remoteOptimization.activeServerId}}{{#if remoteOptimization.activeServerIp}} / {{remoteOptimization.activeServerIp}}{{/if}}){{/if}}. Delete the remote server for job {{remoteOptimization.activeJobId}} and stop remote optimization."
-                          >
-                            Stop&nbsp;Optimize
-                          </button>
-                        </form>
-                      {{else}}
-                        {{#if (and enabled remoteOptimization.canTrigger)}}
-                          <form
-                            method="POST"
-                            action="/templates/{{id}}/remote-optimize"
-                            class="d-inline"
-                          >
-                              {{> csrf-field}}
-                            <button
-                              type="submit"
-                              class="btn btn-warning btn-sm"
-                              {{#unless remoteOptimization.hasRemoteOptimizer}}disabled{{/unless}}
-                              {{#if remoteOptimization.tooltip}}title="{{remoteOptimization.tooltip}}"{{/if}}
-                            >
-                              Remote&nbsp;Optimize
-                            </button>
-                          </form>
-                        {{/if}}
-                      {{/if}}
                       <form
                         method="POST"
                         action="/templates/{{id}}/toggle-enabled"

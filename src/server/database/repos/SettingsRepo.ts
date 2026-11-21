@@ -414,30 +414,6 @@ export class SettingsRepo {
         this.rawSettings[SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2],
         DEFAULT_OPTIMIZATION_OBJECTIVE_2
       ),
-      hetznerApiToken: this.parseString(
-        this.rawSettings[SETTING_KEYS.HETZNER_API_TOKEN],
-        defaults.optimizer.hetznerApiToken
-      ),
-      hetznerServerType: this.parseNonEmptyString(
-        this.rawSettings[SETTING_KEYS.HETZNER_SERVER_TYPE],
-        defaults.optimizer.hetznerServerType
-      ),
-      hetznerServerLocation: this.parseNonEmptyString(
-        this.rawSettings[SETTING_KEYS.HETZNER_SERVER_LOCATION],
-        defaults.optimizer.hetznerServerLocation
-      ),
-      hetznerSshKeyName: this.parseNonEmptyString(
-        this.rawSettings[SETTING_KEYS.HETZNER_SSH_KEY_NAME],
-        defaults.optimizer.hetznerSshKeyName
-      ),
-      hetznerPublicKey: this.parseString(
-        this.rawSettings[SETTING_KEYS.HETZNER_PUBLIC_KEY],
-        defaults.optimizer.hetznerPublicKey
-      ),
-      hetznerPrivateKey: this.parseString(
-        this.rawSettings[SETTING_KEYS.HETZNER_PRIVATE_KEY],
-        defaults.optimizer.hetznerPrivateKey
-      ),
       localOptimizationStepMultipliers: this.parseNumberArray(
         this.rawSettings[SETTING_KEYS.LOCAL_OPTIMIZATION_STEP_MULTIPLIERS],
         defaults.optimizer.localOptimizationStepMultipliers,

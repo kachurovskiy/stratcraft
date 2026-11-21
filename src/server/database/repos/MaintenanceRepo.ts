@@ -159,7 +159,6 @@ export class MaintenanceRepo {
       'candles',
       'corporate_actions',
       'lightgbm_models',
-      'remote_optimizer_jobs',
       'signals',
       'start_timing_backtests',
       'strategies',

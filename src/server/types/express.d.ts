@@ -8,7 +8,6 @@ import type { CpuMetricsService } from '../services/CpuMetricsService';
 import type { EmailService } from '../services/EmailService';
 import type { LoggingService } from '../services/LoggingService';
 import type { MtlsLockdownService } from '../services/MtlsLockdownService';
-import type { RemoteOptimizationService } from '../services/RemoteOptimizationService';
 import type { StrategyRegistry } from '../strategies/registry';
 
 declare global {
@@ -25,7 +24,6 @@ declare global {
       mtlsLockdownService: MtlsLockdownService;
       accountDataService: AccountDataService;
       jobScheduler: JobScheduler;
-      remoteOptimizerService: RemoteOptimizationService;
     }
   }
 }

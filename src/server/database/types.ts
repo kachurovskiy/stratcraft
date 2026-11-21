@@ -1,5 +1,4 @@
 import type { BacktestCacheRow } from '../scoring/paramScore';
-import type { RemoteOptimizationStatus } from '../types/RemoteOptimization';
 import type {
   AccountOperation,
   BacktestScope,
@@ -139,12 +138,6 @@ export interface OptimizerSettingsValue {
   localOptimizationMultiStartSeeds: number;
   optimizationObjective: SettingsOptimizationObjective;
   optimizationObjective2: SettingsOptimizationObjective;
-  hetznerApiToken: string;
-  hetznerServerType: string;
-  hetznerServerLocation: string;
-  hetznerSshKeyName: string;
-  hetznerPublicKey: string;
-  hetznerPrivateKey: string;
   localOptimizationStepMultipliers: number[];
   localOptimizationMaxUnadjustedPriceValues: number[];
   maxAllowedDrawdownRatio: number;
@@ -515,18 +508,6 @@ export interface AccountOperationDispatchCandidate {
   strategyName: string;
   userId: number | null;
   userEmail: string | null;
-}
-
-export interface RemoteOptimizerJobEntity {
-  id: string;
-  templateId: string;
-  templateName: string;
-  status: RemoteOptimizationStatus;
-  createdAt: Date;
-  startedAt?: Date;
-  finishedAt?: Date;
-  hetznerServerId?: number | null;
-  remoteServerIp?: string | null;
 }
 
 export type LightgbmModelSource = 'manual' | 'training';

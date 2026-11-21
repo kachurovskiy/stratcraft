@@ -19,9 +19,6 @@ function createHarness() {
           .mockResolvedValueOnce(null),
         getAllTemplateIds: jest.fn().mockResolvedValue([template.id])
       },
-      remoteOptimizerJobs: {
-        hasActiveRemoteOptimizerJob: jest.fn().mockResolvedValue(false)
-      },
       strategies: {
         deleteStrategy: jest.fn()
       },
