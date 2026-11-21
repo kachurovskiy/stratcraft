@@ -2,6 +2,8 @@
 
 Fast strategy optimization + backtesting engine for StratCraft. Use it to train/verify parameter sets, refresh signals, and run backtests. Most commands work directly against the database; `optimize` and `verify` can also run against a market data snapshot file via `--data-file` (generate one with `export-market-data`).
 
+Optimization uses the local server cache at `http://localhost:$SERVER_PORT/api` when `DATABASE_URL` and `SERVER_PORT` are set. Snapshot runs without a database use template defaults and an in-memory cache.
+
 ## Build
 
 Build the Rust engine binary:

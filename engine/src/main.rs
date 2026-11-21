@@ -86,7 +86,7 @@ enum Commands {
     PlanOperations,
     /// Reconcile live trades with broker order states
     ReconcileTrades,
-    /// Export market data snapshot for remote optimizers
+    /// Export market data snapshot for local optimization
     ExportMarketData {
         /// Destination file for the snapshot
         #[arg(short, long = "output", value_name = "PATH")]

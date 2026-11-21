@@ -30,6 +30,12 @@ const template: StrategyTemplate = {
 
 function createRegistryHarness(existingParameters: Record<string, unknown> | null) {
   const db = {
+    backtestCache: {
+      getBestParams: jest.fn().mockResolvedValue({ parameters: { alpha: 3, beta: 5 } })
+    },
+    backtestBestParams: {
+      getSavedBestParams: jest.fn().mockResolvedValue(null)
+    },
     strategies: {
       getStrategy: jest.fn().mockResolvedValue(
         existingParameters
@@ -49,7 +55,6 @@ function createRegistryHarness(existingParameters: Record<string, unknown> | nul
   };
   const registry = new StrategyRegistry(db as any);
   jest.spyOn(registry, 'getTemplates').mockReturnValue([template]);
-  (registry as any).resolveDefaultStrategyParameters = jest.fn().mockResolvedValue({ alpha: 3, beta: 5 });
 
   return { db, registry };
 }
@@ -89,5 +94,31 @@ describe('StrategyRegistry.refreshOutdatedDefaultStrategies', () => {
       unchanged: 1,
       failures: []
     });
+  });
+});
+
+
+describe('StrategyRegistry local default parameters', () => {
+  test('uses saved parameters and fills missing template defaults when the cache is empty', async () => {
+    const { db, registry } = createRegistryHarness(null);
+    db.backtestCache.getBestParams.mockResolvedValue(null);
+    db.backtestBestParams.getSavedBestParams.mockResolvedValue({ alpha: 4 });
+
+    await registry.refreshOutdatedDefaultStrategies();
+
+    expect(db.strategies.insertStrategy).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: { alpha: 4, beta: 2 }
+    }));
+  });
+
+  test('uses template defaults when neither cache nor saved parameters exist', async () => {
+    const { db, registry } = createRegistryHarness(null);
+    db.backtestCache.getBestParams.mockResolvedValue(null);
+
+    await registry.refreshOutdatedDefaultStrategies();
+
+    expect(db.strategies.insertStrategy).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: { alpha: 1, beta: 2 }
+    }));
   });
 });

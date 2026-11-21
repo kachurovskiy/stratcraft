@@ -3,8 +3,6 @@ import { StrategyTemplate } from '../types/StrategyTemplate';
 import { LoggingService } from '../services/LoggingService';
 import { JobScheduler } from '../jobs/JobScheduler';
 import fs from 'fs';
-import { SETTING_KEYS } from '../constants';
-import { resolveAppBaseUrl } from '../utils/appUrl';
 
 const BASE_TEMPLATES: StrategyTemplate[] = [];
 let LIGHTGBM_BASE_TEMPLATE: StrategyTemplate | null = null;
@@ -113,50 +111,6 @@ export class StrategyRegistry {
   }
 
   /**
-   * Get best params from remote and merge with defaults. Returns null if fetch failed.
-   */
-  private async getBestMergedParamsOrNull(template: StrategyTemplate): Promise<Record<string, any> | null> {
-    const fetchAny: any = (globalThis as any).fetch;
-    if (!fetchAny) return null;
-
-    try {
-      const appBaseUrl = await resolveAppBaseUrl(this.db);
-      if (!appBaseUrl) {
-        return null;
-      }
-      const secret = this.db.settings.value.optimizer.backtestApiSecret;
-      const headers: Record<string, string> = {};
-      if (secret) {
-        headers['x-backtest-secret'] = secret;
-      }
-      const res: any = await fetchAny(
-        `${appBaseUrl}/api/backtest/best/${encodeURIComponent(template.id)}`,
-        { headers }
-      );
-      if (!res || !res.ok) return null;
-      const data: any = await res.json();
-      if (!data || typeof data !== 'object' || !data.parameters || typeof data.parameters !== 'object') return null;
-
-      const best: Record<string, any> = data.parameters as Record<string, any>;
-
-      const merged: Record<string, any> = {};
-      for (const def of template.parameters) {
-        if (best && Object.prototype.hasOwnProperty.call(best, def.name) && best[def.name] !== undefined) {
-          merged[def.name] = best[def.name];
-        } else if (def.default !== undefined) {
-          merged[def.name] = def.default;
-        }
-      }
-      return merged;
-    } catch (error) {
-      this.logging?.warn('StrategyManager', `Remote best params fetch failed for ${template.id}`, {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      return null;
-    }
-  }
-
-  /**
    * Get best params from local DB cache and merge with defaults. Returns null if none.
    */
   private async getLocalBestMergedParamsOrNull(template: StrategyTemplate): Promise<Record<string, any> | null> {
@@ -200,20 +154,13 @@ export class StrategyRegistry {
   ): Promise<Record<string, any>> {
     this.logging?.info(
       'StrategyManager',
-      `${actionLabel} for template ${template.id} - fetching best params from remote`
+      `${actionLabel} for template ${template.id} - loading best params from local cache or saved snapshot`
     );
-    let mergedParams = await this.getBestMergedParamsOrNull(template);
+    let mergedParams = await this.getLocalBestMergedParamsOrNull(template);
     if (!mergedParams) {
       this.logging?.warn(
         'StrategyManager',
-        `Remote best params unavailable for ${template.id}; trying local cache or saved snapshot`
-      );
-      mergedParams = await this.getLocalBestMergedParamsOrNull(template);
-    }
-    if (!mergedParams) {
-      this.logging?.warn(
-        'StrategyManager',
-        `No best params found (remote/local/saved) for ${template.id}; using template defaults`
+        `No best params found (local/saved) for ${template.id}; using template defaults`
       );
       mergedParams = this.buildDefaultParameters(template);
     }

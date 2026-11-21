@@ -1,11 +1,10 @@
-use crate::backtest_api_client::build_blocking_client;
 use crate::models::*;
 use anyhow::{anyhow, Result};
 use dashmap::DashMap;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const DEFAULT_LOCAL_API_PORT: u16 = 3000;
 const MAX_ERROR_BODY_CHARS: usize = 2048;
@@ -14,11 +13,9 @@ const DISABLE_LOCAL_CACHE_API_ENV: &str = "STRATCRAFT_DISABLE_LOCAL_CACHE_API";
 #[derive(Clone)]
 pub struct CacheManager {
     pub local_cache: Arc<DashMap<String, OptimizationResult>>,
-    has_db: bool,
-    remote_timeout: Duration,
-    remote_request_gate: Arc<Mutex<Option<Instant>>>,
-    remote_api_secret: Option<String>,
-    remote_api_base_url: Option<String>,
+    timeout: Duration,
+    api_secret: Option<String>,
+    api_base_url: Option<String>,
 }
 
 pub struct CacheStoreParams {
@@ -34,38 +31,19 @@ pub struct CacheStoreParams {
 }
 
 impl CacheManager {
-    pub fn new(
-        remote_api_secret: Option<String>,
-        remote_api_base_url: Option<String>,
-        has_db: bool,
-    ) -> Self {
-        let remote_api_secret = remote_api_secret
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-        let remote_api_base_url = remote_api_base_url
-            .map(|value| value.trim_end_matches('/').to_string())
-            .filter(|value| !value.is_empty());
+    pub fn new(api_secret: Option<String>, has_db: bool) -> Self {
         Self {
             local_cache: Arc::new(DashMap::new()),
-            has_db,
-            remote_timeout: Duration::from_secs(30),
-            remote_request_gate: Arc::new(Mutex::new(None)),
-            remote_api_secret,
-            remote_api_base_url,
+            timeout: Duration::from_secs(30),
+            api_secret: api_secret
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
+            api_base_url: should_use_local_api(has_db).then(resolve_local_api_base_url),
         }
     }
 
-    fn throttle_remote_request(&self) {
-        const MIN_GAP: Duration = Duration::from_secs(1);
-        if let Ok(mut guard) = self.remote_request_gate.lock() {
-            if let Some(last) = *guard {
-                let elapsed = last.elapsed();
-                if elapsed < MIN_GAP {
-                    thread::sleep(MIN_GAP - elapsed);
-                }
-            }
-            *guard = Some(Instant::now());
-        }
+    pub fn api_base_url(&self) -> Option<&str> {
+        self.api_base_url.as_deref()
     }
 
     fn retry_with_backoff<F, T>(mut operation: F) -> Result<T>
@@ -120,17 +98,11 @@ impl CacheManager {
             return Some(result.clone());
         }
 
-        let use_local_api = should_use_local_api(self.has_db);
-        let api_base_url = if use_local_api {
-            resolve_local_api_base_url()
-        } else {
-            let Some(api_base_url) = self.remote_api_base_url.clone() else {
-                return None;
-            };
-            api_base_url
+        let Some(api_base_url) = self.api_base_url() else {
+            return None;
         };
 
-        match self.check_remote_cache(&api_base_url, template_id, parameters, !use_local_api) {
+        match self.check_api_cache(api_base_url, template_id, parameters) {
             Ok(Some(result)) => {
                 self.local_cache.insert(cache_key, result.clone());
                 Some(result)
@@ -144,44 +116,34 @@ impl CacheManager {
     }
 
     pub fn store_cache(&self, params: CacheStoreParams) {
-        let use_local_api = should_use_local_api(self.has_db);
-        let api_base_url = if use_local_api {
-            resolve_local_api_base_url()
-        } else {
-            let Some(api_base_url) = self.remote_api_base_url.clone() else {
-                return;
-            };
-            api_base_url
+        let Some(api_base_url) = self.api_base_url.clone() else {
+            return;
         };
-        let timeout = self.remote_timeout;
-        let api_secret = self.remote_api_secret.clone();
+        let timeout = self.timeout;
+        let api_secret = self.api_secret.clone();
 
         thread::spawn(move || {
-            if let Err(e) =
-                Self::store_remote_cache_static(&api_base_url, timeout, params, api_secret)
-            {
+            if let Err(e) = Self::store_api_cache(&api_base_url, timeout, params, api_secret) {
                 log::warn!("Failed to store cache: {:?}", e);
             }
         });
     }
 
-    fn check_remote_cache(
+    fn check_api_cache(
         &self,
         api_base_url: &str,
         template_id: &str,
         parameters: &HashMap<String, f64>,
-        throttle: bool,
     ) -> Result<Option<OptimizationResult>> {
         let template_id = template_id.to_string();
         let parameters = parameters.clone();
-        let timeout = self.remote_timeout;
-        let api_secret = self.remote_api_secret.clone();
+        let timeout = self.timeout;
+        let api_secret = self.api_secret.clone();
 
         Self::retry_with_backoff(|| {
-            if throttle {
-                self.throttle_remote_request();
-            }
-            let client = build_blocking_client(Some(timeout))?;
+            let client = reqwest::blocking::Client::builder()
+                .timeout(timeout)
+                .build()?;
             let url = format!("{}/backtest/check", api_base_url);
 
             let request_body = serde_json::json!({
@@ -214,7 +176,7 @@ impl CacheManager {
         })
     }
 
-    fn store_remote_cache_static(
+    fn store_api_cache(
         api_base_url: &str,
         timeout: Duration,
         params: CacheStoreParams,
@@ -233,7 +195,9 @@ impl CacheManager {
         } = params;
 
         Self::retry_with_backoff(move || {
-            let client = build_blocking_client(Some(timeout))?;
+            let client = reqwest::blocking::Client::builder()
+                .timeout(timeout)
+                .build()?;
             let url = format!("{}/backtest/store", api_base_url);
 
             let request_body = serde_json::json!({

@@ -1,4 +1,3 @@
-use crate::app_url::resolve_api_base_url;
 use crate::backtester::ActiveStrategyBacktester;
 use crate::cache::CacheManager;
 use crate::data_context::{MarketData, TickerScope};
@@ -134,8 +133,7 @@ impl EngineContext {
     ) -> Self {
         let has_db = db.is_some();
         let backtest_secret = market_data.settings().get("BACKTEST_API_SECRET").cloned();
-        let api_base_url = resolve_api_base_url(market_data.settings());
-        let cache_manager = CacheManager::new(backtest_secret, api_base_url, has_db);
+        let cache_manager = CacheManager::new(backtest_secret, has_db);
 
         Self {
             db,

@@ -46,7 +46,6 @@ const VERIFY_SNAPSHOT_FILE: &str = "market-data-verify.bin";
 fn ensure_test_env() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        std::env::set_var("DOMAIN", "");
         std::env::set_var("STRATCRAFT_DISABLE_LOCAL_CACHE_API", "1");
         let _ = env_logger::builder().is_test(true).try_init();
     });

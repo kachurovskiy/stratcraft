@@ -1,5 +1,3 @@
-use crate::app_url::resolve_api_base_url;
-use crate::backtest_api_client::build_async_client;
 use crate::cache::{CacheManager, CacheStoreParams};
 use crate::config::{
     resolve_backtest_initial_capital, EngineRuntimeSettings, LocalOptimizationObjective,
@@ -622,9 +620,9 @@ impl<'a> OptimizationEngine<'a> {
         template_id: &str,
         template: &StrategyTemplate,
     ) -> HashMap<String, f64> {
-        let Some(api_base_url) = resolve_api_base_url(self.data.settings()) else {
+        let Some(api_base_url) = self.cache_manager.api_base_url() else {
             warn!(
-                "Backtest API base URL is not configured; using template defaults for {}.",
+                "Local backtest cache API is unavailable; using template defaults for {}.",
                 template_id
             );
             return self.get_default_parameters_from_template(template);
@@ -638,7 +636,7 @@ impl<'a> OptimizationEngine<'a> {
             .get("BACKTEST_API_SECRET")
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
-        let client = match build_async_client(None) {
+        let client = match reqwest::Client::builder().build() {
             Ok(client) => client,
             Err(err) => {
                 warn!(
