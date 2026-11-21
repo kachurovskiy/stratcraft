@@ -15,8 +15,7 @@ export type JobType =
   | 'liquidate-account'
   | 'plan-operations'
   | 'dispatch-operations'
-  | 'optimize'
-  | 'train-lightgbm';
+  | 'optimize';
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 

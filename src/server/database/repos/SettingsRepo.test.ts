@@ -86,7 +86,7 @@ describe('SettingsRepo', () => {
         { setting_key: SETTING_KEYS.BACKTEST_ACTIVE_MONTHS, value: '[0, -1, \"bad\"]' },
         { setting_key: SETTING_KEYS.TRAINING_ALLOCATION_RATIO, value: '1.8' },
         { setting_key: SETTING_KEYS.CANDLE_SYNC_MATCHING_RATIO_THRESHOLD, value: '-4' },
-        { setting_key: SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE, value: '2024-99-99' },
+        { setting_key: SETTING_KEYS.OPTIMIZER_TRAINING_START_DATE, value: '2024-99-99' },
         { setting_key: SETTING_KEYS.OPTIMIZATION_OBJECTIVE_2, value: 'not-valid' },
         { setting_key: SETTING_KEYS.INVITE_LINK_VALID_DAYS, value: '0' },
         { setting_key: SETTING_KEYS.SESSION_COOKIE_VALID_DAYS, value: '3.9' },
@@ -111,7 +111,7 @@ describe('SettingsRepo', () => {
     expect(repo.value.engine.backtestActiveMonths).toEqual([1, 3, 6, 12, 24, 36, 48, 60, 120]);
     expect(repo.value.tickerRules.trainingAllocationRatio).toBe(1);
     expect(repo.value.candleSync.matchingRatioThreshold).toBe(0);
-    expect(repo.value.optimizer.lightgbmTrainingStartDate).toBe('2021-01-01');
+    expect(repo.value.optimizer.optimizerTrainingStartDate).toBe('2021-01-01');
     expect(repo.value.optimizer.optimizationObjective2).toBe('CAGR');
     expect(repo.value.userAccess.inviteLinkValidDays).toBe(7);
     expect(repo.value.userAccess.sessionCookieValidDays).toBe(3);

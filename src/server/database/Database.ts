@@ -14,7 +14,6 @@ import { BacktestBestParamsRepo } from './repos/BacktestBestParamsRepo';
 import { BacktestResultsRepo } from './repos/BacktestResultsRepo';
 import { CandlesRepo } from './repos/CandlesRepo';
 import { CorporateActionsRepo } from './repos/CorporateActionsRepo';
-import { LightgbmModelsRepo } from './repos/LightgbmModelsRepo';
 import { AdminRepo } from './repos/AdminRepo';
 import { MaintenanceRepo } from './repos/MaintenanceRepo';
 import { StrategiesRepo } from './repos/StrategiesRepo';
@@ -39,11 +38,6 @@ export type {
   EmailSettingsValue,
   EngineSettingsValue,
   EodhdSettingsValue,
-  LightgbmDatasetStatsSummary,
-  LightgbmModelCreateInput,
-  LightgbmModelRecord,
-  LightgbmModelSource,
-  LightgbmValidationMetricsSummary,
   OptimizerSettingsValue,
   ParamScoringSettingsValue,
   RawUserRow,
@@ -92,7 +86,6 @@ export class Database {
   readonly backtestResults: BacktestResultsRepo;
   readonly backtestCache: BacktestCacheRepo;
   readonly backtestBestParams: BacktestBestParamsRepo;
-  readonly lightgbmModels: LightgbmModelsRepo;
 
   constructor() {
     const connectionString = process.env.DATABASE_URL;
@@ -123,7 +116,6 @@ export class Database {
     this.backtestResults = new BacktestResultsRepo(this.core);
     this.backtestCache = new BacktestCacheRepo(this.core, this.settings);
     this.backtestBestParams = new BacktestBestParamsRepo(this.core);
-    this.lightgbmModels = new LightgbmModelsRepo(this.core);
 
     this.pool.on('error', (err) => {
       console.error('Unexpected PostgreSQL error:', err);

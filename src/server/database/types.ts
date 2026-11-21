@@ -126,8 +126,6 @@ export interface OptimizerSettingsValue {
   autoOptimizationDelaySeconds: number;
   allowShortSellingOptimizationEnabled: boolean;
   optimizerExploreEnabled: boolean;
-  lightgbmTrainingStartDate: string;
-  lightgbmTrainingEndDate: string;
   optimizerTrainingStartDate: string;
   optimizerTrainingEndDate: string;
   verifyWindowStartDate: string;
@@ -509,78 +507,3 @@ export interface AccountOperationDispatchCandidate {
   userId: number | null;
   userEmail: string | null;
 }
-
-export type LightgbmModelSource = 'manual' | 'training';
-
-export interface LightgbmDatasetStatsSummary {
-  rowCount: number;
-  featureCount: number;
-  startDate: string | null;
-  endDate: string | null;
-  labelCounts: Record<string, number>;
-}
-
-export interface LightgbmValidationMetricsSummary {
-  topK: number;
-  positiveRate: number | null;
-  positives: number | null;
-  totalRows: number | null;
-  dayCount: number | null;
-  precisionAtK: number | null;
-  hitRateAtK: number | null;
-  ndcgAtK: number | null;
-  avgMaxMultiple: number | null;
-}
-
-export interface LightgbmModelRecord {
-  id: string;
-  name: string;
-  treeText: string;
-  source: LightgbmModelSource;
-  numIterations: number | null;
-  learningRate: number | null;
-  numLeaves: number | null;
-  maxDepth: number | null;
-  minDataInLeaf: number | null;
-  minGainToSplit: number | null;
-  lambdaL1: number | null;
-  lambdaL2: number | null;
-  featureFraction: number | null;
-  baggingFraction: number | null;
-  baggingFreq: number | null;
-  earlyStoppingRound: number | null;
-  trainDatasetStats: LightgbmDatasetStatsSummary | null;
-  validationDatasetStats: LightgbmDatasetStatsSummary | null;
-  validationMetrics: LightgbmValidationMetricsSummary | null;
-  engineStdout: string | null;
-  engineStderr: string | null;
-  trainedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-  isActive: boolean;
-}
-
-export type LightgbmModelCreateInput = Pick<LightgbmModelRecord, 'id' | 'name' | 'treeText' | 'source'> &
-  Partial<
-    Pick<
-      LightgbmModelRecord,
-      | 'numIterations'
-      | 'learningRate'
-      | 'numLeaves'
-      | 'maxDepth'
-      | 'minDataInLeaf'
-      | 'minGainToSplit'
-      | 'lambdaL1'
-      | 'lambdaL2'
-      | 'featureFraction'
-      | 'baggingFraction'
-      | 'baggingFreq'
-      | 'earlyStoppingRound'
-      | 'trainDatasetStats'
-      | 'validationDatasetStats'
-      | 'validationMetrics'
-      | 'engineStdout'
-      | 'engineStderr'
-      | 'trainedAt'
-    >
-  >;

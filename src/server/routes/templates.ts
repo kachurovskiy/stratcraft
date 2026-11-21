@@ -751,29 +751,6 @@ router.post<TemplateParams>('/:templateId/delete', requireAuth, requireAdmin, as
   const { templateId } = req.params;
   try {
     const template = req.strategyRegistry.getTemplate(templateId, { includeDisabled: true });
-    const isLightgbmModelTemplate = templateId.startsWith('lightgbm_');
-    if (!template && !isLightgbmModelTemplate) {
-      return res.redirect(`/templates?error=${encodeURIComponent(`Template ${templateId} not found`)}`);
-    }
-
-    if (isLightgbmModelTemplate) {
-      const modelId = templateId.slice('lightgbm_'.length).trim();
-      if (!modelId) {
-        return res.redirect(
-          `/templates/${encodeURIComponent(templateId)}?error=${encodeURIComponent('Invalid LightGBM template ID')}`
-        );
-      }
-
-      await req.db.lightgbmModels.deleteLightgbmModel(modelId);
-      await req.strategyRegistry.ensureLightgbmModelTemplates();
-      await req.strategyRegistry.refreshTemplateAvailability();
-
-      const label = template?.name ?? templateId;
-      return res.redirect(
-        `/templates?success=${encodeURIComponent(`LightGBM model "${label}" deleted successfully`)}`
-      );
-    }
-
     if (!template) {
       return res.redirect(`/templates?error=${encodeURIComponent(`Template ${templateId} not found`)}`);
     }

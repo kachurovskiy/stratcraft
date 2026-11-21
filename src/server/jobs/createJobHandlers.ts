@@ -13,7 +13,6 @@ import { createDispatchOperationsHandler } from './handlers/dispatchOperationsHa
 import { createReconcileTradesHandler } from './handlers/reconcileTradesHandler';
 import { createLiquidateAccountHandler } from './handlers/liquidateAccountHandler';
 import { createOptimizeHandler } from './handlers/optimizeHandler';
-import { createTrainLightgbmHandler } from './handlers/trainLightgbmHandler';
 
 type HandlerMap = Record<JobType, JobHandler>;
 
@@ -31,7 +30,6 @@ export function createJobHandlers(deps: JobHandlerDependencies): HandlerMap {
     'liquidate-account': createLiquidateAccountHandler(deps),
     'plan-operations': createPlanOperationsHandler(deps),
     'dispatch-operations': createDispatchOperationsHandler(deps),
-    'optimize': createOptimizeHandler(deps),
-    'train-lightgbm': createTrainLightgbmHandler(deps)
+    'optimize': createOptimizeHandler(deps)
   };
 }

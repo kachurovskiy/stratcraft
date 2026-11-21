@@ -93,7 +93,6 @@
                     {{#if result.message}}<div>{{result.message}}</div>{{/if}}
                     {{#if lastError}}<div class="text-danger small">{{lastError}}</div>{{/if}}
                     {{#if metadata.modelName}}<div class="text-muted small">Model: {{metadata.modelName}}</div>{{/if}}
-                    {{#if lightgbmTrainParams}}<div class="text-muted small"><code>{{lightgbmTrainParams}}</code></div>{{/if}}
                     {{#if metadata.reason}}<div class="text-muted small">({{metadata.reason}})</div>{{/if}}
                     {{#if cancellationRequestedAt}}
                       <div class="text-warning small">Cancel requested {{formatDateTime cancellationRequestedAt}}</div>

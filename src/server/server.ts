@@ -37,7 +37,6 @@ import deploymentRoutes from './routes/deployment';
 import adminUserRoutes from './routes/users';
 import adminLogRoutes from './routes/logs';
 import adminJobsRoutes from './routes/jobs';
-import adminLightgbmRoutes from './routes/lightgbm';
 import accountRoutes from './routes/accounts';
 import dashboardRoutes from './routes/dashboard';
 import tickersRoutes from './routes/tickers';
@@ -239,7 +238,6 @@ export class Server {
     this.app.use('/admin/deployment', deploymentRoutes);
     this.app.use('/admin', adminUserRoutes);
     this.app.use('/admin/logs', adminLogRoutes);
-    this.app.use('/admin/lightgbm', adminLightgbmRoutes);
     this.app.use('/admin/jobs', adminJobsRoutes);
     this.app.use('/api', apiRoutes);
     this.app.use('/accounts', accountRoutes);

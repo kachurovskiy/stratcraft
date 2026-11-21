@@ -130,7 +130,6 @@ export class MaintenanceRepo {
       const templatesDeleted = templatesResult.changes || 0;
 
       await this.db.run('DELETE FROM signals');
-      await this.db.run('DELETE FROM lightgbm_models');
 
       return {
         strategiesDeleted,
@@ -158,7 +157,6 @@ export class MaintenanceRepo {
       'backtest_results',
       'candles',
       'corporate_actions',
-      'lightgbm_models',
       'signals',
       'start_timing_backtests',
       'strategies',

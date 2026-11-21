@@ -5,7 +5,6 @@ export type LogSource =
   | 'job-scheduler'
   | 'engine-cli'
   | 'engine-compile-job'
-  | 'train-lightgbm-job'
   | 'market-data-job'
   | 'ticker-job'
   | 'corporate-actions-job'
@@ -356,7 +355,6 @@ export class LoggingService {
     switch (source) {
       case 'job-scheduler': return '\x1b[35m'; // Magenta
       case 'engine-cli':
-      case 'train-lightgbm-job':
       case 'engine-compile-job': return '\x1b[36m'; // Cyan
       case 'market-data-job': return '\x1b[34m'; // Blue
       case 'ticker-job': return '\x1b[34m'; // Blue

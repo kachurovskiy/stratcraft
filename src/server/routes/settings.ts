@@ -555,22 +555,6 @@ const SETTINGS_DEFINITIONS: SettingDefinition[] = [
     isBoolean: true
   },
   {
-    key: SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE,
-    group: 'optimizer',
-    label: 'LightGBM Training Start Date',
-    description: 'Start date (YYYY-MM-DD) for LightGBM training and validation data.',
-    placeholder: 'YYYY-MM-DD',
-    inputType: 'text'
-  },
-  {
-    key: SETTING_KEYS.LIGHTGBM_TRAINING_END_DATE,
-    group: 'optimizer',
-    label: 'LightGBM Training End Date',
-    description: 'End date (YYYY-MM-DD) for LightGBM training and validation data.',
-    placeholder: 'YYYY-MM-DD',
-    inputType: 'text'
-  },
-  {
     key: SETTING_KEYS.OPTIMIZER_TRAINING_START_DATE,
     group: 'optimizer',
     label: 'Optimizer Training Start Date',

@@ -5,16 +5,11 @@ import { JobScheduler } from '../jobs/JobScheduler';
 import fs from 'fs';
 
 const BASE_TEMPLATES: StrategyTemplate[] = [];
-let LIGHTGBM_BASE_TEMPLATE: StrategyTemplate | null = null;
 const templateFiles = fs.readdirSync(__dirname).filter(file => file.endsWith('.json'));
 for (const file of templateFiles) {
   const filePath = `${__dirname}/${file}`;
   const template = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  if (template?.id === 'lightgbm') {
-    LIGHTGBM_BASE_TEMPLATE = template;
-  } else {
-    BASE_TEMPLATES.push(template);
-  }
+  BASE_TEMPLATES.push(template);
 }
 
 export interface DefaultStrategyRefreshSummary {
@@ -29,8 +24,6 @@ export class StrategyRegistry {
   private logging?: LoggingService;
   private jobScheduler?: JobScheduler;
   private templates: StrategyTemplate[] = [...BASE_TEMPLATES];
-  private allTemplates: StrategyTemplate[] = [...BASE_TEMPLATES];
-  private lightgbmTemplates: StrategyTemplate[] = [];
   private disabledTemplateIds: Set<string> = new Set();
 
   constructor(database: Database, loggingService?: LoggingService, jobScheduler?: JobScheduler) {
@@ -49,14 +42,12 @@ export class StrategyRegistry {
       await this.registerTemplate(template);
     }
 
-    await this.ensureLightgbmModelTemplates();
     await this.loadDisabledTemplateIds();
     this.rebuildTemplateLists();
     await this.removeDeletedTemplates();
 
     // Create default strategies from templates
     await this.createDefaultStrategies();
-    await this.ensureLightgbmDefaultStrategies();
   }
 
   private async registerTemplate(template: StrategyTemplate): Promise<void> {
@@ -76,10 +67,6 @@ export class StrategyRegistry {
     for (const template of this.templates) {
       if (template.id === 'buy_and_hold') {
         await this.ensureBuyAndHoldDefaults(template, existingDefaultStrategyIds);
-        continue;
-      }
-
-      if (template.id.startsWith('lightgbm_')) {
         continue;
       }
 
@@ -175,8 +162,7 @@ export class StrategyRegistry {
   }
 
   private rebuildTemplateLists(): void {
-    this.allTemplates = [...BASE_TEMPLATES, ...this.lightgbmTemplates];
-    this.templates = this.allTemplates.filter((template) => !this.disabledTemplateIds.has(template.id));
+    this.templates = BASE_TEMPLATES.filter((template) => !this.disabledTemplateIds.has(template.id));
   }
 
   getTemplate(
@@ -188,14 +174,14 @@ export class StrategyRegistry {
     if (!normalized) {
       return undefined;
     }
-    const list = includeDisabled ? this.allTemplates : this.templates;
+    const list = includeDisabled ? BASE_TEMPLATES : this.templates;
     const template = list.find(t => t.id === normalized);
     return template ? this.attachEnabledFlag(template) : undefined;
   }
 
   getTemplates(options: { includeDisabled?: boolean } = {}): StrategyTemplate[] {
     const includeDisabled = options.includeDisabled ?? false;
-    const list = includeDisabled ? this.allTemplates : this.templates;
+    const list = includeDisabled ? BASE_TEMPLATES : this.templates;
     return list.map(template => this.attachEnabledFlag(template));
   }
 
@@ -227,11 +213,6 @@ export class StrategyRegistry {
     const normalized = templateId.trim();
     if (!this.isTemplateEnabled(normalized)) {
       this.logging?.info('StrategyManager', `Skipping default strategy for disabled template ${normalized}`);
-      return;
-    }
-
-    if (normalized.startsWith('lightgbm_')) {
-      await this.ensureLightgbmDefaultStrategies();
       return;
     }
 
@@ -282,7 +263,7 @@ export class StrategyRegistry {
     };
 
     for (const template of this.getTemplates()) {
-      if (template.id === 'buy_and_hold' || template.id.startsWith('lightgbm_')) {
+      if (template.id === 'buy_and_hold') {
         continue;
       }
 
@@ -359,7 +340,7 @@ export class StrategyRegistry {
   }
 
   private async removeDeletedTemplates(): Promise<void> {
-    const templateIds = this.allTemplates.map(t => t.id);
+    const templateIds = BASE_TEMPLATES.map(t => t.id);
     try {
       const toRemove = await this.db.templates.getTemplatesNotIn(templateIds);
       if (toRemove.length > 0) {
@@ -455,83 +436,6 @@ export class StrategyRegistry {
     if (!accountId) this.scheduleSignalGenerationJob('Triggered by new strategy creation', { strategyId });
 
     return strategyId;
-  }
-
-  async ensureLightgbmDefaults(): Promise<void> {
-    await this.ensureLightgbmDefaultStrategies();
-  }
-
-  async ensureLightgbmModelTemplates(): Promise<void> {
-    if (!LIGHTGBM_BASE_TEMPLATE) {
-      return;
-    }
-
-    const models = await this.db.lightgbmModels.listLightgbmModels();
-    const lightgbmTemplates = models.map(model => this.buildLightgbmTemplate(model.id, model.name));
-    for (const template of lightgbmTemplates) {
-      await this.registerTemplate(template);
-    }
-
-    this.lightgbmTemplates = lightgbmTemplates;
-    this.rebuildTemplateLists();
-  }
-
-  private async ensureLightgbmDefaultStrategies(): Promise<void> {
-    if (!LIGHTGBM_BASE_TEMPLATE) {
-      return;
-    }
-
-    const models = await this.db.lightgbmModels.listLightgbmModels();
-    if (!models.length) {
-      return;
-    }
-
-    const existingDefaultStrategies = await this.db.strategies.getStrategiesByIdLike('default_lightgbm_%');
-    const existingDefaultStrategyIds = new Set(existingDefaultStrategies.map(s => s.id));
-
-    for (const model of models) {
-      const strategyId = `default_lightgbm_${model.id}`;
-      if (existingDefaultStrategyIds.has(strategyId)) {
-        continue;
-      }
-      const templateId = `lightgbm_${model.id}`;
-      if (!this.isTemplateEnabled(templateId)) {
-        this.logging?.info('StrategyManager', `Skipping default strategy for disabled template ${templateId}`);
-        continue;
-      }
-      const parameters = this.buildDefaultParameters(LIGHTGBM_BASE_TEMPLATE);
-      const strategyName = `${LIGHTGBM_BASE_TEMPLATE.name} (${model.name})`;
-
-      try {
-        await this.db.strategies.insertStrategy({
-          id: strategyId,
-          name: strategyName,
-          templateId,
-          parameters,
-          status: 'active'
-        });
-        existingDefaultStrategyIds.add(strategyId);
-        this.logging?.info('StrategyManager', `Created default LightGBM strategy for ${model.name}`, {
-          strategyId
-        });
-      } catch (error) {
-        this.logging?.error('StrategyManager', `Failed to create default LightGBM strategy for ${model.name}`, {
-          error: error instanceof Error ? error.message : String(error)
-        });
-      }
-    }
-  }
-
-  private buildLightgbmTemplate(modelId: string, modelName: string): StrategyTemplate {
-    if (!LIGHTGBM_BASE_TEMPLATE) {
-      throw new Error('LightGBM base template not loaded');
-    }
-    return {
-      ...LIGHTGBM_BASE_TEMPLATE,
-      id: `lightgbm_${modelId}`,
-      name: `${LIGHTGBM_BASE_TEMPLATE.name}: ${modelName}`,
-      description: `LightGBM model ${modelName}.`
-    };
   }
 
   private scheduleSignalGenerationJob(description: string, metadata?: Record<string, any>): void {

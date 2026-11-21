@@ -364,14 +364,6 @@ export class SettingsRepo {
         this.rawSettings[SETTING_KEYS.OPTIMIZER_EXPLORE_ENABLED],
         defaults.optimizer.optimizerExploreEnabled
       ),
-      lightgbmTrainingStartDate: this.parseIsoDate(
-        this.rawSettings[SETTING_KEYS.LIGHTGBM_TRAINING_START_DATE],
-        defaults.optimizer.lightgbmTrainingStartDate
-      ),
-      lightgbmTrainingEndDate: this.parseIsoDate(
-        this.rawSettings[SETTING_KEYS.LIGHTGBM_TRAINING_END_DATE],
-        defaults.optimizer.lightgbmTrainingEndDate
-      ),
       optimizerTrainingStartDate: this.parseIsoDate(
         this.rawSettings[SETTING_KEYS.OPTIMIZER_TRAINING_START_DATE],
         defaults.optimizer.optimizerTrainingStartDate

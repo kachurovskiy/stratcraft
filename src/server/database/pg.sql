@@ -54,36 +54,6 @@ CREATE TABLE IF NOT EXISTS templates (
 ALTER TABLE templates
     ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 
-CREATE TABLE IF NOT EXISTS lightgbm_models (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    tree_text TEXT NOT NULL,
-    source TEXT NOT NULL DEFAULT 'manual',
-    num_iterations INTEGER,
-    learning_rate DOUBLE PRECISION,
-    num_leaves INTEGER,
-    max_depth INTEGER,
-    min_data_in_leaf INTEGER,
-    min_gain_to_split DOUBLE PRECISION,
-    lambda_l1 DOUBLE PRECISION,
-    lambda_l2 DOUBLE PRECISION,
-    feature_fraction DOUBLE PRECISION,
-    bagging_fraction DOUBLE PRECISION,
-    bagging_freq INTEGER,
-    early_stopping_round INTEGER,
-    train_dataset_stats JSONB,
-    validation_dataset_stats JSONB,
-    validation_metrics JSONB,
-    engine_stdout TEXT,
-    engine_stderr TEXT,
-    trained_at TIMESTAMPTZ,
-    is_active BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_lightgbm_models_active ON lightgbm_models(is_active);
-
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -405,8 +375,6 @@ VALUES
     ('IGNORED_TICKERS', '[]'),
     ('ALWAYS_VALIDATION_TICKERS', '["SPY","QQQ"]'),
     ('TRAINING_ALLOCATION_RATIO', '0.65'),
-    ('LIGHTGBM_TRAINING_START_DATE', '2021-01-01'),
-    ('LIGHTGBM_TRAINING_END_DATE', '2024-12-31'),
     ('OPTIMIZER_TRAINING_START_DATE', '2021-01-01'),
     ('OPTIMIZER_TRAINING_END_DATE', '2024-12-31'),
     ('VERIFY_WINDOW_START_DATE', '2025-01-01'),

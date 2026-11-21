@@ -20,36 +20,6 @@ const JOB_TYPE_OPTIONS: Array<{ value: JobType; label: string }> = [
 ];
 const VALID_JOB_TYPES = new Set(JOB_TYPE_OPTIONS.map(option => option.value));
 
-const buildLightgbmTrainParamString = (metadata: Record<string, any> | undefined): string | null => {
-  if (!metadata) {
-    return null;
-  }
-
-  const pairs: Array<[string, unknown]> = [
-    ['num_iterations', metadata.numIterations],
-    ['learning_rate', metadata.learningRate],
-    ['num_leaves', metadata.numLeaves],
-    ['max_depth', metadata.maxDepth],
-    ['min_data_in_leaf', metadata.minDataInLeaf],
-    ['min_gain_to_split', metadata.minGainToSplit],
-    ['lambda_l1', metadata.lambdaL1],
-    ['lambda_l2', metadata.lambdaL2],
-    ['feature_fraction', metadata.featureFraction],
-    ['bagging_fraction', metadata.baggingFraction],
-    ['bagging_freq', metadata.baggingFreq],
-    ['early_stopping_round', metadata.earlyStoppingRound]
-  ];
-
-  const parts: string[] = [];
-  for (const [key, value] of pairs) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      parts.push(`${key}=${value}`);
-    }
-  }
-
-  return parts.length > 0 ? parts.join(' ') : null;
-};
-
 // Admin jobs page
 router.get('/', (req: Request, res: Response, next: NextFunction) => {
   req.authMiddleware.requireAuth(req, res, next);
@@ -59,8 +29,7 @@ router.get('/', (req: Request, res: Response, next: NextFunction) => {
   try {
     const jobTimeline = req.jobScheduler.getJobTimeline().map(job => ({
       ...job,
-      isCancellable: job.status === 'queued' || job.status === 'running',
-      lightgbmTrainParams: job.type === 'train-lightgbm' ? buildLightgbmTrainParamString(job.metadata) : null
+      isCancellable: job.status === 'queued' || job.status === 'running'
     }));
     res.render('pages/jobs', {
       title: 'Jobs',
